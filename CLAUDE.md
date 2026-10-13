@@ -163,6 +163,7 @@ Storage layout for grid-like archives is struct-of-arrays:
 |---|---|---|
 | `vary(rng, op, parent)` | required for mutations | one child |
 | `vary(rng, op, p1, p2)` | required for crossovers | one child |
+| `n_parents(op)` | required for crossovers | `1` (default) or `2`; `VariationEmitter` draws that many parents per child |
 
 Defaults for `AbstractVector{<:Real}` genotypes: `GaussianMutation(σ)`,
 `IsoLineVariation(σ_iso, σ_line)`. A user with a custom genotype defines
@@ -319,10 +320,35 @@ Julia LTS and the current release.
       on Rastrigin (same archive shape, batch size, evaluation budget).
 - [ ] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
       Graphs.jl genotype, custom `vary`, descriptor from graph statistics.
-- [ ] **Phase 6 — More algorithms.** `IsoLineVariation`, `CVTArchive`,
-      `CMAEmitter` + `CMAME()`, `UnstructuredArchive`.
-- [ ] **Phase 7 — Extensions and docs.** Makie, ForwardDiff (CMA-MEGA),
-      PythonCall; Documenter site with tutorials.
+- [ ] **Phase 6 — More algorithms.** One at a time, easiest first. Each comes
+      with tests, a conformance check from `Testing`, and a benchmark entry.
+      The list follows what pyribs and QDax offer, minus what is out of scope.
+  - [x] `IsoLineVariation` and `VariationEmitter` with two parents
+  - [ ] Bounded variation: `PolynomialMutation`, `PolynomialCrossover`
+        (QDax). Needs solution-space bounds in the problem contract.
+  - [ ] `CVTArchive` (pyribs, QDax): centroids from k-means, nearest-centroid
+        lookup
+  - [ ] `CategoricalArchive` (pyribs): cells from discrete descriptor values
+  - [ ] `UnstructuredArchive` (QDax) / `ProximityArchive` (pyribs):
+        novelty-style, a solution enters if it is far from its neighbours
+  - [ ] Threshold archive for CMA-MAE (pyribs `learning_rate`, `DiscountArchive`),
+        a separate type from `GridArchive`
+  - [ ] `CMAEmitter` with improvement ranking, restarts and a CMA-ES core, then
+        `CMAME()`; the CMA-MAE, random-direction (CMA-ME-RD) and two-stage
+        rankers; further evolution strategies (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
+  - [ ] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
+  - [ ] `SlidingBoundariesArchive` (pyribs), `BanditScheduler` for choosing
+        among emitters (pyribs), `DensityArchive` and `DNSArchive` (pyribs)
+  - [ ] Stochastic problems and MAP-Elites with low spread (QDax `MELS`), after
+        the stochastic-evaluation decision below
+- [ ] **Phase 7 — Extensions and docs.** Makie (heatmaps, ECDF, CQD score),
+      ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
+      emitter; Documenter site with tutorials.
+
+Out of scope, as in the introduction: reinforcement-learning and
+neural-policy methods in QDax (PGA-ME, QD-PG, DCRL, ME-ES on policies, DIAYN,
+DADS, SMERL, PBT, TD3/SAC), AURORA (descriptors from a trained autoencoder),
+and distributed MAP-Elites.
 
 ---
 

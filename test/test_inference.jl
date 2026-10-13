@@ -37,6 +37,17 @@ end
     @inferred QD.tell!(emitter, xs, evs, QD.add_batch!(archive, xs, evs))
 end
 
+@testset "inference with a crossover" begin
+    prob = Rastrigin(6)
+    alg = MAPElites(prob; dims=(10, 10), batch_size=16, variation=IsoLineVariation(0.05, 0.3))
+    state = @inferred init(prob, alg; budget=320, rng=Xoshiro(1))
+    emitter = state.emitters[1]
+    @inferred QD.ask(Xoshiro(1), emitter, state.archive)
+    @inferred QD.vary(Xoshiro(1), emitter.op, [0.0, 1.0], [1.0, 0.0])
+    @inferred QD.n_parents(emitter.op)
+    @inferred step!(state)
+end
+
 @testset "inference with several emitters" begin
     prob = Rastrigin(4)
     archive = GridArchive(prob; dims=(5, 5))

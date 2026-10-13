@@ -67,7 +67,7 @@ end
 @testset "MAP-Elites over graphs" begin
     prob = graph_problem(min_nodes=6, max_nodes=14)
     alg = MAPElites(prob; dims=(10, 10), batch_size=50, genotype=SimpleGraph{Int},
-                    mutation=GraphMutation(min_nodes=6, max_nodes=14))
+                    variation=GraphMutation(min_nodes=6, max_nodes=14))
     result = solve(prob, alg; budget=5_000, rng=Xoshiro(1))
     @test result.n_evals == 5_000
     @test result.archive isa GridArchive{SimpleGraph{Int}}

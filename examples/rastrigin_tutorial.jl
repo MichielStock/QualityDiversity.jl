@@ -31,7 +31,7 @@ println("one random solution: fitness ", round(ev.fitness; digits=1),
 # `batch_size` solutions from the grid, mutates them with Gaussian noise of
 # size `σ`, and keeps a child if it beats the current occupant of its cell.
 
-alg = MAPElites(prob; dims=(20, 20), batch_size=100, mutation=GaussianMutation(0.3))
+alg = MAPElites(prob; dims=(20, 20), batch_size=100, variation=GaussianMutation(0.3))
 
 # ## 3. Run it
 #
@@ -81,6 +81,8 @@ end
 # ## 5. Things to try
 #
 # - A different mutation size: `GaussianMutation(0.1)` or `GaussianMutation(1.0)`.
+# - A crossover that moves along the line between two elites:
+#   `variation=IsoLineVariation(0.01, 0.2)`.
 # - A finer grid: `dims=(40, 40)`.
 # - Zoom into part of the descriptor space and ignore everything outside:
 #   `MAPElites(prob; dims=(20, 20), bounds=((-2, 2), (-2, 2)), outside=RejectOutside())`.

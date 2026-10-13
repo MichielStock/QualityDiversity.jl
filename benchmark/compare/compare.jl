@@ -51,9 +51,9 @@ const prob32 = QDProblem(rastrigin32;
                          bounds=((-5.12, 5.12), (-5.12, 5.12)))
 
 make_algorithm(::Type{Float64}, batch_size) =
-    MAPElites(prob; dims=DIMS, batch_size, mutation=GaussianMutation(SIGMA))
+    MAPElites(prob; dims=DIMS, batch_size, variation=GaussianMutation(SIGMA))
 make_algorithm(::Type{Float32}, batch_size) =
-    MAPElites(prob32; dims=DIMS, batch_size, mutation=GaussianMutation(Float32(SIGMA)),
+    MAPElites(prob32; dims=DIMS, batch_size, variation=GaussianMutation(Float32(SIGMA)),
               genotype=Vector{Float32}, fitness=Float32)
 problem(::Type{Float64}) = prob
 problem(::Type{Float32}) = prob32

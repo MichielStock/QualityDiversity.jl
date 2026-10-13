@@ -1,9 +1,11 @@
 """
     VariationEmitter(op; batch_size)
 
-Emitter that draws `batch_size` parents uniformly from the archive and applies
-the mutation `op` to each, giving one child per parent. It keeps no state, so
-it is the emitter of MAP-Elites.
+Emitter that draws parents uniformly from the archive and applies the variation
+operator `op`, giving `batch_size` children. A mutation takes one parent per
+child and a crossover two, as [`n_parents(op)`](@ref QualityDiversity.n_parents)
+says; the parents are drawn with replacement. It keeps no state, so it is the
+emitter of MAP-Elites.
 """
 struct VariationEmitter{V<:AbstractVariation} <: AbstractEmitter
     op::V
@@ -20,10 +22,23 @@ VariationEmitter(op::AbstractVariation; batch_size::Integer) = VariationEmitter(
 batch_size(emitter::VariationEmitter) = emitter.batch_size
 
 function ask(rng::AbstractRNG, emitter::VariationEmitter, archive::AbstractArchive{G}) where {G}
-    parents = sample_elites(rng, archive, emitter.batch_size)
     children = Vector{G}(undef, emitter.batch_size)
-    for i in eachindex(parents)
-        children[i] = vary(rng, emitter.op, parents[i])
+    return vary_batch!(children, rng, emitter.op, archive, Val(n_parents(emitter.op)))
+end
+
+function vary_batch!(children, rng, op, archive, ::Val{1})
+    parents = sample_elites(rng, archive, length(children))
+    for i in eachindex(children, parents)
+        children[i] = vary(rng, op, parents[i])
+    end
+    return children
+end
+
+function vary_batch!(children, rng, op, archive, ::Val{2})
+    first_parents = sample_elites(rng, archive, length(children))
+    second_parents = sample_elites(rng, archive, length(children))
+    for i in eachindex(children, first_parents, second_parents)
+        children[i] = vary(rng, op, first_parents[i], second_parents[i])
     end
     return children
 end

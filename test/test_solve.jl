@@ -1,6 +1,6 @@
 @testset "MAPElites on Rastrigin" begin
     prob = Rastrigin(6)
-    alg = MAPElites(prob; dims=(10, 10), batch_size=50, mutation=GaussianMutation(0.5))
+    alg = MAPElites(prob; dims=(10, 10), batch_size=50, variation=GaussianMutation(0.5))
     @test alg isa QDAlgorithm
     @test length(alg.archive) == 0
 
@@ -101,4 +101,18 @@ end
     prob = Rastrigin(4)
     alg = QDAlgorithm(GridArchive((3,), ((-5, 5),)), (VariationEmitter(GaussianMutation(0.1); batch_size=5),))
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, alg; budget=20)
+end
+
+@testset "MAP-Elites with IsoLineVariation" begin
+    prob = Rastrigin(6)
+    alg = MAPElites(prob; dims=(10, 10), batch_size=50, variation=IsoLineVariation(0.05, 0.3))
+    @test alg.emitters[1].op isa IsoLineVariation
+    result = solve(prob, alg; budget=5_000, rng=Xoshiro(1))
+    @test result.n_evals == 5_000
+    @test length(result.archive) > 10
+    @test issorted(r.qd_score for r in result.history)
+    @test solve(prob, alg; budget=5_000, rng=Xoshiro(1)).history == result.history
+    # it differs from a mutation with the same seed
+    mutated = solve(prob, MAPElites(prob; dims=(10, 10), batch_size=50); budget=5_000, rng=Xoshiro(1))
+    @test mutated.history != result.history
 end
