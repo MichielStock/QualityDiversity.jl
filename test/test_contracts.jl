@@ -21,7 +21,12 @@ const INTERFACE_FUNCTIONS = (:evaluate, :evaluate_batch, :random_solution,
                              :ask, :tell!, :batch_size)
 
 # Base.Docs.hasdoc and Base.ispublic are not available on Julia 1.10.
-hasdoc(name::Symbol) = haskey(Base.Docs.meta(QD), Base.Docs.Binding(QD, name))
+function hasdoc(name::Symbol)
+    value = getfield(QD, name)
+    # a module's docstring is stored in the module itself
+    value isa Module && return haskey(Base.Docs.meta(value), Base.Docs.Binding(value, name))
+    return haskey(Base.Docs.meta(QD), Base.Docs.Binding(QD, name))
+end
 
 @testset "interface functions are public, not exported" begin
     for f in INTERFACE_FUNCTIONS

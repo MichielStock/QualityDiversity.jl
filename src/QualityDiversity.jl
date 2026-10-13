@@ -34,6 +34,7 @@ include("variation/gaussian.jl")
 include("emitters/variation_emitter.jl")
 include("solve.jl")
 include("algorithms.jl")
+include("testing.jl")
 
 export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
@@ -50,6 +51,7 @@ export qd_score, coverage, max_fitness, mean_fitness
 @compat public evaluate, evaluate_batch, random_solution, descriptor_bounds, fitness_offset
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity
 @compat public vary
+@compat public Testing
 @compat public ask, tell!, batch_size
 
 end

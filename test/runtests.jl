@@ -12,4 +12,7 @@ const QD = QualityDiversity
     @testset "variation" begin include("test_variation.jl") end
     @testset "emitters" begin include("test_emitters.jl") end
     @testset "solve" begin include("test_solve.jl") end
+    @testset "conformance" begin include("test_conformance.jl") end
+    @testset "inference and allocations" begin include("test_inference.jl") end
+    @testset "quality" begin include("test_quality.jl") end
 end
