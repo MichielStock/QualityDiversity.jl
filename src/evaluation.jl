@@ -30,7 +30,8 @@ Outcome of inserting a solution into an archive.
 Result of [`add!`](@ref QualityDiversity.add!).
 
 `improvement` is the fitness gain over the previous occupant of the cell, or
-over the archive's threshold for a cell that was empty. Emitters that rank
+over the archive's threshold for a cell that was empty. It is zero or
+negative for a rejected solution. Emitters that rank
 candidates by improvement, such as CMA-ME, read this field.
 """
 struct AddResult{F}

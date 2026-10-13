@@ -19,17 +19,31 @@ QualityDiversity.evaluate(p::MyProblem, x) = ...
 """
 module QualityDiversity
 
-using CommonSolve: CommonSolve, solve
+using CommonSolve: CommonSolve, init, step!, solve!, solve
 using Compat: @compat
+using Random: Random, AbstractRNG
+using StaticArrays: SVector
 
 include("evaluation.jl")
 include("interfaces.jl")
 include("metrics.jl")
+include("problems/qdproblem.jl")
+include("problems/benchmarks.jl")
+include("archives/grid.jl")
+include("variation/gaussian.jl")
+include("emitters/variation_emitter.jl")
+include("solve.jl")
+include("algorithms.jl")
 
 export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
-export QDAlgorithm
-export solve
+export QDAlgorithm, QDState, QDResult
+export QDProblem, Rastrigin
+export GridArchive
+export GaussianMutation
+export VariationEmitter
+export MAPElites
+export init, step!, solve!, solve
 export qd_score, coverage, max_fitness, mean_fitness
 
 @compat public Rejected, Improved, NewCell

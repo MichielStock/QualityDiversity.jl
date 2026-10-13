@@ -34,8 +34,20 @@ function evaluate end
 Evaluate every solution in `xs`, returning one [`Evaluation`](@ref) per
 solution in the same order. Optional: a problem specializes it to evaluate a
 batch at once, for example on a GPU or through a call into Python.
+
+The default calls [`evaluate`](@ref QualityDiversity.evaluate) on each solution
+in parallel with `Threads.@threads`, so `evaluate` must be thread-safe.
 """
 function evaluate_batch end
+
+function evaluate_batch(prob::AbstractQDProblem, xs::AbstractVector)
+    T = Base.promote_op(evaluate, typeof(prob), eltype(xs))
+    evs = Vector{T}(undef, length(xs))
+    Threads.@threads for i in eachindex(xs)
+        evs[i] = evaluate(prob, xs[i])
+    end
+    return evs
+end
 
 """
     random_solution(rng::AbstractRNG, prob::AbstractQDProblem)
@@ -56,9 +68,11 @@ function descriptor_bounds end
     fitness_offset(prob::AbstractQDProblem)
 
 Offset that makes every attainable fitness non-negative, as the default
-`offset` of [`qd_score`](@ref). Optional.
+`offset` of [`qd_score`](@ref). Optional; the default is `0`.
 """
 function fitness_offset end
+
+fitness_offset(::AbstractQDProblem) = 0
 
 # ── Archive ───────────────────────────────────────────────
 
@@ -102,8 +116,21 @@ function add! end
 Insert every solution in `xs` with its evaluation from `evs`, returning one
 [`AddResult`](@ref) per solution in order. Optional: an archive specializes it
 when a batch can be inserted faster than one solution at a time.
+
+The default calls [`add!`](@ref QualityDiversity.add!) on each solution in
+order.
 """
 function add_batch! end
+
+function add_batch!(archive::AbstractArchive{G,F}, xs::AbstractVector, evs::AbstractVector) where {G,F}
+    length(xs) == length(evs) ||
+        throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
+    results = Vector{AddResult{F}}(undef, length(xs))
+    for i in eachindex(xs, evs)
+        results[i] = add!(archive, xs[i], evs[i])
+    end
+    return results
+end
 
 """
     cell_index(archive::AbstractArchive, d)
@@ -194,10 +221,12 @@ function ask end
 
 Report the candidates `xs` returned by [`ask`](@ref QualityDiversity.ask),
 their evaluations `evs`, and the [`AddResult`](@ref)s from the archive, so the
-emitter can update its internal state. Optional: an emitter without state
-needs no method.
+emitter can update its internal state. Optional: the default does nothing, so
+an emitter without state needs no method.
 """
 function tell! end
+
+tell!(::AbstractEmitter, xs, evs, results) = nothing
 
 """
     batch_size(emitter::AbstractEmitter)

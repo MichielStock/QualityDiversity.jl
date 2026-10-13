@@ -1,0 +1,133 @@
+const MetricsRecord = @NamedTuple{n_evals::Int, qd_score::Float64, coverage::Float64,
+                                  max_fitness::Float64, mean_fitness::Float64}
+
+"""
+    QDState
+
+State of a running algorithm, created by `init(prob, alg; ...)`. It holds the
+problem, working copies of the algorithm's archive and emitters, the random
+number generator, the number of evaluations so far, and `history`, a vector
+with the archive metrics after initialization and after every step.
+
+Fields are read with `state.archive`, `state.n_evals`, `state.history`, and so
+on.
+"""
+mutable struct QDState{P<:AbstractQDProblem,A<:AbstractArchive,E<:Tuple,R<:AbstractRNG,C}
+    const problem::P
+    const archive::A
+    const emitters::E
+    const rng::R
+    const budget::Int
+    const callback::C
+    n_evals::Int
+    const history::Vector{MetricsRecord}
+end
+
+"""
+    QDResult
+
+Outcome of [`solve`](@ref): the filled `archive`, the metrics `history`, and the
+number of evaluations `n_evals`.
+"""
+struct QDResult{A<:AbstractArchive}
+    archive::A
+    history::Vector{MetricsRecord}
+    n_evals::Int
+end
+
+"""
+    init(prob, alg::QDAlgorithm; budget, rng=Random.default_rng(), callback=nothing,
+         init_size=<sum of the emitters' batch sizes>) -> QDState
+
+Prepare a run. The archive and emitters of `alg` are copied, so `alg` is not
+modified, and the copy is filled with `init_size` solutions from
+[`random_solution`](@ref QualityDiversity.random_solution).
+
+`budget` is the number of evaluations, including the initial ones. A run stops
+at the first step that reaches it, so it can overshoot by less than one round
+of emitter batches. `callback(state)` is called after initialization and after
+every step. Pass a seeded `rng` for a reproducible run.
+"""
+function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
+                          budget::Integer,
+                          rng::AbstractRNG=Random.default_rng(),
+                          callback=nothing,
+                          init_size::Integer=sum(batch_size, alg.emitters))
+    init_size >= 1 || throw(ArgumentError("init_size must be at least 1, got $init_size"))
+    budget >= init_size ||
+        throw(ArgumentError("budget ($budget) is smaller than the initial population ($init_size)"))
+    state = QDState(prob, deepcopy(alg.archive), deepcopy(alg.emitters), rng,
+                    Int(budget), callback, 0, MetricsRecord[])
+    xs = initial_solutions(rng, prob, state.archive, init_size)
+    evaluate_and_add!(state, xs)
+    record_metrics!(state)
+    notify!(state.callback, state)
+    return state
+end
+
+function initial_solutions(rng, prob, ::AbstractArchive{G}, n) where {G}
+    xs = Vector{G}(undef, n)
+    for i in 1:n
+        xs[i] = random_solution(rng, prob)
+    end
+    return xs
+end
+
+function evaluate_and_add!(state::QDState, xs)
+    evs = evaluate_batch(state.problem, xs)
+    results = add_batch!(state.archive, xs, evs)
+    state.n_evals += length(xs)
+    return evs, results
+end
+
+function record_metrics!(state::QDState)
+    archive = state.archive
+    offset = fitness_offset(state.problem)
+    push!(state.history, (n_evals=state.n_evals,
+                          qd_score=Float64(qd_score(archive; offset)),
+                          coverage=Float64(coverage(archive)),
+                          max_fitness=Float64(max_fitness(archive)),
+                          mean_fitness=Float64(mean_fitness(archive))))
+    return nothing
+end
+
+notify!(::Nothing, state) = nothing
+notify!(callback, state) = (callback(state); nothing)
+
+"""
+    step!(state::QDState)
+
+One round: for each emitter in turn, ask for candidates, evaluate them, add
+them to the archive, and tell the emitter the outcome. Then record the
+metrics and call the callback.
+"""
+function CommonSolve.step!(state::QDState)
+    step_emitters!(state, state.emitters)
+    record_metrics!(state)
+    notify!(state.callback, state)
+    return state
+end
+
+# Recursion over the tuple unrolls the loop, so each emitter type is dispatched
+# statically.
+step_emitters!(state::QDState, ::Tuple{}) = nothing
+function step_emitters!(state::QDState, emitters::Tuple)
+    emitter = first(emitters)
+    xs = ask(state.rng, emitter, state.archive)
+    evs, results = evaluate_and_add!(state, xs)
+    tell!(emitter, xs, evs, results)
+    step_emitters!(state, Base.tail(emitters))
+end
+
+"""
+    solve!(state::QDState) -> QDResult
+
+Step until the evaluation budget is reached. Returns immediately if it already
+has been.
+"""
+function CommonSolve.solve!(state::QDState)
+    while state.n_evals < state.budget
+        CommonSolve.step!(state)
+    end
+    return QDResult(state.archive, state.history, state.n_evals)
+end
