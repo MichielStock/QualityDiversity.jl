@@ -86,7 +86,7 @@ end
 
 @testset "bounds and outside policy through MAPElites" begin
     prob = Rastrigin(4)
-    alg = MAPElites(prob; dims=(5, 5), bounds=((-1, 1), (-1, 1)), batch_size=20, outside=QD.Reject())
+    alg = MAPElites(prob; dims=(5, 5), bounds=((-1, 1), (-1, 1)), batch_size=20, outside=RejectOutside())
     @test alg.archive.upper == SVector(1.0, 1.0)
     result = solve(prob, alg; budget=2_000, rng=Xoshiro(1))
     @test result.n_evals == 2_000

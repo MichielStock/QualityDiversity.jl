@@ -39,7 +39,7 @@ export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
 export QDProblem, Rastrigin
-export GridArchive
+export GridArchive, OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation
 export VariationEmitter
 export MAPElites
@@ -50,7 +50,6 @@ export qd_score, coverage, max_fitness, mean_fitness
 @compat public evaluate, evaluate_batch, random_solution, descriptor_bounds, fitness_offset
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity
 @compat public vary
-@compat public Throw, Clamp, Reject, OutsidePolicy
 @compat public ask, tell!, batch_size
 
 end

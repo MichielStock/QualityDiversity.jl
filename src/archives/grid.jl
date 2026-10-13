@@ -2,25 +2,25 @@
     OutsidePolicy
 
 Supertype of the policies that tell a [`GridArchive`](@ref) what to do with a
-descriptor outside its bounds: `Throw()`, `Clamp()` and `Reject()`.
+descriptor outside its bounds: `ThrowOutside()`, `ClampOutside()` and `RejectOutside()`.
 """
 abstract type OutsidePolicy end
 
-"Throw an `ArgumentError` for a descriptor outside the bounds."
-struct Throw <: OutsidePolicy end
+"ThrowOutside an `ArgumentError` for a descriptor outside the bounds."
+struct ThrowOutside <: OutsidePolicy end
 
 "Use the nearest cell for a descriptor outside the bounds."
-struct Clamp <: OutsidePolicy end
+struct ClampOutside <: OutsidePolicy end
 
 "Discard a solution whose descriptor is outside the bounds."
-struct Reject <: OutsidePolicy end
+struct RejectOutside <: OutsidePolicy end
 
 """
-    GridArchive{G,F}(dims, bounds; outside=Throw())
-    GridArchive{G}(dims, bounds; outside=Throw())
-    GridArchive(dims, bounds; outside=Throw())
+    GridArchive{G,F}(dims, bounds; outside=ThrowOutside())
+    GridArchive{G}(dims, bounds; outside=ThrowOutside())
+    GridArchive(dims, bounds; outside=ThrowOutside())
     GridArchive(prob::AbstractQDProblem; dims, bounds=descriptor_bounds(prob),
-                genotype=Vector{Float64}, fitness=Float64, outside=Throw())
+                genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside())
 
 Archive that divides descriptor space into a regular grid and keeps the
 highest-fitness solution found in each cell.
@@ -35,9 +35,9 @@ genotype type, `Vector{Float64}` by default, and `F<:Real` the fitness type,
 Descriptors are `SVector{N,Float64}`. `outside` says what happens to a
 descriptor that falls outside the bounds:
 
-- `Throw()` (default): throw an `ArgumentError`.
-- `Clamp()`: use the nearest cell. A `NaN` component still throws.
-- `Reject()`: discard the solution; `add!` returns a `Rejected` result.
+- `ThrowOutside()` (default): throw an `ArgumentError`.
+- `ClampOutside()`: use the nearest cell. A `NaN` component still throws.
+- `RejectOutside()`: discard the solution; `add!` returns a `Rejected` result.
 
 A solution is stored without copying, so the caller must not modify it
 afterwards.
@@ -82,7 +82,7 @@ struct GridArchive{G,F<:Real,N,O<:OutsidePolicy} <: AbstractArchive{G,F,SVector{
 end
 
 function GridArchive{G,F}(dims::Tuple, bounds::Tuple;
-                          outside::OutsidePolicy=Throw()) where {G,F<:Real}
+                          outside::OutsidePolicy=ThrowOutside()) where {G,F<:Real}
     N = length(dims)
     length(bounds) == N ||
         throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
@@ -92,18 +92,18 @@ function GridArchive{G,F}(dims::Tuple, bounds::Tuple;
     return GridArchive{G,F,N}(map(Int, dims), lower, upper, outside)
 end
 
-function GridArchive{G}(dims::Tuple, bounds::Tuple; outside::OutsidePolicy=Throw()) where {G}
+function GridArchive{G}(dims::Tuple, bounds::Tuple; outside::OutsidePolicy=ThrowOutside()) where {G}
     return GridArchive{G,Float64}(dims, bounds; outside)
 end
 
-function GridArchive(dims::Tuple, bounds::Tuple; outside::OutsidePolicy=Throw())
+function GridArchive(dims::Tuple, bounds::Tuple; outside::OutsidePolicy=ThrowOutside())
     return GridArchive{Vector{Float64}}(dims, bounds; outside)
 end
 
 function GridArchive(prob::AbstractQDProblem; dims::Tuple,
                      bounds::Tuple=descriptor_bounds(prob),
                      genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
-                     outside::OutsidePolicy=Throw())
+                     outside::OutsidePolicy=ThrowOutside())
     return GridArchive{genotype,fitness}(dims, bounds; outside)
 end
 
@@ -123,8 +123,8 @@ end
 Linear index of the cell that contains descriptor `d`. A value on the upper
 bound belongs to the last cell. Throws an `ArgumentError` if `d` has the wrong
 number of dimensions. What happens to a component outside the bounds or `NaN`
-depends on the archive's `outside` policy: `Throw()` throws, `Clamp()` uses the
-nearest cell (and throws for `NaN`), and `Reject()` returns `0`, which is not a
+depends on the archive's `outside` policy: `ThrowOutside()` throws, `ClampOutside()` uses the
+nearest cell (and throws for `NaN`), and `RejectOutside()` returns `0`, which is not a
 cell.
 """
 function cell_index(archive::GridArchive{G,F,N}, d::AbstractVector{<:Real}) where {G,F,N}
@@ -149,22 +149,22 @@ function cell_index(archive::GridArchive{G,F,N}, d::AbstractVector{<:Real}) wher
 end
 
 # Returns the component to use, or NaN to reject the whole descriptor.
-function resolve_outside(::Throw, i, x, lo, hi)
+function resolve_outside(::ThrowOutside, i, x, lo, hi)
     throw(ArgumentError("descriptor component $i is $x, outside the archive bounds [$lo, $hi]"))
 end
 
-function resolve_outside(::Clamp, i, x, lo, hi)
+function resolve_outside(::ClampOutside, i, x, lo, hi)
     isnan(x) && throw(ArgumentError("descriptor component $i is NaN and cannot be clamped"))
     return clamp(x, lo, hi)
 end
 
-resolve_outside(::Reject, i, x, lo, hi) = NaN
+resolve_outside(::RejectOutside, i, x, lo, hi) = NaN
 
 """
     add!(archive::GridArchive, x, ev::Evaluation) -> AddResult
 
 Insert `x` into the cell of `ev.descriptor`. A descriptor outside the bounds is
-handled by the archive's `outside` policy; `Reject()` gives a `Rejected` result
+handled by the archive's `outside` policy; `RejectOutside()` gives a `Rejected` result
 with zero `improvement`. An empty cell takes any solution
 (`NewCell`, with `improvement` equal to the fitness); an occupied cell takes it
 only if the fitness is strictly higher (`Improved`, otherwise `Rejected`).
