@@ -37,6 +37,12 @@ batch at once, for example on a GPU or through a call into Python.
 
 The default calls [`evaluate`](@ref QualityDiversity.evaluate) on each solution
 in parallel with `Threads.@threads`, so `evaluate` must be thread-safe.
+
+To evaluate on a GPU, a problem type defines this method: it copies the batch
+to the device, runs array operations or a kernel, and copies the fitness and
+descriptor values back. `examples/gpu_evaluation.jl` does this for any array
+type of the GPU packages (CUDA.jl, Metal.jl, AMDGPU.jl, oneAPI.jl). The
+package itself does not depend on any of them.
 """
 function evaluate_batch end
 
