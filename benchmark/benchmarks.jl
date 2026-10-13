@@ -1,0 +1,70 @@
+# BenchmarkTools suite for the hot path. Run it with `julia benchmark/run.jl`.
+# Leave cores free for the machine while it runs; the threaded evaluate_batch
+# uses the threads Julia was started with.
+using BenchmarkTools
+using QualityDiversity
+using Random: Xoshiro
+using StaticArrays: SVector
+
+const QD = QualityDiversity
+const SUITE = BenchmarkGroup()
+
+const DIM = 20
+const prob = Rastrigin(DIM)
+const rng = Xoshiro(1)
+const x = QD.random_solution(rng, prob)
+const ev = QD.evaluate(prob, x)
+const BATCH = 100
+
+new_archive() = GridArchive(prob; dims=(100, 100))
+
+function filled_archive(n)
+    archive = new_archive()
+    xs = [QD.random_solution(rng, prob) for _ in 1:n]
+    QD.add_batch!(archive, xs, QD.evaluate_batch(prob, xs))
+    return archive
+end
+
+# ── problem ───────────────────────────────────────────────
+SUITE["problem"]["evaluate"] = @benchmarkable QD.evaluate($prob, $x)
+for n in (36, 100, 1000)
+    xs = [QD.random_solution(rng, prob) for _ in 1:n]
+    SUITE["problem"]["evaluate_batch"]["batch=$n"] = @benchmarkable QD.evaluate_batch($prob, $xs)
+end
+
+# ── variation ─────────────────────────────────────────────
+const mutation = GaussianMutation(0.5)
+SUITE["variation"]["GaussianMutation"] = @benchmarkable QD.vary($rng, $mutation, $x)
+
+# ── archive ───────────────────────────────────────────────
+const archive = filled_archive(20_000)
+const d = ev.descriptor
+SUITE["archive"]["cell_index"] = @benchmarkable QD.cell_index($archive, $d)
+SUITE["archive"]["add!/rejected"] = @benchmarkable QD.add!($archive, $x, $ev)
+SUITE["archive"]["add!/new cell"] = @benchmarkable QD.add!(a, $x, $ev) setup = (a = new_archive()) evals = 1
+SUITE["archive"]["add!/improved"] =
+    @benchmarkable QD.add!(a, $x, $(QD.Evaluation(ev.fitness + 1, ev.descriptor))) setup =
+        (a = new_archive(); QD.add!(a, $x, $ev)) evals = 1
+SUITE["archive"]["sample_elites/n=100"] = @benchmarkable QD.sample_elites($rng, $archive, 100)
+SUITE["archive"]["add_batch!/n=100"] = let xs = [QD.random_solution(rng, prob) for _ in 1:BATCH]
+    evs = QD.evaluate_batch(prob, xs)
+    @benchmarkable QD.add_batch!($archive, $xs, $evs)
+end
+SUITE["archive"]["metrics"]["coverage"] = @benchmarkable coverage($archive)
+SUITE["archive"]["metrics"]["qd_score"] = @benchmarkable qd_score($archive; offset=800.0)
+SUITE["archive"]["metrics"]["max_fitness"] = @benchmarkable max_fitness($archive)
+SUITE["archive"]["metrics"]["mean_fitness"] = @benchmarkable mean_fitness($archive)
+
+# ── emitter ───────────────────────────────────────────────
+const emitter = VariationEmitter(mutation; batch_size=BATCH)
+SUITE["emitter"]["ask/batch=100"] = @benchmarkable QD.ask($rng, $emitter, $archive)
+
+# ── algorithm ─────────────────────────────────────────────
+const alg = MAPElites(prob; dims=(100, 100), batch_size=BATCH, mutation)
+const state = init(prob, alg; budget=typemax(Int), rng=Xoshiro(2))
+for _ in 1:200
+    step!(state)    # reach a steady state before measuring
+end
+SUITE["algorithm"]["step!/batch=100"] = @benchmarkable step!($state)
+SUITE["algorithm"]["solve/360k evaluations"] =
+    @benchmarkable solve($prob, $alg; budget=360_000, rng=Xoshiro(3)) samples = 5 evals = 1 seconds = 120

@@ -5,6 +5,10 @@ Sum of `fitness + offset` over the occupied cells of `archive`. The offset
 keeps negative fitness values from lowering the score; use
 [`fitness_offset`](@ref QualityDiversity.fitness_offset) of the problem as a
 starting point.
+
+The method for any [`AbstractArchive`](@ref) makes one pass over
+[`elites`](@ref QualityDiversity.elites). An archive that keeps running totals
+specializes it, as [`GridArchive`](@ref) does.
 """
 function qd_score(archive::AbstractArchive; offset=0)
     total = 0.0

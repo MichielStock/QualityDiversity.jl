@@ -135,3 +135,93 @@ end
     @test a.upper == SVector(1.0, 2.0)
     @test GridArchive(prob; dims=(2, 2)).upper == SVector(5.12, 5.12)
 end
+
+# The reference for the running metrics: the generic methods, which make a
+# fresh pass over the elites.
+generic_qd_score(a; offset) = invoke(qd_score, Tuple{QD.AbstractArchive}, a; offset)
+generic_max_fitness(a) = invoke(max_fitness, Tuple{QD.AbstractArchive}, a)
+generic_mean_fitness(a) = invoke(mean_fitness, Tuple{QD.AbstractArchive}, a)
+
+@testset "GridArchive running metrics" begin
+    rng = Xoshiro(11)
+    a = GridArchive((20, 20), ((0, 1), (0, 1)))
+    function check(a)
+        @test coverage(a) == length(a) / QD.capacity(a)
+        @test qd_score(a; offset=0) ≈ generic_qd_score(a; offset=0) rtol = 1e-14
+        @test qd_score(a; offset=250.5) ≈ generic_qd_score(a; offset=250.5) rtol = 1e-14
+        @test max_fitness(a) == generic_max_fitness(a)
+        @test mean_fitness(a) ≈ generic_mean_fitness(a) rtol = 1e-14
+    end
+
+    # new cells, improvements and rejections, checking along the way
+    for round in 1:20, _ in 1:500
+        d = SVector(rand(rng), rand(rng))
+        QD.add!(a, [0.0], Evaluation(-100 * rand(rng), d))
+        round % 4 == 0 && QD.add!(a, [0.0], Evaluation(-100 * rand(rng) + 50, d))
+    end
+    check(a)
+    @test length(a) > 100
+
+    # a rejected solution changes nothing
+    before = (qd_score(a), max_fitness(a), mean_fitness(a), length(a))
+    elite_descriptor = first(QD.elites(a))[2].descriptor
+    @test QD.add!(a, [0.0], Evaluation(-1e6, elite_descriptor)).status == QD.Rejected
+    @test (qd_score(a), max_fitness(a), mean_fitness(a), length(a)) == before
+
+    # a solution that beats the maximum raises it, and one that does not leaves it
+    best = max_fitness(a)
+    QD.add!(a, [0.0], Evaluation(best + 5, SVector(0.5, 0.5)))
+    @test max_fitness(a) == best + 5
+    check(a)
+
+    # empty! resets the totals
+    empty!(a)
+    @test qd_score(a) == 0
+    @test coverage(a) == 0
+    @test_throws "max_fitness is undefined for an archive with no elites" max_fitness(a)
+    @test_throws "mean_fitness is undefined for an archive with no elites" mean_fitness(a)
+    QD.add!(a, [0.0], Evaluation(-7.0, SVector(0.1, 0.1)))
+    @test max_fitness(a) == -7.0     # not the maximum from before empty!
+    @test mean_fitness(a) == -7.0
+    @test qd_score(a; offset=10) == 3.0
+
+    # negative fitness: the maximum is the largest, not the one of smallest magnitude
+    b = GridArchive((4,), ((0, 1),))
+    QD.add!(b, [0.0], Evaluation(-5.0, SVector(0.1)))
+    QD.add!(b, [0.0], Evaluation(-2.0, SVector(0.6)))
+    QD.add!(b, [0.0], Evaluation(-9.0, SVector(0.9)))
+    @test max_fitness(b) == -2.0
+end
+
+@testset "GridArchive running sum rounding" begin
+    # One million improvements spread over 10 000 cells. The exact sum is taken
+    # in BigFloat from the stored fitness values.
+    function sum_error(F; updates=1_000_000)
+        rng = Xoshiro(5)
+        a = GridArchive{Vector{Float64},F}((100, 100), ((0, 1), (0, 1)))
+        centers = [SVector((i - 0.5) / 100, (j - 0.5) / 100) for i in 1:100 for j in 1:100]
+        naive = 0.0
+        stored = Dict{Int,F}()
+        for _ in 1:updates
+            c = rand(rng, 1:10_000)
+            old = get(stored, c, nothing)
+            new = old === nothing ? F(-130 - 100 * rand(rng)) : F(old + 0.1 * rand(rng))
+            r = QD.add!(a, [0.0], Evaluation(new, centers[c]))
+            if r.status == QD.NewCell
+                naive += Float64(new)
+            elseif r.status == QD.Improved
+                naive += Float64(new) - Float64(old)
+            end
+            r.status == QD.Rejected || (stored[c] = new)
+        end
+        exact = sum(BigFloat(f) for f in values(stored))
+        relative(x) = Float64(abs(BigFloat(x) - exact) / abs(exact))
+        return relative(mean_fitness(a) * length(a)), relative(naive)
+    end
+
+    running, naive = sum_error(Float64)
+    @test running <= 4 * eps()
+    @test naive > 100 * running    # a plain running sum is much less accurate
+    running32, _ = sum_error(Float32)
+    @test running32 <= 4 * eps()
+end

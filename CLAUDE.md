@@ -282,7 +282,9 @@ QualityDiversity.jl/
 │   ├── test_inference.jl         # @inferred and allocation checks
 │   └── test_quality.jl           # Aqua, ExplicitImports, JET
 ├── benchmark/
+│   ├── Project.toml              # BenchmarkTools lives here, not in the package
 │   ├── benchmarks.jl             # BenchmarkTools SUITE
+│   ├── run.jl                    # runs the suite and prints a table
 │   └── pyribs_compare/           # same problems in pyribs, for the comparison table
 ├── docs/                         # Documenter.jl
 └── examples/
