@@ -100,3 +100,38 @@ end
     @test qd_score(a) == -6.0
     @test qd_score(a; offset=10) == 14.0
 end
+
+@testset "GridArchive outside policies" begin
+    bounds = ((0, 1), (0, 1))
+    ev(f, d) = Evaluation(f, SVector{2,Float64}(d))
+
+    @test GridArchive((2, 2), bounds) isa GridArchive{Vector{Float64},Float64,2,QD.Throw}
+    @test_throws "outside the archive bounds" QD.cell_index(GridArchive((2, 2), bounds), [1.5, 0.5])
+
+    clamped = GridArchive((2, 2), bounds; outside=QD.Clamp())
+    @test QD.cell_index(clamped, [-3.0, 0.2]) == QD.cell_index(clamped, [0.0, 0.2])
+    @test QD.cell_index(clamped, [9.0, 9.0]) == 4
+    @test QD.add!(clamped, [1.0], ev(1.0, (2.0, 2.0))).status == QD.NewCell
+    @test_throws "descriptor component 2 is NaN and cannot be clamped" QD.cell_index(clamped, [0.5, NaN])
+
+    rejecting = GridArchive{Vector{Float64},Float32}((2, 2), bounds; outside=QD.Reject())
+    @test QD.cell_index(rejecting, [1.5, 0.5]) == 0
+    @test QD.cell_index(rejecting, [0.5, NaN]) == 0
+    r = QD.add!(rejecting, [1.0], ev(1.0, (1.5, 0.5)))
+    @test r.status == QD.Rejected
+    @test r.improvement === 0.0f0
+    @test length(rejecting) == 0
+    @test QD.add!(rejecting, [1.0], ev(1.0, (0.5, 0.5))).status == QD.NewCell
+
+    # every constructor form takes the policy
+    @test GridArchive{Vector{Float64}}((2, 2), bounds; outside=QD.Clamp()) isa GridArchive{Vector{Float64},Float64,2,QD.Clamp}
+    @test GridArchive(Rastrigin(4); dims=(2, 2), outside=QD.Reject()) isa GridArchive{Vector{Float64},Float64,2,QD.Reject}
+end
+
+@testset "GridArchive bounds override" begin
+    prob = Rastrigin(4)
+    a = GridArchive(prob; dims=(2, 2), bounds=((-1, 1), (-2, 2)))
+    @test a.lower == SVector(-1.0, -2.0)
+    @test a.upper == SVector(1.0, 2.0)
+    @test GridArchive(prob; dims=(2, 2)).upper == SVector(5.12, 5.12)
+end

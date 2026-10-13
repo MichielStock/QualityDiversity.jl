@@ -75,7 +75,8 @@ Neither should be sacrificed for the other.
 8. **Interface functions are `public`, not exported.** Users extend them with
    qualified names (`QualityDiversity.evaluate(p::MyProblem, x) = ...`), as
    with `Base.show`. This avoids clashes such as `evaluate` (Distances.jl) and
-   `sample` (StatsBase.jl). Constructors, `solve`, and metrics are exported.
+   `sample` (StatsBase.jl). Constructors, the CommonSolve verbs (`init`, `step!`,
+   `solve!`, `solve`), and metrics are exported.
 
 ---
 

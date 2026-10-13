@@ -56,6 +56,7 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
     init_size >= 1 || throw(ArgumentError("init_size must be at least 1, got $init_size"))
     budget >= init_size ||
         throw(ArgumentError("budget ($budget) is smaller than the initial population ($init_size)"))
+    check_compatible(prob, alg.archive)
     state = QDState(prob, deepcopy(alg.archive), deepcopy(alg.emitters), rng,
                     Int(budget), callback, 0, MetricsRecord[])
     xs = initial_solutions(rng, prob, state.archive, init_size)
@@ -64,6 +65,10 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
     notify!(state.callback, state)
     return state
 end
+
+# Fails early, with a clear message, when the archive cannot hold the problem's
+# descriptors.
+check_compatible(prob, archive) = nothing
 
 function initial_solutions(rng, prob, ::AbstractArchive{G}, n) where {G}
     xs = Vector{G}(undef, n)

@@ -83,3 +83,22 @@ end
     @inferred QD.sample_elites(Xoshiro(1), state.archive, 3)
     @inferred QD.ask(Xoshiro(1), state.emitters[1], state.archive)
 end
+
+@testset "bounds and outside policy through MAPElites" begin
+    prob = Rastrigin(4)
+    alg = MAPElites(prob; dims=(5, 5), bounds=((-1, 1), (-1, 1)), batch_size=20, outside=QD.Reject())
+    @test alg.archive.upper == SVector(1.0, 1.0)
+    result = solve(prob, alg; budget=2_000, rng=Xoshiro(1))
+    @test result.n_evals == 2_000
+    @test 0 < length(result.archive) <= 25
+
+    # with the default policy, a narrower archive fails on the first descriptor outside it
+    narrow = MAPElites(prob; dims=(5, 5), bounds=((-1, 1), (-1, 1)), batch_size=20)
+    @test_throws "outside the archive bounds" solve(prob, narrow; budget=2_000, rng=Xoshiro(1))
+end
+
+@testset "init checks the archive against the problem" begin
+    prob = Rastrigin(4)
+    alg = QDAlgorithm(GridArchive((3,), ((-5, 5),)), (VariationEmitter(GaussianMutation(0.1); batch_size=5),))
+    @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, alg; budget=20)
+end
