@@ -1,7 +1,7 @@
-# QualityDiversity.jl and pyribs on Rastrigin
+# QualityDiversity.jl, pyribs and QDax on Rastrigin
 
 MAP-Elites on the 20-dimensional Rastrigin function, run with the same
-settings in both libraries.
+settings in three libraries.
 
 | setting | value |
 |---|---|
@@ -10,11 +10,14 @@ settings in both libraries.
 | mutation | Gaussian, σ = 0.5, no clipping |
 | initial population | one batch of uniform random solutions |
 | budget | 360 000 evaluations, a multiple of every batch size |
-| batch sizes | 36, 100, 1000 |
-| repeats | 21 timed runs per batch size, one seed each, after a warm-up run; Julia timed with BenchmarkTools (`evals=1`), Python with `time.perf_counter` |
+| batch sizes | 36, 100, 1000, 10 000 |
+| repeats | 21 timed runs per batch size, one seed each, after a warm-up run (3 for QDax with its own cell lookup, see below) |
+| hardware | every library pinned to one core of a 4-vCPU cloud container (Intel Xeon @ 2.1 GHz) with `taskset -c 1` |
+| software | Julia 1.13.1 (1 thread), Python 3.13, pyribs 0.12.0, numpy 2.5.4, QDax 0.5.0, jax 0.11.2 (CPU) |
 
-`compare.jl` and `compare.py` define the problem separately and print the
-fitness and descriptor of one fixed solution first, so the two sides can be
+`compare.jl`, `compare.py` and `compare_qdax.py` define the problem
+separately. Each prints the same columns. `compare.jl` and `compare.py` print
+the fitness and descriptor of one fixed solution first, so the two can be
 checked against each other:
 
 ```
@@ -22,69 +25,157 @@ Julia   reference fitness -407.77649216868974 descriptor (-3.0450526315789466, 3
 pyribs  reference fitness -407.7764921686897  descriptor (-3.0450526315789475, 3.045052631578947)
 ```
 
+Time covers building the archive, the initial batch and the rest of the
+budget; compilation is excluded. Julia is timed with BenchmarkTools, Python
+with `time.perf_counter`. "Middle half" is the range from the first to the
+third quartile of the run times.
+
+## How each library is used
+
+- **QualityDiversity.jl:** `MAPElites` with a `GaussianMutation` and the
+  default threaded `evaluate_batch` (one thread here). The archive records
+  its metrics after every step.
+- **pyribs:** `GridArchive`, `GaussianEmitter` and `Scheduler`. The objective
+  is vectorized numpy, the fastest way to write it in Python.
+- **QDax:** the whole run, including the initial batch, is one `jax.jit`
+  function that scans `MAPElites.scan_update`, as the QDax documentation
+  recommends. The objective and the mutation are jitted array code, and QDax's
+  own QD score, maximum fitness and coverage are computed after every step.
+  QDax is written for accelerators and these runs use the CPU. It works in
+  `float32` by default; `JAX_ENABLE_X64=1` gives `float64`, which is what the
+  other two libraries use.
+
+QDax finds the cell of a descriptor by comparing it with every centroid
+(`get_cells_indices`). That works for any tessellation and is cheap on a GPU,
+but on a CPU it costs batch size × number of cells and takes almost all of the
+run time: at batch size 1000 it is 148 ms per step, against under 1 ms for
+the objective, the mutation, the selection and the metrics together. So QDax
+is reported twice:
+
+- **QDax, centroid search** is QDax exactly as documented. It takes about 45 s
+  whatever the batch size, so each batch size has only 3 timed runs; the run
+  times differ by under 5%.
+- **QDax, grid index** replaces that one function with the arithmetic index of a
+  regular grid (`QDAX_GRID_LOOKUP=1`). A check at start-up confirms it assigns
+  the same cell as QDax's own lookup to 20 000 random descriptors (0 differ).
+  Nothing else changes. This is the fair CPU comparison: it is what someone
+  who needs QDax to be fast on a CPU would write.
+
 ## Results
 
-Run on a 4-vCPU cloud container (Intel Xeon @ 2.1 GHz), Julia 1.13.1,
-Python 3.13, pyribs 0.12.0, numpy 2.5.4. Time covers building the archive and
-running the whole budget; compilation is excluded. pyribs uses vectorized
-numpy for the objective, the fastest way to write it in Python. "Middle half"
-is the range from the first to the third quartile of the 21 run times.
+Median time in seconds for the whole budget, one core:
 
-**Julia, 1 thread**
+| batch size | QualityDiversity.jl | pyribs | QDax, grid index, float32 | QDax, grid index, float64 | QDax, centroid search, float32 |
+|---:|---:|---:|---:|---:|---:|
+| 36 | 0.338 | 3.659 | 0.853 | 1.371 | 44.7 |
+| 100 | 0.334 | 1.658 | 0.451 | 0.805 | 43.3 |
+| 1000 | 0.304 | 0.590 | 0.168 | 0.332 | 42.8 |
+| 10 000 | 0.318 | 0.568 | 0.160 | 0.321 | 46.8 |
+
+Time of the other library divided by the time of QualityDiversity.jl, so
+values above 1 mean QualityDiversity.jl is faster:
+
+| batch size | pyribs | QDax, grid index, float32 | QDax, grid index, float64 | QDax, centroid search |
+|---:|---:|---:|---:|---:|
+| 36 | 10.8 | 2.5 | 4.1 | 132 |
+| 100 | 5.0 | 1.35 | 2.4 | 130 |
+| 1000 | 1.9 | 0.55 | 1.09 | 141 |
+| 10 000 | 1.8 | 0.50 | 1.01 | 147 |
+
+In short: QualityDiversity.jl is faster than QDax on a CPU up to a batch size
+of about 100, and QDax with the grid index is faster from 1000 up, by a factor
+of about 2 in `float32`. At the same precision (`float64`) the two are level
+from batch size 1000. pyribs is slower than both at every batch size.
+
+QualityDiversity.jl takes about the same time at every batch size (0.30 to
+0.34 s, about 1.1 million evaluations per second), because each solution costs
+the same work: one mutation, one evaluation and one insertion. The libraries
+that vectorize a whole batch gain from larger batches.
+
+### Full tables
+
+**QualityDiversity.jl, 1 thread**
 
 | batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 36 | 0.311 | 0.368 | 0.361–0.410 | 977 033 | 0.986 | -130.5 | 4 779 398 |
-| 100 | 0.298 | 0.346 | 0.329–0.356 | 1 041 910 | 0.986 | -133.7 | 4 786 431 |
-| 1000 | 0.275 | 0.294 | 0.289–0.308 | 1 223 565 | 0.986 | -133.2 | 4 796 417 |
+| 36 | 0.302 | 0.338 | 0.326–0.354 | 1 064 583 | 0.986 | -130.5 | 4 779 398 |
+| 100 | 0.287 | 0.334 | 0.312–0.357 | 1 077 762 | 0.986 | -133.7 | 4 786 431 |
+| 1000 | 0.274 | 0.304 | 0.286–0.308 | 1 185 968 | 0.986 | -133.2 | 4 796 417 |
+| 10 000 | 0.284 | 0.318 | 0.304–0.346 | 1 130 812 | 0.942 | -130.6 | 4 614 685 |
 
-**pyribs, 1 thread** (`OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1`)
+**pyribs** (`OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1`)
 
 | batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 36 | 3.369 | 3.695 | 3.604–3.884 | 97 423 | 0.988 | -136.5 | 4 790 761 |
-| 100 | 1.561 | 1.700 | 1.622–1.841 | 211 805 | 0.988 | -134.0 | 4 796 704 |
-| 1000 | 0.524 | 0.593 | 0.555–0.615 | 607 397 | 0.986 | -132.5 | 4 803 731 |
+| 36 | 3.370 | 3.659 | 3.565–3.828 | 98 386 | 0.988 | -136.5 | 4 790 761 |
+| 100 | 1.443 | 1.658 | 1.607–1.743 | 217 188 | 0.988 | -134.0 | 4 796 704 |
+| 1000 | 0.544 | 0.590 | 0.574–0.599 | 609 720 | 0.986 | -132.5 | 4 803 731 |
+| 10 000 | 0.522 | 0.568 | 0.550–0.584 | 634 046 | 0.945 | -135.2 | 4 630 502 |
 
-Comparing medians, QualityDiversity.jl is about 10× faster at batch size 36,
-4.9× at 100 and 2.0× at 1000; comparing minimum times gives 10.8×, 5.2× and
-1.9×. Both reach the same coverage and QD score to within the spread between
-seeds.
+**QDax, grid index, float32**
 
-**Julia, 2 threads**
+| batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 0.732 | 0.853 | 0.815–0.881 | 422 009 | 0.987 | -131.1 | 4 780 165 |
+| 100 | 0.404 | 0.451 | 0.425–0.474 | 798 945 | 0.988 | -136.9 | 4 789 608 |
+| 1000 | 0.146 | 0.168 | 0.161–0.184 | 2 140 452 | 0.985 | -135.3 | 4 788 907 |
+| 10 000 | 0.143 | 0.160 | 0.148–0.166 | 2 245 315 | 0.944 | -127.8 | 4 623 051 |
 
-| batch size | min s | median s | middle half s |
-|---:|---:|---:|---:|
-| 36 | 0.260 | 0.308 | 0.290–0.325 |
-| 100 | 0.202 | 0.247 | 0.235–0.266 |
-| 1000 | 0.218 | 0.285 | 0.252–0.299 |
+**QDax, grid index, float64**
 
-Threading helps at batch sizes 36 and 100 but not at 1000, and the 2-thread
-times are noisier. This is a shared container with 4 vCPUs, so the threaded
-rows do not show how the threaded `evaluate_batch` scales. Evaluating one
-solution costs about 200 ns, which is too little work to split across threads
-at these batch sizes.
+| batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 1.272 | 1.371 | 1.343–1.414 | 262 609 | 0.986 | -133.5 | 4 780 745 |
+| 100 | 0.723 | 0.805 | 0.769–0.818 | 447 417 | 0.985 | -133.3 | 4 771 358 |
+| 1000 | 0.300 | 0.332 | 0.318–0.343 | 1 083 718 | 0.986 | -131.9 | 4 795 016 |
+| 10 000 | 0.287 | 0.321 | 0.310–0.352 | 1 119 774 | 0.942 | -131.1 | 4 613 920 |
+
+**QDax, centroid search, float32** (3 runs per row)
+
+| batch size | min s | median s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 44.259 | 44.722 | 8 050 | 0.985 | -139.7 | 4 748 242 |
+| 100 | 43.191 | 43.289 | 8 316 | 0.986 | -141.1 | 4 789 824 |
+| 1000 | 41.725 | 42.759 | 8 419 | 0.987 | -134.7 | 4 804 787 |
+| 10 000 | 45.567 | 46.773 | 7 697 | 0.948 | -124.1 | 4 629 452 |
+
+Coverage and QD score agree across the libraries at each batch size to within
+the spread between seeds. At batch size 10 000 every library fills fewer cells
+(about 0.94), because the budget allows only 36 rounds.
 
 ## What the numbers do not say
 
-- Rastrigin is cheap to evaluate, which is where library overhead shows most.
-  A slow objective shrinks the ratios.
-- The two libraries do not do identical bookkeeping. QualityDiversity.jl
-  records `qd_score`, `coverage`, `max_fitness` and `mean_fitness` after every
-  step; `GridArchive` keeps running totals, so this costs a few nanoseconds.
-  pyribs computes its statistics while adding.
-- The run-to-run spread on this machine is about ±10% within a batch size,
-  comparable to the differences between the Julia batch sizes, so the order of
-  Julia rows that are close together is not reliable. Re-run on your own
-  hardware before quoting the ratios.
+- **No GPU.** QDax is built for accelerators, where the work per step is
+  parallel across thousands of solutions. These runs use one CPU core and say
+  nothing about QDax on a GPU or TPU, where it would be much faster than any of
+  these numbers.
+- **Cheap objective.** Rastrigin takes about 200 ns per solution. A slower
+  objective shrinks the ratios for every library, and an objective that cannot
+  be written as jittable array code cannot be used in QDax at all.
+- **The QDax grid index is my change.** It is a small, checked replacement of
+  one function and not part of QDax. Both QDax variants are reported so the
+  difference is visible.
+- **`float32` against `float64`.** QDax in `float32` does half the work per
+  number; the `float64` rows are the like-for-like comparison with the other
+  two libraries.
+- **Spread.** The run-to-run spread on this shared machine is about ±10%
+  within a batch size, so close values, such as QualityDiversity.jl against
+  QDax in `float64` at 1000 and 10 000, are level.
+- **Threads.** Everything is pinned to one core. Neither the threaded
+  `evaluate_batch` of QualityDiversity.jl nor multi-core JAX is measured.
 
 ## Reproducing
 
 ```
 # Julia
-julia --threads=1 benchmark/compare/compare.jl
+taskset -c 1 julia --threads=1 benchmark/compare/compare.jl
 
-# Python
+# pyribs and QDax
 python -m venv venv && venv/bin/pip install -r benchmark/compare/requirements.txt
-OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1 venv/bin/python benchmark/compare/compare.py
+export OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+taskset -c 1 venv/bin/python benchmark/compare/compare.py
+QDAX_GRID_LOOKUP=1 taskset -c 1 venv/bin/python benchmark/compare/compare_qdax.py
+JAX_ENABLE_X64=1 QDAX_GRID_LOOKUP=1 taskset -c 1 venv/bin/python benchmark/compare/compare_qdax.py
+REPEATS=3 taskset -c 1 venv/bin/python benchmark/compare/compare_qdax.py   # about 15 minutes
 ```
