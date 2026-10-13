@@ -83,6 +83,9 @@ end
 # - A different mutation size: `GaussianMutation(0.1)` or `GaussianMutation(1.0)`.
 # - A crossover that moves along the line between two elites:
 #   `variation=IsoLineVariation(0.01, 0.2)`.
+# - A mutation that keeps every entry inside the box [-5.12, 5.12]:
+#   `variation=PolynomialMutation(-5.12, 5.12; eta=20)`. With Gaussian mutation
+#   most stored solutions drift outside it, and `Rastrigin` clips them when scoring.
 # - A finer grid: `dims=(40, 40)`.
 # - Zoom into part of the descriptor space and ignore everything outside:
 #   `MAPElites(prob; dims=(20, 20), bounds=((-2, 2), (-2, 2)), outside=RejectOutside())`.

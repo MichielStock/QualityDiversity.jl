@@ -38,6 +38,10 @@ SUITE["variation"]["GaussianMutation"] = @benchmarkable QD.vary($rng, $mutation,
 const isoline = IsoLineVariation(0.01, 0.2)
 const x2 = QD.random_solution(rng, prob)
 SUITE["variation"]["IsoLineVariation"] = @benchmarkable QD.vary($rng, $isoline, $x, $x2)
+const polynomial = PolynomialMutation(-5.12, 5.12; eta=20)
+SUITE["variation"]["PolynomialMutation"] = @benchmarkable QD.vary($rng, $polynomial, $x)
+const uniform = UniformCrossover()
+SUITE["variation"]["UniformCrossover"] = @benchmarkable QD.vary($rng, $uniform, $x, $x2)
 
 # ── archive ───────────────────────────────────────────────
 const archive = filled_archive(20_000)
