@@ -288,7 +288,9 @@ QualityDiversity.jl/
 │   └── pyribs_compare/           # same problems in pyribs, for the comparison table
 ├── docs/                         # Documenter.jl
 └── examples/
+    ├── Project.toml              # Graphs.jl for the graph example
     ├── rastrigin.jl              # continuous genotype
+    ├── rastrigin_tutorial.jl     # step-by-step walkthrough
     └── graphs.jl                 # structured genotype (proves the pitch)
 ```
 
