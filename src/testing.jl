@@ -218,8 +218,9 @@ _shift_fitness(f::AbstractVector, by) = f .+ by
 
 Check that the variation operator `op` meets the contract of
 [`AbstractVariation`](@ref) for the genotype `parent`. Without `parent2` the
-operator is a mutation, `vary(rng, op, parent)`; with it, a crossover,
-`vary(rng, op, parent, parent2)`.
+operator is a mutation, `vary(rng, op, parent)`, and `n_parents(op)` must be
+`1`; with it, a crossover, `vary(rng, op, parent, parent2)`, and `n_parents(op)`
+must be `2`.
 
 The call must be inferrable, leave its parents unchanged, and give the same
 child for the same RNG state. A new child must not be the parent object.
@@ -228,6 +229,7 @@ function test_variation(op::QD.AbstractVariation, parent;
                         parent2=nothing, rng::AbstractRNG=Xoshiro(1))
     @testset "test_variation($(nameof(typeof(op))))" begin
         parents = parent2 === nothing ? (parent,) : (parent, parent2)
+        @test QD.n_parents(op) == length(parents)
         saved = map(deepcopy, parents)
         child = @inferred QD.vary(Xoshiro(5), op, parents...)
         @test parents == saved

@@ -1,6 +1,6 @@
 using QualityDiversity
 using StaticArrays: SVector
-using Random: Xoshiro
+using Random: Xoshiro, randperm
 using Test
 
 const QD = QualityDiversity
@@ -9,6 +9,7 @@ const QD = QualityDiversity
     @testset "contracts" begin include("test_contracts.jl") end
     @testset "problems" begin include("test_problems.jl") end
     @testset "archives" begin include("test_archives.jl") end
+    @testset "cvt archive" begin include("test_cvt.jl") end
     @testset "variation" begin include("test_variation.jl") end
     @testset "emitters" begin include("test_emitters.jl") end
     @testset "solve" begin include("test_solve.jl") end

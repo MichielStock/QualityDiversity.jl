@@ -35,6 +35,9 @@ end
 # ── variation ─────────────────────────────────────────────
 const mutation = GaussianMutation(0.5)
 SUITE["variation"]["GaussianMutation"] = @benchmarkable QD.vary($rng, $mutation, $x)
+const isoline = IsoLineVariation(0.01, 0.2)
+const x2 = QD.random_solution(rng, prob)
+SUITE["variation"]["IsoLineVariation"] = @benchmarkable QD.vary($rng, $isoline, $x, $x2)
 
 # ── archive ───────────────────────────────────────────────
 const archive = filled_archive(20_000)
@@ -55,12 +58,21 @@ SUITE["archive"]["metrics"]["qd_score"] = @benchmarkable qd_score($archive; offs
 SUITE["archive"]["metrics"]["max_fitness"] = @benchmarkable max_fitness($archive)
 SUITE["archive"]["metrics"]["mean_fitness"] = @benchmarkable mean_fitness($archive)
 
+const cvt = let a = CVTArchive(Xoshiro(3), prob; cells=1000, samples=20_000)
+    xs = [QD.random_solution(rng, prob) for _ in 1:20_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
+    a
+end
+SUITE["archive"]["CVTArchive/cell_index (1000 cells)"] = @benchmarkable QD.cell_index($cvt, $d)
+SUITE["archive"]["CVTArchive/add!/rejected"] = @benchmarkable QD.add!($cvt, $x, $ev)
+SUITE["archive"]["CVTArchive/sample_elites/n=100"] = @benchmarkable QD.sample_elites($rng, $cvt, 100)
+
 # ── emitter ───────────────────────────────────────────────
 const emitter = VariationEmitter(mutation; batch_size=BATCH)
 SUITE["emitter"]["ask/batch=100"] = @benchmarkable QD.ask($rng, $emitter, $archive)
 
 # ── algorithm ─────────────────────────────────────────────
-const alg = MAPElites(prob; dims=(100, 100), batch_size=BATCH, mutation)
+const alg = MAPElites(prob; dims=(100, 100), batch_size=BATCH, variation=mutation)
 const state = init(prob, alg; budget=typemax(Int), rng=Xoshiro(2))
 for _ in 1:200
     step!(state)    # reach a steady state before measuring

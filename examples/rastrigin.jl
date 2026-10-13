@@ -4,7 +4,7 @@ using QualityDiversity
 using Random: Xoshiro
 
 prob = Rastrigin(10)
-alg = MAPElites(prob; dims=(20, 20), batch_size=100, mutation=GaussianMutation(0.3))
+alg = MAPElites(prob; dims=(20, 20), batch_size=100, variation=GaussianMutation(0.3))
 result = solve(prob, alg; budget=200_000, rng=Xoshiro(1))
 
 final = result.history[end]

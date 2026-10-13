@@ -37,6 +37,17 @@ end
     @inferred QD.tell!(emitter, xs, evs, QD.add_batch!(archive, xs, evs))
 end
 
+@testset "inference with a crossover" begin
+    prob = Rastrigin(6)
+    alg = MAPElites(prob; dims=(10, 10), batch_size=16, variation=IsoLineVariation(0.05, 0.3))
+    state = @inferred init(prob, alg; budget=320, rng=Xoshiro(1))
+    emitter = state.emitters[1]
+    @inferred QD.ask(Xoshiro(1), emitter, state.archive)
+    @inferred QD.vary(Xoshiro(1), emitter.op, [0.0, 1.0], [1.0, 0.0])
+    @inferred QD.n_parents(emitter.op)
+    @inferred step!(state)
+end
+
 @testset "inference with several emitters" begin
     prob = Rastrigin(4)
     archive = GridArchive(prob; dims=(5, 5))
@@ -63,4 +74,25 @@ end
 
     archive = GridArchive{Vector{Float64}}((10, 10), ((-1, 1), (-1, 1)))
     @test allocated(QD.cell_index, archive, SVector(0.1, 0.2)) == 0
+end
+
+@testset "CVTArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
+                     bounds=((-1, 1), (-1, 1)))
+    centroids = QD.centroids(CVTArchive(Xoshiro(1), prob; cells=200, samples=5_000))
+    for outside in (ThrowOutside(), ClampOutside(), RejectOutside())
+        archive = CVTArchive{SVector{3,Float64}}(centroids, ((-1, 1), (-1, 1)); outside)
+        x = QD.random_solution(Xoshiro(1), prob)
+        ev = QD.evaluate(prob, x)
+        @inferred QD.cell_index(archive, ev.descriptor)
+        @inferred QD.add!(archive, x, ev)
+        @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+        @test allocated(QD.add!, archive, x, ev) == 0                                       # rejected
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness + 1, ev.descriptor)) == 0  # improvement
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness, SVector(-0.9, 0.9))) == 0 # another cell
+    end
+    archive = CVTArchive(centroids, ((-1, 1), (-1, 1)))
+    @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, SVector(0.0, 0.0))); archive), 4)
+    @inferred max_fitness(archive)
 end

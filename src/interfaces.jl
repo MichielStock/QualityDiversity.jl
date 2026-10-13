@@ -174,7 +174,8 @@ a child.
 
 A mutation defines
 [`vary(rng, op, parent)`](@ref QualityDiversity.vary); a crossover defines
-[`vary(rng, op, p1, p2)`](@ref QualityDiversity.vary).
+[`vary(rng, op, p1, p2)`](@ref QualityDiversity.vary) and
+[`n_parents(op)`](@ref QualityDiversity.n_parents) returning `2`.
 
 A user with a custom genotype defines a new operator type and a `vary` method
 for it.
@@ -189,6 +190,18 @@ One child of `parent`, or of the parents `p1` and `p2`. Does not modify its
 parents.
 """
 function vary end
+
+"""
+    n_parents(op::AbstractVariation) -> Int
+
+Number of parents `op` combines: `1` for a mutation, which is the default, and
+`2` for a crossover. [`VariationEmitter`](@ref) draws that many parents from the
+archive for each child. The value must be known from the type of `op`, so that
+the choice is made at compile time.
+"""
+function n_parents end
+
+n_parents(::AbstractVariation) = 1
 
 # ── Emitter ───────────────────────────────────────────────
 

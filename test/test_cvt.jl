@@ -1,0 +1,160 @@
+using StaticArrays: SVector
+
+brute_nearest(points, q) = argmin([sum(abs2, p - q) for p in points])
+
+@testset "CentroidTree finds the nearest point" begin
+    for n in 1:6, k in (1, 2, 3, 10, 100, 700)
+        rng = Xoshiro(100n + k)
+        points = [rand(rng, SVector{n,Float64}) for _ in 1:k]
+        tree = QD.CentroidTree(points)
+        @test all(1:300) do _
+            q = 1.4 .* rand(rng, SVector{n,Float64}) .- 0.2     # also outside the points' box
+            QD.nearest(tree, q) == brute_nearest(points, q)
+        end
+    end
+
+    # points on a lattice, queried at the midpoints between them: many exact
+    # ties, which go to the lowest index
+    lattice = [SVector(x, y) for x in 0.0:0.25:1.0 for y in 0.0:0.25:1.0]
+    shuffled = lattice[randperm(Xoshiro(1), length(lattice))]
+    tree = QD.CentroidTree(shuffled)
+    for q in (SVector(0.125, 0.125), SVector(0.375, 0.625), SVector(0.5, 0.125), SVector(0.625, 0.875))
+        @test QD.nearest(tree, q) == brute_nearest(shuffled, q)
+    end
+    @test QD.nearest(QD.CentroidTree([SVector(0.3, 0.3)]), SVector(5.0, -2.0)) == 1
+    @test @inferred(QD.nearest(tree, SVector(0.1, 0.1))) isa Int
+end
+
+@testset "k-means" begin
+    # on a line, the best 4 centroids for a uniform measure are the quarter midpoints
+    rng = Xoshiro(1)
+    samples = [SVector(rand(rng)) for _ in 1:40_000]
+    # The centers come out near those: in one dimension k-means magnifies the
+    # sampling noise of 40 000 points several times, so they are not exact.
+    @test sort(first.(QD.kmeans(Xoshiro(2), samples, 4))) ≈ [0.125, 0.375, 0.625, 0.875] atol = 0.02
+    tight = QD.kmeans(Xoshiro(2), samples, 4; tolerance=1e-10, max_iterations=500)
+    @test sort(first.(tight)) ≈ [0.125, 0.375, 0.625, 0.875] atol = 0.01
+    # a converged result is a fixed point: every center is the mean of the samples nearest to it
+    tree = QD.CentroidTree(tight)
+    labels = [QD.nearest(tree, x) for x in samples]
+    means = [sum(samples[labels .== j]) / count(==(j), labels) for j in 1:4]
+    @test maximum(abs.(first.(means) .- first.(tight))) < 1e-9
+
+    # in the plane: all cells are used, and the quantization error is far below
+    # that of the k-means++ seeds
+    samples = [rand(rng, SVector{2,Float64}) for _ in 1:20_000]
+    seeds = QD.kmeans_seeds(Xoshiro(3), samples, 100)
+    centers = QD.kmeans(Xoshiro(3), samples, 100)
+    error(c) = let tree = QD.CentroidTree(c)
+        sum(x -> sum(abs2, x - c[QD.nearest(tree, x)]), samples) / length(samples)
+    end
+    @test error(centers) < 0.85 * error(seeds)
+    @test error(centers) < 1.2 * (1 / 100) / 6      # about one cell side^2 / 6 for a unit square
+    tree = QD.CentroidTree(centers)
+    @test length(unique(QD.nearest(tree, x) for x in samples)) == 100
+    @test all(c -> all(0 .<= c .<= 1), centers)
+
+    @test QD.kmeans(Xoshiro(3), samples, 100) == centers
+    @test QD.kmeans(Xoshiro(4), samples, 100) != centers
+    @test QD.kmeans(Xoshiro(3), samples, 1) ≈ [sum(samples) / length(samples)]
+end
+
+@testset "CVTArchive construction" begin
+    bounds = ((0, 1), (-1, 1))
+    a = CVTArchive(Xoshiro(1), 40, bounds; samples=4_000)
+    @test a isa CVTArchive{Vector{Float64},Float64,2,ThrowOutside}
+    @test a isa QD.CellArchive && a isa AbstractArchive{Vector{Float64},Float64,SVector{2,Float64}}
+    @test QD.capacity(a) == 40 && length(a) == 0
+    @test length(QD.centroids(a)) == 40
+    @test all(c -> 0 <= c[1] <= 1 && -1 <= c[2] <= 1, QD.centroids(a))
+    @test CVTArchive(Xoshiro(1), 40, bounds; samples=4_000).centroids == a.centroids      # same seed
+    @test CVTArchive(Xoshiro(2), 40, bounds; samples=4_000).centroids != a.centroids
+
+    # the parametric forms agree
+    @test CVTArchive{Int}(Xoshiro(1), 5, bounds; samples=500) isa CVTArchive{Int,Float64,2}
+    @test CVTArchive{Int,Float32}(Xoshiro(1), 5, bounds; samples=500) isa CVTArchive{Int,Float32,2}
+    @test CVTArchive(Xoshiro(1), Rastrigin(4); cells=7, samples=700) isa CVTArchive{Vector{Float64},Float64,2}
+    z = CVTArchive(Xoshiro(1), Rastrigin(4); cells=7, samples=700, bounds=((-1, 1), (-1, 1)))
+    @test all(c -> all(abs.(c) .<= 1), QD.centroids(z))
+
+    # given centroids, as vectors or tuples of numbers, and rebuilt from another archive
+    given = CVTArchive{Vector{Float64},Float64}([[0.1, 0.0], [0.9, 0.5], [0.5, -0.5]], bounds)
+    @test QD.capacity(given) == 3
+    @test QD.cell_index(given, [0.8, 0.4]) == 2
+    rebuilt = CVTArchive(QD.centroids(a), bounds)
+    @test all(QD.cell_index(rebuilt, d) == QD.cell_index(a, d) for d in eachcol(rand(Xoshiro(1), 2, 500)))
+
+    @test_throws "cells must be at least 1, got 0" CVTArchive(Xoshiro(1), 0, bounds)
+    @test_throws "samples (10) must be at least cells (20)" CVTArchive(Xoshiro(1), 20, bounds; samples=10)
+    @test_throws "centroid 2 is (2.0, 0.0), outside the bounds" CVTArchive([[0.5, 0.0], [2.0, 0.0]], bounds)
+    @test_throws "two centroids are identical, at (0.5, 0.0)" CVTArchive([[0.5, 0.0], [0.1, 0.1], [0.5, 0.0]], bounds)
+    @test_throws "need at least one centroid" CVTArchive(Vector{Float64}[], bounds)
+    @test_throws "centroid 1 has 3 entries but bounds has 2" CVTArchive([[0.5, 0.0, 0.0]], bounds)
+    @test_throws "bounds[1] is (1.0, 1.0)" CVTArchive([[1.0, 0.0]], ((1, 1), (0, 1)))
+    @test_throws "bounds must have at least one entry" CVTArchive(Xoshiro(1), 3, ())
+end
+
+@testset "CVTArchive.cell_index" begin
+    rng = Xoshiro(5)
+    bounds = ((0, 1), (-1, 1), (10, 20))
+    a = CVTArchive(rng, 60, bounds; samples=6_000)
+    for _ in 1:500
+        d = SVector(rand(rng), 2rand(rng) - 1, 10 + 10rand(rng))
+        @test QD.cell_index(a, d) == brute_nearest(QD.centroids(a), d)
+        @test QD.cell_index(a, collect(d)) == QD.cell_index(a, d)      # any vector type
+    end
+    @test_throws "descriptor has 2 dimensions but the archive has 3" QD.cell_index(a, [0.5, 0.0])
+    @test_throws "descriptor component 3 is 25.0, outside the archive bounds [10.0, 20.0]" QD.cell_index(a, [0.5, 0.0, 25.0])
+    @test_throws "descriptor component 1 is NaN" QD.cell_index(a, [NaN, 0.0, 15.0])
+
+    clamped = CVTArchive(QD.centroids(a), bounds; outside=ClampOutside())
+    @test QD.cell_index(clamped, [-5.0, 0.0, 15.0]) == QD.cell_index(clamped, [0.0, 0.0, 15.0])
+    @test QD.cell_index(clamped, [3.0, 7.0, 99.0]) == QD.cell_index(clamped, [1.0, 1.0, 20.0])
+    @test_throws "descriptor component 1 is NaN and cannot be clamped" QD.cell_index(clamped, [NaN, 0.0, 15.0])
+
+    rejecting = CVTArchive{Vector{Float64},Float32}(QD.centroids(a), bounds; outside=RejectOutside())
+    @test QD.cell_index(rejecting, [-5.0, 0.0, 15.0]) == 0
+    @test QD.cell_index(rejecting, [0.5, NaN, 15.0]) == 0
+    r = QD.add!(rejecting, [1.0], Evaluation(1.0, SVector(5.0, 0.0, 15.0)))
+    @test r.status == QD.Rejected && r.improvement === 0.0f0 && length(rejecting) == 0
+end
+
+@testset "CVTArchive stores and reports like any cell archive" begin
+    rng = Xoshiro(2)
+    a = CVTArchive(rng, 30, ((0, 1), (0, 1)); samples=3_000)
+    ev(f, d) = Evaluation(f, SVector{2,Float64}(d))
+    @test QD.add!(a, [1.0], ev(-3.0, (0.1, 0.1))).status == QD.NewCell
+    @test QD.add!(a, [2.0], ev(-1.0, (0.1, 0.1))).status == QD.Improved
+    @test QD.add!(a, [3.0], ev(-2.0, (0.1, 0.1))).status == QD.Rejected
+    @test only(first.(collect(QD.elites(a)))) == [2.0]
+
+    for _ in 1:3000
+        QD.add!(a, [0.0], Evaluation(-100 * rand(rng), SVector(rand(rng), rand(rng))))
+    end
+    @test length(a) == 30 && coverage(a) == 1.0
+    @test qd_score(a; offset=100) ≈ generic_qd_score(a; offset=100) rtol = 1e-14
+    @test max_fitness(a) == generic_max_fitness(a)
+    @test mean_fitness(a) ≈ generic_mean_fitness(a) rtol = 1e-14
+    empty!(a)
+    @test length(a) == 0 && qd_score(a) == 0
+    @test_throws "max_fitness is undefined" max_fitness(a)
+end
+
+@testset "MAPElites over a CVTArchive" begin
+    prob = Rastrigin(6)
+    archive = CVTArchive(Xoshiro(1), prob; cells=100, samples=5_000)
+    alg = MAPElites(archive; batch_size=50, variation=IsoLineVariation(0.05, 0.3))
+    @test alg isa QDAlgorithm && alg.archive === archive
+    result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
+    @test result.n_evals == 6_000
+    @test result.archive isa CVTArchive
+    @test length(archive) == 0                     # the algorithm is not modified
+    @test length(result.archive) > 60
+    @test issorted(r.qd_score for r in result.history)
+    @test solve(prob, alg; budget=6_000, rng=Xoshiro(1)).history == result.history
+    @test MAPElites(archive).emitters[1].batch_size == 64
+
+    # the archive and the problem must agree on the number of descriptor dimensions
+    wrong = CVTArchive(Xoshiro(1), 10, ((0, 1),); samples=100)
+    @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)
+end

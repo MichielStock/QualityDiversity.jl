@@ -138,7 +138,7 @@ end
 function main()
     prob = graph_problem()
     alg = MAPElites(prob; dims=(20, 20), batch_size=100, genotype=SimpleGraph{Int},
-                    mutation=GraphMutation())
+                    variation=GraphMutation())
     result = solve(prob, alg; budget=100_000, rng=Xoshiro(1))
     archive = result.archive
 

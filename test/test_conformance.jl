@@ -36,6 +36,17 @@ end
     test_archive(() -> GridArchive(prob; dims=(8, 8), outside=RejectOutside()), prob)
 end
 
+@testset "CVT archives" begin
+    prob = Rastrigin(4)
+    centroids = QD.centroids(CVTArchive(Xoshiro(1), prob; cells=40, samples=4_000))
+    bounds = QD.descriptor_bounds(prob)
+    test_archive(() -> CVTArchive(centroids, bounds), prob)
+    test_archive(() -> CVTArchive(centroids[1:1], bounds), prob)
+    test_archive(() -> CVTArchive{Vector{Float32},Float32}(centroids, bounds), prob)
+    test_archive(() -> CVTArchive(centroids, bounds; outside=ClampOutside()), prob)
+    test_archive(() -> CVTArchive(centroids, bounds; outside=RejectOutside()), prob)
+end
+
 @testset "archive with an isbits genotype" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
@@ -46,6 +57,8 @@ end
 @testset "variation" begin
     test_variation(GaussianMutation(0.1), [0.5, -1.0, 2.0])
     test_variation(GaussianMutation(2), fill(0.0, 10))
+    test_variation(IsoLineVariation(0.1, 0.5), [0.5, -1.0, 2.0]; parent2=[1.0, 0.0, -2.0])
+    test_variation(IsoLineVariation(), fill(0.0, 10); parent2=fill(1.0, 10))
 end
 
 @testset "emitters" begin
@@ -54,6 +67,7 @@ end
     xs = [QD.random_solution(Xoshiro(i), prob) for i in 1:20]
     QD.add_batch!(archive, xs, QD.evaluate_batch(prob, xs))
     test_emitter(VariationEmitter(GaussianMutation(0.2); batch_size=16), archive, prob)
+    test_emitter(VariationEmitter(IsoLineVariation(0.05, 0.3); batch_size=16), archive, prob)
 end
 
 struct BadProblem <: AbstractQDProblem end
@@ -67,5 +81,8 @@ QD.vary(rng, ::MutatingVariation, parent) = (parent[1] += 1; parent)
 @testset "the checks reject types that break their contract" begin
     @test failures(() -> test_problem(BadProblem())) > 0
     @test failures(() -> test_variation(MutatingVariation(), [1.0, 2.0])) > 0
+    # a crossover that reports one parent, and a mutation checked as a crossover
+    @test failures(() -> test_variation(IsoLineVariation(), [1.0, 2.0])) > 0
+    @test failures(() -> test_variation(GaussianMutation(0.1), [1.0, 2.0]; parent2=[3.0, 4.0])) > 0
     @test failures(() -> test_problem(Rastrigin(4))) == 0
 end
