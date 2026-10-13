@@ -1,21 +1,4 @@
 """
-    OutsidePolicy
-
-Supertype of the policies that tell a [`GridArchive`](@ref) what to do with a
-descriptor outside its bounds: `ThrowOutside()`, `ClampOutside()` and `RejectOutside()`.
-"""
-abstract type OutsidePolicy end
-
-"Throw an `ArgumentError` for a descriptor outside the bounds."
-struct ThrowOutside <: OutsidePolicy end
-
-"Use the nearest cell for a descriptor outside the bounds."
-struct ClampOutside <: OutsidePolicy end
-
-"Discard a solution whose descriptor is outside the bounds."
-struct RejectOutside <: OutsidePolicy end
-
-"""
     GridArchive{G,F}(dims, bounds; outside=ThrowOutside())
     GridArchive{G}(dims, bounds; outside=ThrowOutside())
     GridArchive(dims, bounds; outside=ThrowOutside())
@@ -68,7 +51,7 @@ julia> length(archive), QualityDiversity.capacity(archive)
 (0, 100)
 ```
 """
-mutable struct GridArchive{G,F<:Real,N,O<:OutsidePolicy} <: AbstractArchive{G,F,SVector{N,Float64}}
+mutable struct GridArchive{G,F<:Real,N,O<:OutsidePolicy} <: CellArchive{G,F,SVector{N,Float64}}
     const dims::NTuple{N,Int}
     const lower::SVector{N,Float64}
     const upper::SVector{N,Float64}
@@ -130,19 +113,6 @@ function GridArchive(prob::AbstractQDProblem; dims::Tuple,
     return GridArchive{genotype,fitness}(dims, bounds; outside)
 end
 
-Base.length(archive::GridArchive) = length(archive.occupied_idx)
-
-capacity(archive::GridArchive) = length(archive.occupied)
-
-function Base.empty!(archive::GridArchive{G,F}) where {G,F}
-    fill!(archive.occupied, false)
-    empty!(archive.occupied_idx)
-    archive.fitness_sum = 0.0
-    archive.fitness_sum_error = 0.0
-    archive.fitness_max = zero(F)
-    return archive
-end
-
 """
     cell_index(archive::GridArchive, d)
 
@@ -172,110 +142,4 @@ function cell_index(archive::GridArchive{G,F,N}, d::AbstractVector{<:Real}) wher
         stride *= n
     end
     return index + 1
-end
-
-# Returns the component to use, or NaN to reject the whole descriptor.
-function resolve_outside(::ThrowOutside, i, x, lo, hi)
-    throw(ArgumentError("descriptor component $i is $x, outside the archive bounds [$lo, $hi]"))
-end
-
-function resolve_outside(::ClampOutside, i, x, lo, hi)
-    isnan(x) && throw(ArgumentError("descriptor component $i is NaN and cannot be clamped"))
-    return clamp(x, lo, hi)
-end
-
-resolve_outside(::RejectOutside, i, x, lo, hi) = NaN
-
-"""
-    add!(archive::GridArchive, x, ev::Evaluation) -> AddResult
-
-Insert `x` into the cell of `ev.descriptor`. A descriptor outside the bounds is
-handled by the archive's `outside` policy; `RejectOutside()` gives a `Rejected` result
-with zero `improvement`. An empty cell takes any solution
-(`NewCell`, with `improvement` equal to the fitness); an occupied cell takes it
-only if the fitness is strictly higher (`Improved`, otherwise `Rejected`).
-For an occupied cell, `improvement` is the fitness minus the occupant's.
-"""
-function add!(archive::GridArchive{G,F}, x,
-              ev::Evaluation{<:Real,<:AbstractVector{<:Real}}) where {G,F}
-    i = cell_index(archive, ev.descriptor)
-    fitness = convert(F, ev.fitness)
-    i == 0 && return AddResult(Rejected, zero(F))
-    if !archive.occupied[i]
-        archive.occupied[i] = true
-        push!(archive.occupied_idx, i)
-        _store!(archive, i, x, fitness, ev.descriptor)
-        _add_to_sum!(archive, Float64(fitness))
-        archive.fitness_max = length(archive.occupied_idx) == 1 ? fitness : max(archive.fitness_max, fitness)
-        return AddResult(NewCell, fitness)
-    end
-    previous = archive.fitness[i]
-    improvement = fitness - previous
-    if improvement > 0
-        _store!(archive, i, x, fitness, ev.descriptor)
-        # The difference is taken in Float64, where it is exact for Float32
-        # and smaller fitness types.
-        _add_to_sum!(archive, Float64(fitness) - Float64(previous))
-        archive.fitness_max = max(archive.fitness_max, fitness)
-        return AddResult(Improved, improvement)
-    end
-    return AddResult(Rejected, improvement)
-end
-
-# Neumaier's compensated summation: `error` accumulates the low-order part that
-# is lost when `x` is added to `sum`.
-function _add_to_sum!(archive::GridArchive, x::Float64)
-    total = archive.fitness_sum
-    updated = total + x
-    archive.fitness_sum_error += abs(total) >= abs(x) ? (total - updated) + x : (x - updated) + total
-    archive.fitness_sum = updated
-    return nothing
-end
-
-_fitness_sum(archive::GridArchive) = archive.fitness_sum + archive.fitness_sum_error
-
-qd_score(archive::GridArchive; offset=0) = _fitness_sum(archive) + length(archive) * offset
-
-function max_fitness(archive::GridArchive)
-    isempty_archive(archive, "max_fitness")
-    return archive.fitness_max
-end
-
-function mean_fitness(archive::GridArchive)
-    isempty_archive(archive, "mean_fitness")
-    return _fitness_sum(archive) / length(archive)
-end
-
-function _store!(archive::GridArchive, i, x, fitness, descriptor)
-    archive.genotypes[i] = x
-    archive.fitness[i] = fitness
-    archive.descriptors[i] = descriptor
-    return nothing
-end
-
-"""
-    sample_elites(rng, archive::GridArchive, n) -> Vector{G}
-
-`n` genotypes drawn with replacement, uniformly over the occupied cells.
-Throws an `ArgumentError` if the archive is empty.
-"""
-function sample_elites(rng::AbstractRNG, archive::GridArchive{G}, n::Integer) where {G}
-    isempty(archive.occupied_idx) &&
-        throw(ArgumentError("cannot sample elites from an empty archive"))
-    parents = Vector{G}(undef, n)
-    for k in 1:n
-        parents[k] = archive.genotypes[rand(rng, archive.occupied_idx)]
-    end
-    return parents
-end
-
-function elites(archive::GridArchive)
-    return ((archive.genotypes[i], Evaluation(archive.fitness[i], archive.descriptors[i]))
-            for i in archive.occupied_idx)
-end
-
-function check_compatible(prob::AbstractQDProblem, archive::GridArchive{G,F,N}) where {G,F,N}
-    n = length(descriptor_bounds(prob))
-    n == N || throw(ArgumentError("the problem has $n descriptor dimensions but the archive has $N"))
-    return nothing
 end

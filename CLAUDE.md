@@ -152,7 +152,8 @@ descriptor)` so most users never subtype.
 Concrete archives: `GridArchive`, `CVTArchive`, `UnstructuredArchive`
 (novelty-style, distance threshold), later `ParetoGridArchive` (MOME).
 
-Storage layout for grid-like archives is struct-of-arrays:
+Storage layout for cell-based archives (`GridArchive`, `CVTArchive`, both
+subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
 `occupied::BitVector`, `fitness::Vector{F}`, `descriptors::Vector{D}`,
 `genotypes::Vector{G}` (unassigned slots left `#undef` and guarded by
 `occupied`), plus `occupied_idx::Vector{Int}` so a uniform parent draw is O(1).
@@ -255,7 +256,9 @@ QualityDiversity.jl/
 │   │   ├── qdproblem.jl          # QDProblem wrapper
 │   │   └── benchmarks.jl         # Sphere, Rastrigin, PlanarArm
 │   ├── archives/
+│   │   ├── cell_archive.jl       # CellArchive: shared storage, add!, metrics
 │   │   ├── grid.jl
+│   │   ├── nearest_centroid.jl   # k-d tree and k-means for CVTArchive
 │   │   ├── cvt.jl
 │   │   └── unstructured.jl
 │   ├── variation/
@@ -326,8 +329,8 @@ Julia LTS and the current release.
   - [x] `IsoLineVariation` and `VariationEmitter` with two parents
   - [ ] Bounded variation: `PolynomialMutation`, `PolynomialCrossover`
         (QDax). Needs solution-space bounds in the problem contract.
-  - [ ] `CVTArchive` (pyribs, QDax): centroids from k-means, nearest-centroid
-        lookup
+  - [x] `CVTArchive` (pyribs, QDax): centroids from k-means, nearest-centroid
+        lookup with a k-d tree
   - [ ] `CategoricalArchive` (pyribs): cells from discrete descriptor values
   - [ ] `UnstructuredArchive` (QDax) / `ProximityArchive` (pyribs):
         novelty-style, a solution enters if it is far from its neighbours

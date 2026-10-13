@@ -36,6 +36,17 @@ end
     test_archive(() -> GridArchive(prob; dims=(8, 8), outside=RejectOutside()), prob)
 end
 
+@testset "CVT archives" begin
+    prob = Rastrigin(4)
+    centroids = QD.centroids(CVTArchive(Xoshiro(1), prob; cells=40, samples=4_000))
+    bounds = QD.descriptor_bounds(prob)
+    test_archive(() -> CVTArchive(centroids, bounds), prob)
+    test_archive(() -> CVTArchive(centroids[1:1], bounds), prob)
+    test_archive(() -> CVTArchive{Vector{Float32},Float32}(centroids, bounds), prob)
+    test_archive(() -> CVTArchive(centroids, bounds; outside=ClampOutside()), prob)
+    test_archive(() -> CVTArchive(centroids, bounds; outside=RejectOutside()), prob)
+end
+
 @testset "archive with an isbits genotype" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),

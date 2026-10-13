@@ -75,3 +75,24 @@ end
     archive = GridArchive{Vector{Float64}}((10, 10), ((-1, 1), (-1, 1)))
     @test allocated(QD.cell_index, archive, SVector(0.1, 0.2)) == 0
 end
+
+@testset "CVTArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
+                     bounds=((-1, 1), (-1, 1)))
+    centroids = QD.centroids(CVTArchive(Xoshiro(1), prob; cells=200, samples=5_000))
+    for outside in (ThrowOutside(), ClampOutside(), RejectOutside())
+        archive = CVTArchive{SVector{3,Float64}}(centroids, ((-1, 1), (-1, 1)); outside)
+        x = QD.random_solution(Xoshiro(1), prob)
+        ev = QD.evaluate(prob, x)
+        @inferred QD.cell_index(archive, ev.descriptor)
+        @inferred QD.add!(archive, x, ev)
+        @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+        @test allocated(QD.add!, archive, x, ev) == 0                                       # rejected
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness + 1, ev.descriptor)) == 0  # improvement
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness, SVector(-0.9, 0.9))) == 0 # another cell
+    end
+    archive = CVTArchive(centroids, ((-1, 1), (-1, 1)))
+    @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, SVector(0.0, 0.0))); archive), 4)
+    @inferred max_fitness(archive)
+end
