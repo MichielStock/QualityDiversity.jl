@@ -285,7 +285,7 @@ QualityDiversity.jl/
 │   ├── Project.toml              # BenchmarkTools lives here, not in the package
 │   ├── benchmarks.jl             # BenchmarkTools SUITE
 │   ├── run.jl                    # runs the suite and prints a table
-│   └── pyribs_compare/           # same problems in pyribs, for the comparison table
+│   └── compare/           # same problems in pyribs, for the comparison table
 ├── docs/                         # Documenter.jl
 └── examples/
     ├── Project.toml              # Graphs.jl for the graph example

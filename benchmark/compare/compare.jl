@@ -1,9 +1,9 @@
 # MAP-Elites on 20-dimensional Rastrigin with QualityDiversity.jl.
-# Run:  julia --threads=1 benchmark/pyribs_compare/compare.jl
+# Run:  julia --threads=1 benchmark/compare/compare.jl
 # The matching pyribs script is compare.py; both print the same columns.
 using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
-Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..", "..")))
+VERSION < v"1.11" && Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..", "..")))
 Pkg.instantiate()
 
 using BenchmarkTools
@@ -15,7 +15,7 @@ const DIM = 20                  # solution dimension
 const DIMS = (100, 100)         # archive cells
 const SIGMA = 0.5               # Gaussian mutation standard deviation
 const BUDGET = 360_000          # evaluations, a multiple of every batch size
-const BATCH_SIZES = (36, 100, 1000)
+const BATCH_SIZES = (36, 100, 1000, 10_000)
 const REPEATS = 21              # timed runs per batch size, one seed each
 
 const prob = Rastrigin(DIM)

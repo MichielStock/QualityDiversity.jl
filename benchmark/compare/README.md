@@ -82,9 +82,9 @@ at these batch sizes.
 
 ```
 # Julia
-julia --threads=1 benchmark/pyribs_compare/compare.jl
+julia --threads=1 benchmark/compare/compare.jl
 
 # Python
-python -m venv venv && venv/bin/pip install -r benchmark/pyribs_compare/requirements.txt
-OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1 venv/bin/python benchmark/pyribs_compare/compare.py
+python -m venv venv && venv/bin/pip install -r benchmark/compare/requirements.txt
+OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1 venv/bin/python benchmark/compare/compare.py
 ```

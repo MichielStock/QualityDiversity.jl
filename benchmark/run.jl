@@ -1,8 +1,9 @@
 # Run the suite:  julia --threads=1 benchmark/run.jl
-# The first run installs the benchmark environment and links the package.
+# The first run installs the benchmark environment. Julia 1.11 and later link the
+# package through the [sources] entry of Project.toml; Julia 1.10 needs develop.
 using Pkg
 Pkg.activate(@__DIR__)
-Pkg.develop(PackageSpec(path=dirname(@__DIR__)))
+VERSION < v"1.11" && Pkg.develop(PackageSpec(path=dirname(@__DIR__)))
 Pkg.instantiate()
 
 using BenchmarkTools
