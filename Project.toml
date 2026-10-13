@@ -1,0 +1,13 @@
+name = "QualityDiversity"
+uuid = "5f1c2a3e-8b47-4d0e-9a6c-2e7d1b94c0a3"
+authors = ["Ward Claerhout <ward.claerhoutt2002@gmail.com>"]
+version = "0.1.0-DEV"
+
+[deps]
+CommonSolve = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
+Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
+
+[compat]
+CommonSolve = "0.2"
+Compat = "4.10"
+julia = "1.10"
