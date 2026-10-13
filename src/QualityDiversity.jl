@@ -35,6 +35,8 @@ include("archives/nearest_centroid.jl")
 include("archives/cvt.jl")
 include("variation/gaussian.jl")
 include("variation/isoline.jl")
+include("variation/polynomial.jl")
+include("variation/crossover.jl")
 include("emitters/variation_emitter.jl")
 include("solve.jl")
 include("algorithms.jl")
@@ -45,7 +47,7 @@ export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
 export QDProblem, Rastrigin
 export GridArchive, CVTArchive, OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
-export GaussianMutation, IsoLineVariation
+export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter
 export MAPElites
 export init, step!, solve!, solve

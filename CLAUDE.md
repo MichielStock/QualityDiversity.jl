@@ -167,7 +167,8 @@ subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
 | `n_parents(op)` | required for crossovers | `1` (default) or `2`; `VariationEmitter` draws that many parents per child |
 
 Defaults for `AbstractVector{<:Real}` genotypes: `GaussianMutation(σ)`,
-`IsoLineVariation(σ_iso, σ_line)`. A user with a custom genotype defines
+`IsoLineVariation(σ_iso, σ_line)`, `PolynomialMutation(lower, upper)` for
+bounded genotypes, and `UniformCrossover(proportion)`. A user with a custom genotype defines
 `vary` for their own operator type.
 
 **`AbstractEmitter`**
@@ -264,7 +265,8 @@ QualityDiversity.jl/
 │   ├── variation/
 │   │   ├── gaussian.jl
 │   │   ├── isoline.jl
-│   │   └── crossover.jl
+│   │   ├── polynomial.jl
+│   │   └── crossover.jl         # UniformCrossover
 │   ├── emitters/
 │   │   ├── variation_emitter.jl
 │   │   └── cma_emitter.jl
@@ -328,8 +330,10 @@ Julia LTS and the current release.
       with tests, a conformance check from `Testing`, and a benchmark entry.
       The list follows what pyribs and QDax offer, minus what is out of scope.
   - [x] `IsoLineVariation` and `VariationEmitter` with two parents
-  - [ ] Bounded variation: `PolynomialMutation`, `PolynomialCrossover`
-        (QDax). Needs solution-space bounds in the problem contract.
+  - [x] Bounded variation: `PolynomialMutation` (Deb's bounded form, as in
+        NSGA-II and pymoo) with the bounds given to the operator, and
+        `UniformCrossover` for vectors of any entry type (QDax calls it
+        `polynomial_crossover`)
   - [x] `CVTArchive` (pyribs, QDax): centroids from k-means, nearest-centroid
         lookup with a k-d tree
   - [ ] `CategoricalArchive` (pyribs): cells from discrete descriptor values

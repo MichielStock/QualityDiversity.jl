@@ -59,15 +59,22 @@ end
     test_variation(GaussianMutation(2), fill(0.0, 10))
     test_variation(IsoLineVariation(0.1, 0.5), [0.5, -1.0, 2.0]; parent2=[1.0, 0.0, -2.0])
     test_variation(IsoLineVariation(), fill(0.0, 10); parent2=fill(1.0, 10))
+    test_variation(PolynomialMutation(-5.12, 5.12), [0.5, -1.0, 5.12, -5.12])
+    test_variation(PolynomialMutation([0.0, -1.0], [1.0, 1.0]; eta=5, proportion=0.5), [0.5, 0.0])
+    test_variation(UniformCrossover(), [1, 2, 3, 4, 5, 6]; parent2=[7, 8, 9, 10, 11, 12])
+    test_variation(UniformCrossover(0.3), [:a, :b, :c]; parent2=[:x, :y, :z])
 end
 
 @testset "emitters" begin
     prob = Rastrigin(4)
-    archive = GridArchive(prob; dims=(8, 8))
     xs = [QD.random_solution(Xoshiro(i), prob) for i in 1:20]
-    QD.add_batch!(archive, xs, QD.evaluate_batch(prob, xs))
-    test_emitter(VariationEmitter(GaussianMutation(0.2); batch_size=16), archive, prob)
-    test_emitter(VariationEmitter(IsoLineVariation(0.05, 0.3); batch_size=16), archive, prob)
+    evs = QD.evaluate_batch(prob, xs)
+    # a new archive for each emitter: the checks add the children to it, and
+    # PolynomialMutation only accepts parents inside its box
+    filled() = (a = GridArchive(prob; dims=(8, 8)); QD.add_batch!(a, xs, evs); a)
+    for op in (GaussianMutation(0.2), IsoLineVariation(0.05, 0.3), PolynomialMutation(-5.12, 5.12), UniformCrossover())
+        test_emitter(VariationEmitter(op; batch_size=16), filled(), prob)
+    end
 end
 
 struct BadProblem <: AbstractQDProblem end

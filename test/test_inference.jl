@@ -48,6 +48,25 @@ end
     @inferred step!(state)
 end
 
+@testset "inference with bounded variation" begin
+    prob = Rastrigin(6)
+    for variation in (PolynomialMutation(-5.12, 5.12), UniformCrossover())
+        alg = MAPElites(prob; dims=(10, 10), batch_size=16, variation)
+        state = @inferred init(prob, alg; budget=320, rng=Xoshiro(1))
+        @inferred QD.ask(Xoshiro(1), state.emitters[1], state.archive)
+        @inferred step!(state)
+    end
+    @inferred QD.vary(Xoshiro(1), PolynomialMutation(-5.12, 5.12), [0.0, 1.0])
+    @inferred QD.vary(Xoshiro(1), PolynomialMutation([-1.0, -2.0], [1.0, 2.0]), [0.0, 1.0])
+    @inferred QD.vary(Xoshiro(1), UniformCrossover(), [1, 2], [3, 4])
+    # the only allocation is the child
+    x = [0.5, -1.0, 2.0]
+    child = allocated(n -> Vector{Float64}(undef, n), 3)
+    @test allocated(QD.vary, Xoshiro(1), PolynomialMutation(-5.12, 5.12), x) == child
+    @test allocated(QD.vary, Xoshiro(1), PolynomialMutation([-5.0, -5.0, -5.0], [5.0, 5.0, 5.0]), x) == child
+    @test allocated(QD.vary, Xoshiro(1), UniformCrossover(), x, x) == child
+end
+
 @testset "inference with several emitters" begin
     prob = Rastrigin(4)
     archive = GridArchive(prob; dims=(5, 5))
