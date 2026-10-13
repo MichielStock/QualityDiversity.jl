@@ -34,7 +34,12 @@ third quartile of the run times.
 
 - **QualityDiversity.jl:** `MAPElites` with a `GaussianMutation` and the
   default threaded `evaluate_batch` (one thread here). The archive records
-  its metrics after every step.
+  its metrics after every step. It runs in `Float64` with the package's
+  `Rastrigin`, and in `Float32` with the same function written as a
+  `QDProblem` with `Float32` arithmetic, `genotype=Vector{Float32}`,
+  `fitness=Float32` and `GaussianMutation(0.5f0)`. The archive then holds
+  `Float32` genotypes and fitness values and the mutation produces `Float32`
+  children, with no change to the package.
 - **pyribs:** `GridArchive`, `GaussianEmitter` and `Scheduler`. The objective
   is vectorized numpy, the fastest way to write it in Python.
 - **QDax:** the whole run, including the initial batch, is one `jax.jit`
@@ -65,43 +70,59 @@ is reported twice:
 
 Median time in seconds for the whole budget, one core:
 
-| batch size | QualityDiversity.jl | pyribs | QDax, grid index, float32 | QDax, grid index, float64 | QDax, centroid search, float32 |
-|---:|---:|---:|---:|---:|---:|
-| 36 | 0.338 | 3.659 | 0.853 | 1.371 | 44.7 |
-| 100 | 0.334 | 1.658 | 0.451 | 0.805 | 43.3 |
-| 1000 | 0.304 | 0.590 | 0.168 | 0.332 | 42.8 |
-| 10 000 | 0.318 | 0.568 | 0.160 | 0.321 | 46.8 |
+| batch size | QualityDiversity.jl, float64 | QualityDiversity.jl, float32 | pyribs | QDax, grid index, float32 | QDax, grid index, float64 | QDax, centroid search, float32 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 0.348 | 0.335 | 3.659 | 0.853 | 1.371 | 44.7 |
+| 100 | 0.317 | 0.280 | 1.658 | 0.451 | 0.805 | 43.3 |
+| 1000 | 0.313 | 0.260 | 0.590 | 0.168 | 0.332 | 42.8 |
+| 10 000 | 0.317 | 0.278 | 0.568 | 0.160 | 0.321 | 46.8 |
 
-Time of the other library divided by the time of QualityDiversity.jl, so
+Time of QDax divided by time of QualityDiversity.jl at the same precision, so
 values above 1 mean QualityDiversity.jl is faster:
 
-| batch size | pyribs | QDax, grid index, float32 | QDax, grid index, float64 | QDax, centroid search |
-|---:|---:|---:|---:|---:|
-| 36 | 10.8 | 2.5 | 4.1 | 132 |
-| 100 | 5.0 | 1.35 | 2.4 | 130 |
-| 1000 | 1.9 | 0.55 | 1.09 | 141 |
-| 10 000 | 1.8 | 0.50 | 1.01 | 147 |
+| batch size | float32 (QDax, grid index) | float64 (QDax, grid index) | QDax, centroid search, against float32 |
+|---:|---:|---:|---:|
+| 36 | 2.5 | 3.9 | 133 |
+| 100 | 1.6 | 2.5 | 155 |
+| 1000 | 0.65 | 1.06 | 164 |
+| 10 000 | 0.58 | 1.01 | 168 |
+
+Time of pyribs divided by time of QualityDiversity.jl in `float64`:
+10.5, 5.2, 1.9 and 1.8 for batch sizes 36, 100, 1000 and 10 000.
 
 In short: QualityDiversity.jl is faster than QDax on a CPU up to a batch size
-of about 100, and QDax with the grid index is faster from 1000 up, by a factor
-of about 2 in `float32`. At the same precision (`float64`) the two are level
-from batch size 1000. pyribs is slower than both at every batch size.
+of about 100, and QDax with the grid index is faster from 1000 up. In
+`float32`, the precision QDax uses by default, QDax is about 1.5 to 1.7 times
+faster at batch sizes 1000 and 10 000. In `float64` the two are level from
+batch size 1000. `Float32` makes QualityDiversity.jl 4% to 17% faster, less
+than the factor of two QDax gains, because Julia's scalar `cos` is not much
+faster in `Float32` while XLA vectorizes it. pyribs is slower than both at
+every batch size.
 
-QualityDiversity.jl takes about the same time at every batch size (0.30 to
-0.34 s, about 1.1 million evaluations per second), because each solution costs
+QualityDiversity.jl takes about the same time at every batch size (0.26 to
+0.35 s, over a million evaluations per second), because each solution costs
 the same work: one mutation, one evaluation and one insertion. The libraries
 that vectorize a whole batch gain from larger batches.
 
 ### Full tables
 
-**QualityDiversity.jl, 1 thread**
+**QualityDiversity.jl, float64, 1 thread**
 
 | batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 36 | 0.302 | 0.338 | 0.326–0.354 | 1 064 583 | 0.986 | -130.5 | 4 779 398 |
-| 100 | 0.287 | 0.334 | 0.312–0.357 | 1 077 762 | 0.986 | -133.7 | 4 786 431 |
-| 1000 | 0.274 | 0.304 | 0.286–0.308 | 1 185 968 | 0.986 | -133.2 | 4 796 417 |
-| 10 000 | 0.284 | 0.318 | 0.304–0.346 | 1 130 812 | 0.942 | -130.6 | 4 614 685 |
+| 36 | 0.314 | 0.348 | 0.333–0.375 | 1 034 400 | 0.986 | -130.5 | 4 779 398 |
+| 100 | 0.268 | 0.317 | 0.305–0.338 | 1 134 354 | 0.986 | -133.7 | 4 786 431 |
+| 1000 | 0.282 | 0.313 | 0.291–0.348 | 1 149 679 | 0.986 | -133.2 | 4 796 417 |
+| 10 000 | 0.262 | 0.317 | 0.288–0.345 | 1 134 320 | 0.942 | -130.6 | 4 614 685 |
+
+**QualityDiversity.jl, float32, 1 thread**
+
+| batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 0.287 | 0.335 | 0.311–0.353 | 1 073 332 | 0.989 | -132.2 | 4 777 084 |
+| 100 | 0.252 | 0.280 | 0.270–0.288 | 1 287 608 | 0.986 | -133.5 | 4 779 398 |
+| 1000 | 0.238 | 0.260 | 0.251–0.273 | 1 382 371 | 0.986 | -133.8 | 4 793 316 |
+| 10 000 | 0.242 | 0.278 | 0.265–0.292 | 1 293 366 | 0.945 | -131.1 | 4 617 796 |
 
 **pyribs** (`OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1`)
 
@@ -155,9 +176,9 @@ the spread between seeds. At batch size 10 000 every library fills fewer cells
 - **The QDax grid index is my change.** It is a small, checked replacement of
   one function and not part of QDax. Both QDax variants are reported so the
   difference is visible.
-- **`float32` against `float64`.** QDax in `float32` does half the work per
-  number; the `float64` rows are the like-for-like comparison with the other
-  two libraries.
+- **`float32` against `float64`.** Compare like with like: QualityDiversity.jl
+  in `float32` with QDax in `float32`, and `float64` with `float64`. pyribs
+  runs in `float64`.
 - **Spread.** The run-to-run spread on this shared machine is about ±10%
   within a batch size, so close values, such as QualityDiversity.jl against
   QDax in `float64` at 1000 and 10 000, are level.
