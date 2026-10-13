@@ -1,0 +1,399 @@
+# QualityDiversity.jl — project guide
+
+This file is the design reference and working agreement for this repository.
+Read it fully before writing code. When a decision below conflicts with an
+instinct, follow the decision; when something is undecided (see
+[Open decisions](#open-decisions)), ask the author instead of choosing.
+
+The package name is a placeholder. `QualityDiversity` is not registered in the
+General registry as of 2026-10-13; confirm before registering.
+
+---
+
+## 1. What this package is
+
+A Julia library for quality-diversity (QD) optimization: MAP-Elites and the
+algorithms built from the same parts (CMA-ME, MOME, novelty-based archives,
+differentiable QD).
+
+**What distinguishes it from pyribs and QDax.** Both Python libraries already
+offer interchangeable archives and emitters, and QDax is very fast for
+problems that fit JAX: fixed-shape arrays and jittable scoring functions.
+Neither handles *structured, variable-size, discrete genotypes* well —
+molecules, reaction networks, polyomino assemblies, graphs, syntax trees,
+recipes. In Python those become slow object loops; in JAX they need padding
+or do not work at all.
+
+This package targets that gap: **fast QD for any genotype a user can write as
+a Julia type.** The user defines a type and a few methods; the library
+compiles specialized code for it. Continuous vectors are fully supported and
+get good defaults, but they are not the only first-class case.
+
+Design goal: simple from the outside, fast on the inside.
+
+- Outside: a user with a fitness function and a descriptor function gets a
+  filled archive in a few lines. Switching algorithm is one argument.
+- Inside: concretely typed containers, no allocation in the archive hot path,
+  no runtime dispatch in the main loop.
+
+Speed matters most when evaluation is cheap (benchmarks, analytic problems,
+fast simulators). When evaluation is expensive (calling an ML model, a
+chemistry toolkit), the selling points are ergonomics and composability.
+Neither should be sacrificed for the other.
+
+### Out of scope (for now)
+
+- Reinforcement-learning environments and neural-policy training loops.
+- A plotting backend in the core package (plotting lives in an extension).
+- Distributed (multi-node) evaluation. Threaded and batched evaluation are in
+  scope.
+
+---
+
+## 2. Design principles
+
+1. **Roles are abstract types; behavior is a small set of functions.** Every
+   component plays one of five roles (Problem, Archive, Variation, Emitter,
+   Algorithm). Each role has an abstract type and a documented contract of
+   required and optional methods. Generic code is written only against those
+   contracts.
+2. **One loop, many algorithms.** Most QD algorithms are the same
+   ask → evaluate → add → tell loop with a different archive and emitters.
+   There is one generic loop. `MAPElites(...)`, `CMAME(...)` and friends are
+   convenience constructors that assemble components, not separate loops.
+3. **Dispatch, not flags.** Algorithm variants are chosen by passing a
+   different type, never by a `Symbol` or `Bool` switch.
+4. **Type parameters carry the hot-path types.** Archives are parametrized by
+   genotype `G`, fitness `F` and descriptor `D`, so everything downstream is
+   concretely typed and batch outputs can be preallocated.
+5. **Batch-first.** Emitters produce batches; evaluation is batched. This is
+   the hook for threading, GPU, and calls out to Python.
+6. **Explicit randomness.** Every function that draws random numbers takes an
+   `AbstractRNG` as its first argument. A run is reproducible from its seed.
+7. **Fail fast.** Invalid input throws an error with a message that tells the
+   user what is wrong. Never silently clamp, skip, or continue.
+8. **Interface functions are `public`, not exported.** Users extend them with
+   qualified names (`QualityDiversity.evaluate(p::MyProblem, x) = ...`), as
+   with `Base.show`. This avoids clashes such as `evaluate` (Distances.jl) and
+   `sample` (StatsBase.jl). Constructors, `solve`, and metrics are exported.
+
+---
+
+## 3. Core abstractions
+
+This is the target shape of `src/interfaces.jl` and `src/evaluation.jl`.
+Signatures are normative; implementations are not written yet.
+
+```julia
+# ── Results of one evaluation ─────────────────────────────
+struct Evaluation{F,D}
+    fitness::F        # Real (single objective) or AbstractVector (multi-objective)
+    descriptor::D     # usually SVector{N,Float64}
+end
+
+@enum AddStatus Rejected Improved NewCell
+
+struct AddResult{F}
+    status::AddStatus
+    improvement::F    # fitness gain over the previous occupant (or over the
+                      # archive's threshold for a new cell); used by CMA-ME ranking
+end
+
+# ── Problem ───────────────────────────────────────────────
+abstract type AbstractQDProblem end
+
+# ── Archive ───────────────────────────────────────────────
+abstract type AbstractArchive{G,F,D} end
+
+# ── Variation ─────────────────────────────────────────────
+abstract type AbstractVariation end
+
+# ── Emitter ───────────────────────────────────────────────
+abstract type AbstractEmitter end
+
+# ── Algorithm, state, result ──────────────────────────────
+struct QDAlgorithm{A<:AbstractArchive,E<:Tuple}
+    archive::A
+    emitters::E
+end
+```
+
+### Contracts
+
+Fitness is **maximized**. Users who minimize return the negated value.
+
+**`AbstractQDProblem`**
+
+| Function | Status | Meaning |
+|---|---|---|
+| `evaluate(prob, x) -> Evaluation` | required | fitness and descriptor of one solution |
+| `random_solution(rng, prob)` | required | one random genotype, for initialization |
+| `descriptor_bounds(prob)` | required | per-dimension `(lo, hi)` tuples |
+| `evaluate_batch(prob, xs) -> Vector{Evaluation}` | optional | default: threaded loop over `evaluate` |
+
+`QDProblem(f; init, bounds)` wraps a plain function `f(x) -> (fitness,
+descriptor)` so most users never subtype.
+
+**`AbstractArchive{G,F,D}`**
+
+| Function | Status | Meaning |
+|---|---|---|
+| `add!(archive, x, ev) -> AddResult` | required | try to insert one solution |
+| `cell_index(archive, d)` | required | cell for descriptor `d`; must not allocate |
+| `sample_elites(rng, archive, n) -> Vector{G}` | required | `n` parents, uniform over occupied cells by default |
+| `elites(archive)` | required | iterator over `(genotype, evaluation)` of occupied cells |
+| `Base.length(archive)` | required | number of occupied cells |
+| `capacity(archive)` | required | number of cells |
+| `add_batch!(archive, xs, evs)` | optional | default: loop over `add!` |
+| `Base.empty!(archive)` | optional | |
+
+Concrete archives: `GridArchive`, `CVTArchive`, `UnstructuredArchive`
+(novelty-style, distance threshold), later `ParetoGridArchive` (MOME).
+
+Storage layout for grid-like archives is struct-of-arrays:
+`occupied::BitVector`, `fitness::Vector{F}`, `descriptors::Vector{D}`,
+`genotypes::Vector{G}` (unassigned slots left `#undef` and guarded by
+`occupied`), plus `occupied_idx::Vector{Int}` so a uniform parent draw is O(1).
+
+**`AbstractVariation`**
+
+| Function | Status | Meaning |
+|---|---|---|
+| `vary(rng, op, parent)` | required for mutations | one child |
+| `vary(rng, op, p1, p2)` | required for crossovers | one child |
+
+Defaults for `AbstractVector{<:Real}` genotypes: `GaussianMutation(σ)`,
+`IsoLineVariation(σ_iso, σ_line)`. A user with a custom genotype defines
+`vary` for their own operator type.
+
+**`AbstractEmitter`**
+
+| Function | Status | Meaning |
+|---|---|---|
+| `ask(rng, emitter, archive) -> Vector{G}` | required | a batch of candidates |
+| `tell!(emitter, xs, evs, results)` | optional | update internal state; default no-op |
+| `batch_size(emitter)` | required | |
+
+Concrete emitters: `VariationEmitter(op; batch_size)` (select parents
+uniformly, apply `op`), later `CMAEmitter` (improvement ranking, CMA-ES
+update, restarts).
+
+**Algorithm and state** — CommonSolve.jl interface:
+
+```julia
+state = init(prob, alg; rng, budget, callback)   # -> QDState
+step!(state)                                     # one ask/evaluate/add/tell round
+solve!(state)                                    # run to budget
+result = solve(prob, alg; kwargs...)             # init + solve!, returns QDResult
+```
+
+`QDState` holds the problem, a working copy of the algorithm's archive and
+emitters, the RNG, the evaluation count, and the metrics history. Stepping
+one iteration at a time is a supported use, not a debugging hack.
+
+### The loop
+
+```julia
+function step!(state)
+    for emitter in state.emitters          # tuple: unrolled, type-stable
+        xs  = ask(state.rng, emitter, state.archive)
+        evs = evaluate_batch(state.problem, xs)
+        rs  = add_batch!(state.archive, xs, evs)
+        tell!(emitter, xs, evs, rs)
+        state.n_evals += length(xs)
+    end
+    record_metrics!(state)
+    return state
+end
+```
+
+Initialization fills the archive with `random_solution` draws before the
+first step.
+
+### Metrics
+
+`qd_score(archive; offset)`, `coverage(archive)`, `max_fitness(archive)`,
+`mean_fitness(archive)`. QD-score needs an offset so negative fitness values
+do not reduce the score; the problem may supply a default via
+`fitness_offset(prob)` (optional, default `0`).
+
+---
+
+## 4. Performance rules
+
+These hold for code in `src/`. Tests in `test/` check them.
+
+- No runtime dispatch in `step!`, `add!`, `cell_index`, `sample_elites`,
+  `ask`, or `vary` for the built-in types. Check with `@inferred` and JET.
+- `cell_index` and `add!` do not allocate for `isbits` genotypes. Check with
+  `@allocated` after warm-up.
+- Emitters are stored in a `Tuple`, not a `Vector{AbstractEmitter}`.
+- Descriptors are `SVector`s from StaticArrays.jl.
+- Batch outputs are preallocated with types computed from the archive's type
+  parameters, not grown with `push!` into an untyped container.
+- No `@inbounds` without profiling evidence; see
+  `.claude/rules/julia-inbounds.md`.
+- Default `evaluate_batch` uses threads. Leave cores free for the user when
+  running benchmarks.
+
+---
+
+## 5. Repository layout
+
+```
+QualityDiversity.jl/
+├── Project.toml
+├── CLAUDE.md                     # this file
+├── src/
+│   ├── QualityDiversity.jl       # module, exports, `public` declarations, includes
+│   ├── interfaces.jl             # abstract types + documented function stubs
+│   ├── evaluation.jl             # Evaluation, AddStatus, AddResult
+│   ├── problems/
+│   │   ├── qdproblem.jl          # QDProblem wrapper
+│   │   └── benchmarks.jl         # Sphere, Rastrigin, PlanarArm
+│   ├── archives/
+│   │   ├── grid.jl
+│   │   ├── cvt.jl
+│   │   └── unstructured.jl
+│   ├── variation/
+│   │   ├── gaussian.jl
+│   │   ├── isoline.jl
+│   │   └── crossover.jl
+│   ├── emitters/
+│   │   ├── variation_emitter.jl
+│   │   └── cma_emitter.jl
+│   ├── solve.jl                  # QDAlgorithm, QDState, QDResult, init/step!/solve!
+│   ├── algorithms.jl             # MAPElites(), CMAME(), ... constructors
+│   ├── metrics.jl
+│   └── testing.jl                # QualityDiversity.Testing: interface conformance checks
+├── ext/
+│   ├── QualityDiversityMakieExt.jl        # archive heatmaps, metric curves
+│   ├── QualityDiversityForwardDiffExt.jl  # differentiable QD
+│   └── QualityDiversityPythonCallExt.jl   # batched evaluation through Python
+├── test/
+│   ├── runtests.jl
+│   ├── test_archives.jl
+│   ├── test_variation.jl
+│   ├── test_emitters.jl
+│   ├── test_solve.jl
+│   ├── test_conformance.jl       # runs Testing checks on every built-in type
+│   ├── test_inference.jl         # @inferred and allocation checks
+│   └── test_quality.jl           # Aqua, ExplicitImports, JET
+├── benchmark/
+│   ├── benchmarks.jl             # BenchmarkTools SUITE
+│   └── pyribs_compare/           # same problems in pyribs, for the comparison table
+├── docs/                         # Documenter.jl
+└── examples/
+    ├── rastrigin.jl              # continuous genotype
+    └── graphs.jl                 # structured genotype (proves the pitch)
+```
+
+`QualityDiversity.Testing` is a public submodule. A user who defines a new
+problem, archive or emitter calls e.g.
+`QualityDiversity.Testing.test_problem(MyProblem())` to check that it meets
+the contract, is inferrable, and returns the right types. It lives in `src/`
+(not `test/`) so users can call it; it depends only on the `Test` stdlib.
+
+---
+
+## 6. Roadmap
+
+Work through phases in order. Each phase ends with a green test suite on
+Julia LTS and the current release.
+
+- [ ] **Phase 1 — Contracts.** `interfaces.jl`, `evaluation.jl`, module file
+      with exports and `public`. Docstrings for every abstract type and
+      contract function. No implementations.
+- [ ] **Phase 2 — First end-to-end run.** `GridArchive`, `GaussianMutation`,
+      `VariationEmitter`, `QDProblem`, `Rastrigin`, `init`/`step!`/`solve`,
+      `MAPElites()`. Example `examples/rastrigin.jl` fills an archive.
+- [ ] **Phase 3 — Guarantees.** Metrics, `Testing` submodule, conformance
+      tests, inference and allocation tests, Aqua/ExplicitImports/JET.
+- [ ] **Phase 4 — Benchmarks.** BenchmarkTools suite; comparison with pyribs
+      on Rastrigin (same archive shape, batch size, evaluation budget).
+- [ ] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
+      Graphs.jl genotype, custom `vary`, descriptor from graph statistics.
+- [ ] **Phase 6 — More algorithms.** `IsoLineVariation`, `CVTArchive`,
+      `CMAEmitter` + `CMAME()`, `UnstructuredArchive`.
+- [ ] **Phase 7 — Extensions and docs.** Makie, ForwardDiff (CMA-MEGA),
+      PythonCall; Documenter site with tutorials.
+
+---
+
+## Open decisions
+
+Ask the author before resolving any of these.
+
+- **Phenotype storage.** In chemistry the mutated object (e.g. a reaction
+  sequence) often differs from the described object (the product). Proposal:
+  `Evaluation{F,D,P}` with an optional `phenotype::P` (default `Nothing`),
+  stored in the archive alongside the genotype.
+- **Stochastic evaluation.** Should `evaluate` receive an RNG for noisy
+  problems, and how does that interact with threaded batches (per-task RNG
+  streams)?
+- **Fitness thresholds for new cells.** Plain MAP-Elites accepts any solution
+  into an empty cell; CMA-MAE uses a per-cell threshold with a learning rate.
+  Decide whether thresholds live in every grid archive or in a separate type.
+- **Final package name.**
+
+---
+
+## Conventions
+
+### Julia style
+
+- Julia compat lower bound: **1.10 (LTS)**. Every dependency gets a
+  `[compat]` entry whose lower bound works on 1.10. Run `Pkg.resolve()` after
+  editing `Project.toml`.
+- Annotate method arguments only as tightly as the implementation needs.
+  `AbstractVector{<:Real}`, not `Vector{Float64}`. Annotate to control
+  dispatch, not to document intent.
+- Parametric constructors: inner constructor with unconstrained value
+  arguments; outer constructors compute type parameters and delegate inward,
+  so `T(args...)`, `T{A}(args...)` and `T{A,B}(args...)` coerce identically.
+- Use the short keyword form `f(; batch_size)` when the variable name matches.
+- Prefer immutable `struct`s. A `mutable struct` needs a reason (for example
+  `QDState`); mark fields that never change as `const`.
+- Test error messages, not just exception types:
+  `@test_throws "descriptor has 3 dimensions but the archive has 2" add!(...)`.
+- Write docstrings for every exported or `public` name, with a runnable
+  example where it helps. Test examples before committing them.
+
+### Comments and commit messages
+
+Comments, docstrings and commit messages describe what is true of the code
+now, for a reader who has only the repository. No references to plans,
+phases, roadmap items, chat sessions, or history ("previously", "for now").
+Full rule: `.claude/rules/code-comments.md`. A hook flags violations after
+each edit.
+
+### Working with Julia
+
+- Use Revise in a persistent session to avoid paying compilation on every
+  run. If a Julia MCP server is configured, use it; otherwise use
+  `julia --project` from the shell and keep runs few and purposeful.
+- Activate the test environment with `TestEnv.activate()` (TestEnv, Revise,
+  BenchmarkTools, JET live in the global environment, not in this project).
+- `julia +lts` runs the LTS, `julia +release` the current release (juliaup).
+  Run the full suite on both before declaring a phase done.
+- Do not add developer tools (BenchmarkTools, JET, Cthulhu, Revise) to the
+  package's `[deps]`. Test-only dependencies go in `test/Project.toml`.
+
+### Git and GitHub
+
+- Subject lines ≤ 50 characters where possible, ≤ 72 at most.
+- Do not post comments, issues or PRs on GitHub without the author's approval
+  of the exact text.
+- Keep this file out of the registered package if the author decides so (add
+  it to `.git/info/exclude`); until then it is committed.
+
+### Skills available in this repository
+
+| Skill | Use |
+|---|---|
+| `/qd-new-component` | add a problem, archive, variation, emitter or algorithm that meets its contract, with tests |
+| `/profile-performance` | find hot spots, runtime dispatch and allocations; propose fixes |
+| `/qd-benchmark` | maintain the BenchmarkTools suite and the pyribs comparison |
+| `/review-design` | review the type hierarchy and contracts against this file |
+| `/freshen-quality` | add or run Aqua, ExplicitImports and JET checks |
+| `/limit-struct-mutability` | make `mutable struct`s immutable or mark fields `const` |
