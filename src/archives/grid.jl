@@ -6,7 +6,7 @@ descriptor outside its bounds: `ThrowOutside()`, `ClampOutside()` and `RejectOut
 """
 abstract type OutsidePolicy end
 
-"ThrowOutside an `ArgumentError` for a descriptor outside the bounds."
+"Throw an `ArgumentError` for a descriptor outside the bounds."
 struct ThrowOutside <: OutsidePolicy end
 
 "Use the nearest cell for a descriptor outside the bounds."
@@ -42,6 +42,21 @@ descriptor that falls outside the bounds:
 A solution is stored without copying, so the caller must not modify it
 afterwards.
 
+# Metrics
+
+`coverage`, `qd_score`, `max_fitness` and `mean_fitness` take constant time:
+the archive keeps the number of elites, the sum of their fitness and their
+maximum fitness up to date inside `add!`, which already knows what changed.
+A cell is only replaced by a strictly better solution, so the maximum never
+decreases and a running maximum is exact. The sum changes by
+`new fitness - old fitness` for an improved cell and by the fitness for a new
+cell. It is accumulated in `Float64` with compensated (Neumaier) summation, so
+the rounding error stays within about one rounding of the exact sum however
+many updates there have been; a plain running sum drifts by hundreds of units
+in the last place after millions of updates. The value agrees with a fresh pass
+over the elites, which the generic metrics for any [`AbstractArchive`](@ref)
+perform, to within that rounding.
+
 # Example
 
 ```jldoctest
@@ -53,16 +68,23 @@ julia> length(archive), QualityDiversity.capacity(archive)
 (0, 100)
 ```
 """
-struct GridArchive{G,F<:Real,N,O<:OutsidePolicy} <: AbstractArchive{G,F,SVector{N,Float64}}
-    dims::NTuple{N,Int}
-    lower::SVector{N,Float64}
-    upper::SVector{N,Float64}
-    outside::O
-    occupied::BitVector
-    fitness::Vector{F}
-    descriptors::Vector{SVector{N,Float64}}
-    genotypes::Vector{G}
-    occupied_idx::Vector{Int}
+mutable struct GridArchive{G,F<:Real,N,O<:OutsidePolicy} <: AbstractArchive{G,F,SVector{N,Float64}}
+    const dims::NTuple{N,Int}
+    const lower::SVector{N,Float64}
+    const upper::SVector{N,Float64}
+    const outside::O
+    const occupied::BitVector
+    const fitness::Vector{F}
+    const descriptors::Vector{SVector{N,Float64}}
+    const genotypes::Vector{G}
+    const occupied_idx::Vector{Int}
+    # Running totals over the occupied cells, updated only by `add!` and reset
+    # by `empty!`. `fitness_sum + fitness_sum_error` is the sum of the fitness
+    # values; the second term collects the rounding error of the first.
+    # `fitness_max` is meaningless while the archive is empty.
+    fitness_sum::Float64
+    fitness_sum_error::Float64
+    fitness_max::F
 
     function GridArchive{G,F,N}(dims, lower, upper, outside::O) where {G,F<:Real,N,O<:OutsidePolicy}
         for i in 1:N
@@ -77,7 +99,8 @@ struct GridArchive{G,F<:Real,N,O<:OutsidePolicy} <: AbstractArchive{G,F,SVector{
                           Vector{F}(undef, ncells),
                           Vector{SVector{N,Float64}}(undef, ncells),
                           Vector{G}(undef, ncells),
-                          Int[])
+                          Int[],
+                          0.0, 0.0, zero(F))
     end
 end
 
@@ -111,9 +134,12 @@ Base.length(archive::GridArchive) = length(archive.occupied_idx)
 
 capacity(archive::GridArchive) = length(archive.occupied)
 
-function Base.empty!(archive::GridArchive)
+function Base.empty!(archive::GridArchive{G,F}) where {G,F}
     fill!(archive.occupied, false)
     empty!(archive.occupied_idx)
+    archive.fitness_sum = 0.0
+    archive.fitness_sum_error = 0.0
+    archive.fitness_max = zero(F)
     return archive
 end
 
@@ -179,14 +205,45 @@ function add!(archive::GridArchive{G,F}, x,
         archive.occupied[i] = true
         push!(archive.occupied_idx, i)
         _store!(archive, i, x, fitness, ev.descriptor)
+        _add_to_sum!(archive, Float64(fitness))
+        archive.fitness_max = length(archive.occupied_idx) == 1 ? fitness : max(archive.fitness_max, fitness)
         return AddResult(NewCell, fitness)
     end
-    improvement = fitness - archive.fitness[i]
+    previous = archive.fitness[i]
+    improvement = fitness - previous
     if improvement > 0
         _store!(archive, i, x, fitness, ev.descriptor)
+        # The difference is taken in Float64, where it is exact for Float32
+        # and smaller fitness types.
+        _add_to_sum!(archive, Float64(fitness) - Float64(previous))
+        archive.fitness_max = max(archive.fitness_max, fitness)
         return AddResult(Improved, improvement)
     end
     return AddResult(Rejected, improvement)
+end
+
+# Neumaier's compensated summation: `error` accumulates the low-order part that
+# is lost when `x` is added to `sum`.
+function _add_to_sum!(archive::GridArchive, x::Float64)
+    total = archive.fitness_sum
+    updated = total + x
+    archive.fitness_sum_error += abs(total) >= abs(x) ? (total - updated) + x : (x - updated) + total
+    archive.fitness_sum = updated
+    return nothing
+end
+
+_fitness_sum(archive::GridArchive) = archive.fitness_sum + archive.fitness_sum_error
+
+qd_score(archive::GridArchive; offset=0) = _fitness_sum(archive) + length(archive) * offset
+
+function max_fitness(archive::GridArchive)
+    isempty_archive(archive, "max_fitness")
+    return archive.fitness_max
+end
+
+function mean_fitness(archive::GridArchive)
+    isempty_archive(archive, "mean_fitness")
+    return _fitness_sum(archive) / length(archive)
 end
 
 function _store!(archive::GridArchive, i, x, fitness, descriptor)

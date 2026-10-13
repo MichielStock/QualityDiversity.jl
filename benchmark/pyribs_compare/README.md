@@ -33,9 +33,9 @@ numpy for the objective, the fastest way to write it in Python.
 
 | batch size | median s | evals/s | coverage | max fitness | QD score |
 |---:|---:|---:|---:|---:|---:|
-| 36 | 0.917 | 392 593 | 0.985 | -129.4 | 4 790 731 |
-| 100 | 0.547 | 657 919 | 0.988 | -128.0 | 4 794 731 |
-| 1000 | 0.331 | 1 089 047 | 0.984 | -127.7 | 4 790 692 |
+| 36 | 0.341 | 1 054 594 | 0.985 | -129.4 | 4 790 731 |
+| 100 | 0.381 | 944 679 | 0.988 | -128.0 | 4 794 731 |
+| 1000 | 0.296 | 1 216 350 | 0.984 | -127.7 | 4 790 692 |
 
 **pyribs, 1 thread** (`OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1`)
 
@@ -45,25 +45,23 @@ numpy for the objective, the fastest way to write it in Python.
 | 100 | 1.864 | 193 120 | 0.990 | -133.0 | 4 800 441 |
 | 1000 | 0.630 | 571 617 | 0.985 | -123.5 | 4 795 662 |
 
-QualityDiversity.jl is about 4.2× faster at batch size 36, 3.4× at 100 and
-1.9× at 1000. Both reach the same coverage and QD score to within the spread
-between seeds. With 2 Julia threads the throughput at batch size 1000 rises
-to 1 294 856 evaluations per second; at smaller batches the threaded
-`evaluate_batch` gains little, because evaluating one solution costs about
-200 ns.
+QualityDiversity.jl is about 11× faster at batch size 36, 4.9× at 100 and
+2.1× at 1000. Both reach the same coverage and QD score to within the spread
+between seeds. With 2 Julia threads the median times are 0.291 s, 0.249 s and
+0.240 s; the threaded `evaluate_batch` gains little at small batches, because
+evaluating one solution costs about 200 ns.
 
 ## What the numbers do not say
 
-- The two libraries differ in what they do each round. QualityDiversity.jl
-  records `qd_score`, `coverage`, `max_fitness` and `mean_fitness` after every
-  step by walking the archive. A profile at batch size 100 and 7 000 occupied
-  cells shows this is about half of a step (66 µs of 131 µs). pyribs updates
-  its statistics incrementally while adding. The gap at small batch sizes
-  would widen if the history cost were removed.
 - Rastrigin is cheap to evaluate, which is where library overhead shows most.
   A slow objective shrinks the ratios.
-- One machine, one run of five seeds. Re-run on your own hardware before
-  quoting the ratios.
+- The two libraries do not do identical bookkeeping. QualityDiversity.jl
+  records `qd_score`, `coverage`, `max_fitness` and `mean_fitness` after every
+  step; `GridArchive` keeps running totals, so this costs a few nanoseconds.
+  pyribs computes its statistics while adding.
+- One machine, one run of five seeds. Run-to-run variation is visible in the
+  gap between the minimum and the median time. Re-run on your own hardware
+  before quoting the ratios.
 
 ## Reproducing
 
