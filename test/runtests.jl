@@ -15,6 +15,7 @@ const QD = QualityDiversity
     @testset "solve" begin include("test_solve.jl") end
     @testset "conformance" begin include("test_conformance.jl") end
     @testset "graph example" begin include("test_graphs.jl") end
+    @testset "gpu evaluation example" begin include("test_gpu_evaluation.jl") end
     @testset "inference and allocations" begin include("test_inference.jl") end
     @testset "quality" begin include("test_quality.jl") end
 end

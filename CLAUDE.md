@@ -292,9 +292,10 @@ QualityDiversity.jl/
 │   └── compare/                  # same problem in pyribs and QDax, for the comparison table
 ├── docs/                         # Documenter.jl
 └── examples/
-    ├── Project.toml              # Graphs.jl for the graph example
+    ├── Project.toml              # Graphs.jl and JLArrays for the examples
     ├── rastrigin.jl              # continuous genotype
     ├── rastrigin_tutorial.jl     # step-by-step walkthrough
+    ├── gpu_evaluation.jl         # optional: evaluate_batch on a GPU array type
     └── graphs.jl                 # structured genotype (proves the pitch)
 ```
 
@@ -347,6 +348,12 @@ Julia LTS and the current release.
 - [ ] **Phase 7 — Extensions and docs.** Makie (heatmaps, ECDF, CQD score),
       ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
       emitter; Documenter site with tutorials.
+
+GPU support is optional and never a dependency of the package. Scoring a batch
+on a device works through `evaluate_batch` (`examples/gpu_evaluation.jl`,
+tested with JLArrays on the CPU). A device-resident archive with batched
+variation and insertion would be a separate archive type in an extension; it
+waits until CMA-ME exists and there is a need for batches of 10⁴ or more.
 
 Out of scope, as in the introduction: reinforcement-learning and
 neural-policy methods in QDax (PGA-ME, QD-PG, DCRL, ME-ES on policies, DIAYN,

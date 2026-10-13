@@ -37,7 +37,7 @@ function allocations(f::F, args::Vararg{Any,N}) where {F,N}
 end
 
 """
-    test_problem(prob; rng=Xoshiro(1), n=5)
+    test_problem(prob; rng=Xoshiro(1), n=5, rtol=0)
 
 Check that `prob` meets the contract of [`AbstractQDProblem`](@ref).
 
@@ -45,8 +45,15 @@ Check that `prob` meets the contract of [`AbstractQDProblem`](@ref).
 [`Evaluation`](@ref) with a real or vector fitness and a descriptor that lies
 inside `descriptor_bounds(prob)` and has one entry per bound. `evaluate` must
 be inferrable, deterministic, and agree with `evaluate_batch`.
+
+`evaluate_batch` must give exactly the results of `evaluate` unless `rtol` is
+positive. A problem that evaluates batches on a GPU, in lower precision, agrees
+only up to rounding: with `rtol` the fitness and descriptor values then have to
+match within the relative tolerance `rtol`, and within `rtol` in absolute terms
+for values near zero.
 """
-function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n::Integer=5)
+function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n::Integer=5,
+                      rtol::Real=0)
     @testset "test_problem($(nameof(typeof(prob))))" begin
         bounds = QD.descriptor_bounds(prob)
         @testset "descriptor_bounds" begin
@@ -78,7 +85,15 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
             evs = QD.evaluate_batch(prob, xs)
             @test evs isa AbstractVector{<:QD.Evaluation}
             @test length(evs) == n
-            @test evs == [QD.evaluate(prob, x) for x in xs]
+            reference = [QD.evaluate(prob, x) for x in xs]
+            if rtol == 0
+                @test evs == reference
+            else
+                @test all(zip(evs, reference)) do (a, b)
+                    isapprox(a.fitness, b.fitness; rtol, atol=rtol) &&
+                        isapprox(a.descriptor, b.descriptor; rtol, atol=rtol)
+                end
+            end
         end
 
         @testset "fitness_offset" begin
