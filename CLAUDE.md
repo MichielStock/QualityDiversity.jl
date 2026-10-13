@@ -5,8 +5,8 @@ Read it fully before writing code. When a decision below conflicts with an
 instinct, follow the decision; when something is undecided (see
 [Open decisions](#open-decisions)), ask the author instead of choosing.
 
-The package name is a placeholder. `QualityDiversity` is not registered in the
-General registry as of 2026-10-13; confirm before registering.
+The package name is `QualityDiversity`. It is not registered in the General
+registry as of 2026-10-13; confirm before registering.
 
 ---
 
@@ -75,14 +75,16 @@ Neither should be sacrificed for the other.
 8. **Interface functions are `public`, not exported.** Users extend them with
    qualified names (`QualityDiversity.evaluate(p::MyProblem, x) = ...`), as
    with `Base.show`. This avoids clashes such as `evaluate` (Distances.jl) and
-   `sample` (StatsBase.jl). Constructors, `solve`, and metrics are exported.
+   `sample` (StatsBase.jl). Constructors, the CommonSolve verbs (`init`, `step!`,
+   `solve!`, `solve`), and metrics are exported.
 
 ---
 
 ## 3. Core abstractions
 
 This is the target shape of `src/interfaces.jl` and `src/evaluation.jl`.
-Signatures are normative; implementations are not written yet.
+Signatures are normative. `GridArchive`, `VariationEmitter` and the loop
+implement them; the other concrete types in the layout follow the roadmap.
 
 ```julia
 # ── Results of one evaluation ─────────────────────────────
@@ -301,10 +303,10 @@ the contract, is inferrable, and returns the right types. It lives in `src/`
 Work through phases in order. Each phase ends with a green test suite on
 Julia LTS and the current release.
 
-- [ ] **Phase 1 — Contracts.** `interfaces.jl`, `evaluation.jl`, module file
+- [x] **Phase 1 — Contracts.** `interfaces.jl`, `evaluation.jl`, module file
       with exports and `public`. Docstrings for every abstract type and
       contract function. No implementations.
-- [ ] **Phase 2 — First end-to-end run.** `GridArchive`, `GaussianMutation`,
+- [x] **Phase 2 — First end-to-end run.** `GridArchive`, `GaussianMutation`,
       `VariationEmitter`, `QDProblem`, `Rastrigin`, `init`/`step!`/`solve`,
       `MAPElites()`. Example `examples/rastrigin.jl` fills an archive.
 - [ ] **Phase 3 — Guarantees.** Metrics, `Testing` submodule, conformance
@@ -320,21 +322,44 @@ Julia LTS and the current release.
 
 ---
 
+## Decisions
+
+Settled; change them only with the author's agreement.
+
+- **Fitness thresholds.** `GridArchive` is plain MAP-Elites: an empty cell
+  accepts any solution, and a `NewCell` reports `improvement == fitness`.
+  CMA-MAE thresholds (per-cell threshold with a learning rate) live in a
+  separate archive type, added with CMA-ME.
+- **Outside-bounds descriptors.** `GridArchive` throws by default. The
+  `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
+  `RejectOutside()`, chosen by dispatch.
+- **Grid limits.** `GridArchive` and `MAPElites` take an optional `bounds`
+  that overrides `descriptor_bounds(prob)`.
+- **Algorithm and problem.** `MAPElites(prob; dims)` takes the problem for its
+  descriptor bounds. `init` checks that archive and problem agree on the
+  number of descriptor dimensions.
+- **Benchmark clipping.** `Rastrigin` clips the solution to `[-5.12, 5.12]`
+  inside `evaluate`. Solution-space bounds for mutations are not part of the
+  problem contract.
+
 ## Open decisions
 
 Ask the author before resolving any of these.
 
+- **Stochastic evaluation.** Direction: noisy problems receive an explicit RNG
+  (`evaluate(rng, prob, x)`), so runs stay reproducible from the seed. To keep
+  results independent of the thread count, the loop draws one seed per solution
+  from the run's RNG before the threaded section and gives each solution its
+  own `Xoshiro`. Deterministic problems keep `evaluate(prob, x)`; noisy ones
+  opt in through a subtype such as `AbstractStochasticQDProblem`. Details are
+  settled when it is implemented.
 - **Phenotype storage.** In chemistry the mutated object (e.g. a reaction
-  sequence) often differs from the described object (the product). Proposal:
-  `Evaluation{F,D,P}` with an optional `phenotype::P` (default `Nothing`),
-  stored in the archive alongside the genotype.
-- **Stochastic evaluation.** Should `evaluate` receive an RNG for noisy
-  problems, and how does that interact with threaded batches (per-task RNG
-  streams)?
-- **Fitness thresholds for new cells.** Plain MAP-Elites accepts any solution
-  into an empty cell; CMA-MAE uses a per-cell threshold with a learning rate.
-  Decide whether thresholds live in every grid archive or in a separate type.
-- **Final package name.**
+  sequence) often differs from the described object (the product). The mapping
+  from genotype to phenotype belongs to the problem; the open question is
+  whether archives store the phenotype. Proposal: `Evaluation{F,D,P}` with an
+  optional `phenotype::P` (default `Nothing`), stored alongside the genotype,
+  with the two-argument `Evaluation(fitness, descriptor)` kept. Decide before
+  the first example that needs it.
 
 ---
 
