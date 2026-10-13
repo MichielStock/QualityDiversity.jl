@@ -18,7 +18,7 @@ DIMS = (100, 100)         # archive cells
 SIGMA = 0.5               # Gaussian mutation standard deviation
 BUDGET = 360_000          # evaluations, a multiple of every batch size
 BATCH_SIZES = (36, 100, 1000)
-REPEATS = 5
+REPEATS = 21              # timed runs per batch size, one seed each
 LIMIT = 5.12
 OFFSET = 41.0 * DIM       # the same QD-score offset as Rastrigin in Julia
 
@@ -64,15 +64,18 @@ if __name__ == "__main__":
     reference = evaluate(np.linspace(-6, 6, DIM)[None, :])
     print(f"reference fitness {float(reference[0][0])} descriptor {tuple(float(m) for m in reference[1][0])}")
     print(f"\nPython, pyribs {ribs.__version__}, numpy {np.__version__}")
-    print("| batch size | min s | median s | evals/s (median) | coverage | max fitness | QD score |")
-    print("|---:|---:|---:|---:|---:|---:|---:|")
+    print(f"{REPEATS} runs per row")
+    print("| batch size | min s | median s | middle half s | evals/s (median) | coverage | max fitness | QD score |")
+    print("|---:|---:|---:|---:|---:|---:|---:|---:|")
     for batch_size in BATCH_SIZES:
         run_once(batch_size, 0)   # warm up (numba compiles on first use)
         runs = [run_once(batch_size, seed) for seed in range(1, REPEATS + 1)]
         times = [r[0] for r in runs]
         median_time = statistics.median(times)
+        lo, _, hi = statistics.quantiles(times, n=4, method="inclusive")
         print(
-            f"| {batch_size} | {min(times):.3f} | {median_time:.3f} | {round(BUDGET / median_time)} "
+            f"| {batch_size} | {min(times):.3f} | {median_time:.3f} | {lo:.3f}–{hi:.3f} "
+            f"| {round(BUDGET / median_time)} "
             f"| {statistics.median(r[1] for r in runs):.3f} "
             f"| {statistics.median(r[2] for r in runs):.1f} "
             f"| {statistics.median(r[3] for r in runs):.0f} |"
