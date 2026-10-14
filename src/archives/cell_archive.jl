@@ -98,9 +98,10 @@ function add!(archive::CellArchive{G,F}, x,
     return AddResult(Rejected, improvement)
 end
 
-# Neumaier's compensated summation: `error` accumulates the low-order part that
+# Neumaier's compensated summation, for any archive with the fields
+# `fitness_sum` and `fitness_sum_error`: `error` accumulates the low-order part that
 # is lost when `x` is added to `sum`.
-function _add_to_sum!(archive::CellArchive, x::Float64)
+function _add_to_sum!(archive::AbstractArchive, x::Float64)
     total = archive.fitness_sum
     updated = total + x
     archive.fitness_sum_error += abs(total) >= abs(x) ? (total - updated) + x : (x - updated) + total
@@ -108,7 +109,7 @@ function _add_to_sum!(archive::CellArchive, x::Float64)
     return nothing
 end
 
-_fitness_sum(archive::CellArchive) = archive.fitness_sum + archive.fitness_sum_error
+_fitness_sum(archive::AbstractArchive) = archive.fitness_sum + archive.fitness_sum_error
 
 qd_score(archive::CellArchive; offset=0) = _fitness_sum(archive) + length(archive) * offset
 
@@ -148,10 +149,4 @@ end
 function elites(archive::CellArchive)
     return ((archive.genotypes[i], Evaluation(archive.fitness[i], archive.descriptors[i]))
             for i in archive.occupied_idx)
-end
-
-function check_compatible(prob::AbstractQDProblem, archive::CellArchive{G,F,SVector{N,Float64}}) where {G,F,N}
-    n = length(descriptor_bounds(prob))
-    n == N || throw(ArgumentError("the problem has $n descriptor dimensions but the archive has $N"))
-    return nothing
 end

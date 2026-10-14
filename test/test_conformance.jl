@@ -47,6 +47,16 @@ end
     test_archive(() -> CVTArchive(centroids, bounds; outside=RejectOutside()), prob)
 end
 
+@testset "unstructured archives" begin
+    prob = Rastrigin(4)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0.5), prob)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0), prob)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=20), prob)       # one region
+    test_archive(() -> UnstructuredArchive(prob; capacity=30, threshold=0.5), prob)       # evicts
+    test_archive(() -> UnstructuredArchive(prob; capacity=1, threshold=0.5), prob)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0.5, genotype=Vector{Float32}, fitness=Float32), prob)
+end
+
 @testset "archive with an isbits genotype" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),

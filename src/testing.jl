@@ -112,7 +112,8 @@ return a new, empty archive each time. `prob` supplies solutions and
 evaluations; its descriptors must lie inside the archive's bounds.
 
 The checks cover an empty archive, the status and `improvement` of each kind
-of insertion, `length`, `capacity`, `cell_index`, `sample_elites`, `elites`,
+of insertion, `length`, `capacity`, `cell_index` (on an archive holding all `n`
+solutions), `sample_elites`, `elites`,
 `add_batch!`, and `empty!` when the archive defines it. With
 `check_allocations`, `cell_index` must not allocate, and neither must `add!`
 when the genotype type is `isbits`.
@@ -140,14 +141,18 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
         evs = QD.evaluate_batch(prob, xs)
 
         @testset "cell_index" begin
+            # on a filled archive: one without a fixed partition has no cell to
+            # point to while it is empty
+            a = make_archive()
+            QD.add_batch!(a, xs, evs)
             for ev in evs
-                i = @inferred QD.cell_index(archive, ev.descriptor)
+                i = @inferred QD.cell_index(a, ev.descriptor)
                 @test i isa Integer
-                @test 1 <= i <= QD.capacity(archive)
-                @test QD.cell_index(archive, ev.descriptor) == i
+                @test 1 <= i <= QD.capacity(a)
+                @test QD.cell_index(a, ev.descriptor) == i
             end
             if check_allocations
-                @test allocations(QD.cell_index, archive, evs[1].descriptor) == 0
+                @test allocations(QD.cell_index, a, evs[1].descriptor) == 0
             end
         end
 
@@ -190,7 +195,9 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             @test rs == [QD.add!(b, x, ev) for (x, ev) in zip(xs, evs)]
             @test length(a) == length(b)
             @test 1 <= length(a) <= QD.capacity(a)
-            @test count(r -> r.status == QD.NewCell, rs) == length(a)
+            # every solution that fills a cell stays, unless a full archive evicts one
+            new_cells = count(r -> r.status == QD.NewCell, rs)
+            @test length(a) < QD.capacity(a) ? new_cells == length(a) : new_cells >= length(a)
         end
 
         @testset "elites and sample_elites" begin

@@ -84,3 +84,12 @@ end
 SUITE["algorithm"]["step!/batch=100"] = @benchmarkable step!($state)
 SUITE["algorithm"]["solve/360k evaluations"] =
     @benchmarkable solve($prob, $alg; budget=360_000, rng=Xoshiro(3)) samples = 5 evals = 1 seconds = 120
+
+const unstructured = let a = UnstructuredArchive(prob; capacity=1000, threshold=0.2)
+    xs = [QD.random_solution(rng, prob) for _ in 1:20_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
+    a
+end
+SUITE["archive"]["UnstructuredArchive/cell_index (1000 slots)"] = @benchmarkable QD.cell_index($unstructured, $d)
+SUITE["archive"]["UnstructuredArchive/add!/rejected"] = @benchmarkable QD.add!($unstructured, $x, $ev)
+SUITE["archive"]["UnstructuredArchive/sample_elites/n=100"] = @benchmarkable QD.sample_elites($rng, $unstructured, 100)

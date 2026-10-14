@@ -143,6 +143,10 @@ end
 
 The cell of `archive` that contains descriptor `d`. Required. Does not
 allocate.
+
+An archive returns `0`, which is not a cell, for a descriptor it has no cell
+for: one that a `RejectOutside()` policy discards, or any descriptor while an
+[`UnstructuredArchive`](@ref) is empty.
 """
 function cell_index end
 

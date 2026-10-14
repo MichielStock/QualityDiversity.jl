@@ -337,7 +337,7 @@ Julia LTS and the current release.
   - [x] `CVTArchive` (pyribs, QDax): centroids from k-means, nearest-centroid
         lookup with a k-d tree
   - [ ] `CategoricalArchive` (pyribs): cells from discrete descriptor values
-  - [ ] `UnstructuredArchive` (QDax) / `ProximityArchive` (pyribs):
+  - [x] `UnstructuredArchive` (QDax) / `ProximityArchive` (pyribs):
         novelty-style, a solution enters if it is far from its neighbours
   - [ ] Threshold archive for CMA-MAE (pyribs `learning_rate`, `DiscountArchive`),
         a separate type from `GridArchive`

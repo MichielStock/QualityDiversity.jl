@@ -115,3 +115,28 @@ end
     @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, SVector(0.0, 0.0))); archive), 4)
     @inferred max_fitness(archive)
 end
+
+@testset "UnstructuredArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
+                     bounds=((-1, 1), (-1, 1)))
+    # full and not full, so that both the free-slot and the eviction path run
+    for capacity in (200, 5)
+        archive = UnstructuredArchive{SVector{3,Float64}}(2; capacity, threshold=0.1)
+        for i in 1:20
+            QD.add!(archive, QD.random_solution(Xoshiro(i), prob), Evaluation(-i, rand(Xoshiro(i), SVector{2,Float64})))
+        end
+        x = QD.random_solution(Xoshiro(1), prob)
+        ev = QD.evaluate(prob, x)
+        @inferred QD.cell_index(archive, ev.descriptor)
+        @inferred QD.add!(archive, x, ev)
+        @inferred QD.sample_elites(Xoshiro(1), archive, 4)
+        @inferred max_fitness(archive)
+        @inferred qd_score(archive)
+        far = SVector(50.0, 50.0)
+        @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+        @test allocated(QD.add!, archive, x, Evaluation(-100.0, far)) == 0           # rejected, or a new slot
+        @test allocated(QD.add!, archive, x, Evaluation(1000.0, far)) == 0           # improvement
+        @test allocated(QD.add!, archive, x, Evaluation(2000.0, SVector(60.0, 60.0))) == 0   # new slot, or eviction
+    end
+end
