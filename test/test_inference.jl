@@ -167,7 +167,7 @@ end
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
                      bounds=((-1, 1), (-1, 1)))
-    for rate in (1.0, 0.3), floor in (-Inf, -10.0)
+    for (rate, floor) in ((1.0, -Inf), (1.0, -10.0), (0.3, -10.0))
         archive = ThresholdArchive(GridArchive{SVector{3,Float64}}((10, 10), ((-1, 1), (-1, 1)));
                                    learning_rate=rate, threshold_min=floor)
         x = QD.random_solution(Xoshiro(1), prob)
@@ -182,5 +182,7 @@ end
         @test allocated(QD.add!, archive, x, Evaluation(ev.fitness + 1, ev.descriptor)) == 0    # improvement
         @test allocated(QD.add!, archive, x, Evaluation(ev.fitness, SVector(-0.9, 0.9))) == 0   # new cell
         @test allocated(max_fitness, archive) == 0
+        xs = [QD.random_solution(Xoshiro(k), prob) for k in 1:8]
+        @inferred QD.add_batch!(archive, xs, QD.evaluate_batch(prob, xs))
     end
 end

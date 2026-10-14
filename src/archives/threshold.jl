@@ -1,32 +1,51 @@
 """
     ThresholdArchive(archive::CellArchive; learning_rate=1.0, threshold_min=-Inf)
 
-Archive for CMA-MAE: a cell archive in which each cell has a fitness threshold
-that rises slowly as solutions enter the cell, instead of jumping to the best
-fitness found. `archive` decides which cell a descriptor belongs to, so any
-[`CellArchive`](@ref) works: a [`GridArchive`](@ref), a [`CVTArchive`](@ref) or a
-[`CategoricalArchive`](@ref). It must be empty and have a floating-point
-fitness type, and the new archive uses it without copying.
+Archive for CMA-MAE (Fontaine and Nikolaidis, 2023): a cell archive in which each
+cell has a fitness threshold that rises slowly as solutions enter the cell,
+instead of jumping to the best fitness found. `archive` decides which cell a
+descriptor belongs to, so any [`CellArchive`](@ref) works: a [`GridArchive`](@ref),
+a [`CVTArchive`](@ref) or a [`CategoricalArchive`](@ref). It must be empty and
+have a floating-point fitness type, and the new archive uses it without copying.
 
 A solution with fitness `f` enters its cell if `f` is strictly greater than the
 cell's threshold `t`, and then replaces the cell's elite. The threshold becomes
 `(1 - learning_rate) * t + learning_rate * f`. The `improvement` of the
 [`AddResult`](@ref) is `f - t`, which is what CMA-ME style emitters rank
-candidates by; for a rejected solution it is zero or negative.
+candidates by; for a rejected solution it is zero or negative. Every threshold
+starts at `threshold_min`, and a solution can only enter an empty cell if its
+fitness exceeds that value. A good `threshold_min` is the lowest fitness the
+problem can produce, and `learning_rate=0.01` is a usual choice.
 
-- Every threshold starts at `threshold_min`. For `-Inf`, the default, an empty
-  cell accepts any solution, reports `improvement == f`, and sets its threshold
-  to `f`.
-- With `learning_rate=1`, the threshold of a cell is the fitness of its elite and
-  the archive behaves exactly like the cell archive it wraps.
-- With a smaller `learning_rate`, the threshold stays below the elite's fitness,
-  so a solution that is better than the threshold but worse than the elite
-  replaces the elite. The elite's fitness can therefore decrease, and the
-  archive's `max_fitness` with it. A rate of `0` keeps each threshold at its
-  initial value.
+The elite of a cell is the solution that last passed the threshold, so its
+fitness can be lower than the one it replaced when `learning_rate < 1`: a
+solution above the threshold but below the elite replaces the elite. The archive
+therefore does not hold the best solution found in each cell; for that, offer
+every solution to a second, plain archive as well.
 
-`learning_rate` must lie in `[0, 1]`. [`thresholds`](@ref QualityDiversity.thresholds)
-returns the thresholds, one per cell.
+`learning_rate` must lie in `[0, 1]`. With `learning_rate=0` the thresholds never
+change, and with `learning_rate=1` a threshold becomes the fitness of the
+solution that entered. To keep the behavior of an archive with another number of
+cells, convert the rate with `1 - (1 - learning_rate)^r`, where `r` is the ratio
+of the cell counts.
+
+The defaults, `learning_rate=1` and `threshold_min=-Inf`, give the rules of the
+wrapped archive: an empty cell accepts any solution and reports
+`improvement == f`, and the threshold of a cell is the fitness of its elite. That
+setting needs `learning_rate=1`, so `threshold_min=-Inf` with a smaller rate is an
+error.
+
+[`add_batch!`](@ref QualityDiversity.add_batch!) computes the status and
+`improvement` of every solution against the archive as it was before the batch,
+so a solution does not depend on the others in its batch. Of the solutions that
+pass the threshold of a cell, the one with the highest fitness (the first, on a
+tie) becomes the elite. The threshold of a cell that `m` solutions of the batch
+passed becomes `(1 - learning_rate)^m * t + (1 - (1 - learning_rate)^m) * mean(f)`,
+where `mean(f)` is over those solutions, or the highest of their fitness values if
+`threshold_min` is `-Inf`. For a single solution this is the rule above, which is
+what [`add!`](@ref QualityDiversity.add!) applies.
+[`thresholds`](@ref QualityDiversity.thresholds) returns the thresholds, one per
+cell.
 
 Cells, sampling, `elites`, `length`, `capacity` and `cell_index` are those of the
 wrapped archive. `qd_score` and `mean_fitness` take constant time. `max_fitness`
@@ -38,7 +57,8 @@ when the next call makes a pass over the elites.
 ```jldoctest
 julia> using QualityDiversity
 
-julia> archive = ThresholdArchive(GridArchive((10, 10), ((0, 1), (0, 1))); learning_rate=0.5);
+julia> archive = ThresholdArchive(GridArchive((10, 10), ((0, 1), (0, 1)));
+                                  learning_rate=0.5, threshold_min=0);
 
 julia> length(archive), QualityDiversity.capacity(archive)
 (0, 100)
@@ -60,6 +80,8 @@ mutable struct ThresholdArchive{G,F<:AbstractFloat,D,A<:CellArchive{G,F,D}} <: A
             throw(ArgumentError("learning_rate must be in [0, 1], got $learning_rate"))
         (isnan(threshold_min) || threshold_min == Inf) &&
             throw(ArgumentError("threshold_min must be a number below Inf, got $threshold_min"))
+        threshold_min == -Inf && learning_rate != 1 &&
+            throw(ArgumentError("threshold_min can only be -Inf if learning_rate is 1, got $learning_rate; give a finite threshold_min, such as the lowest fitness of the problem"))
         return new{G,F,D,A}(inner, fill(convert(F, threshold_min), capacity(inner)),
                             convert(F, learning_rate), convert(F, threshold_min), false)
     end
@@ -96,6 +118,45 @@ sample_elites(rng::AbstractRNG, archive::ThresholdArchive, n::Integer) =
 
 elites(archive::ThresholdArchive) = elites(archive.inner)
 
+# Status and improvement of a solution with `fitness` in cell `i`, before it is
+# inserted. The improvement of the first solution in a cell is its fitness when
+# the thresholds start at `-Inf`.
+function classify(archive::ThresholdArchive{G,F}, i, fitness) where {G,F}
+    occupied = archive.inner.occupied[i]
+    threshold = archive.thresholds[i]
+    improvement = threshold == -Inf ? fitness : fitness - threshold
+    fitness > threshold || return AddResult(Rejected, improvement)
+    return AddResult(occupied ? Improved : NewCell, improvement)
+end
+
+# Stores `x` as the elite of cell `i` with the new threshold, keeping the
+# running totals of the wrapped archive up to date.
+function place!(archive::ThresholdArchive, i, x, descriptor, fitness, threshold)
+    inner = archive.inner
+    archive.thresholds[i] = threshold
+    if !inner.occupied[i]
+        inner.occupied[i] = true
+        push!(inner.occupied_idx, i)
+        _store!(inner, i, x, fitness, descriptor)
+        _add_to_sum!(inner, Float64(fitness))
+        if length(inner.occupied_idx) == 1 || fitness >= inner.fitness_max
+            inner.fitness_max = fitness
+            archive.max_stale = false
+        end
+        return nothing
+    end
+    previous = inner.fitness[i]
+    _store!(inner, i, x, fitness, descriptor)
+    _add_to_sum!(inner, Float64(fitness) - Float64(previous))
+    if fitness >= inner.fitness_max
+        inner.fitness_max = fitness
+        archive.max_stale = false
+    elseif previous == inner.fitness_max
+        archive.max_stale = true
+    end
+    return nothing
+end
+
 """
     add!(archive::ThresholdArchive, x, ev::Evaluation) -> AddResult
 
@@ -106,46 +167,71 @@ otherwise. A descriptor that the wrapped archive discards gives `Rejected` with
 zero `improvement`.
 """
 function add!(archive::ThresholdArchive{G,F}, x, ev::Evaluation{<:Real}) where {G,F}
-    inner = archive.inner
-    i = cell_index(inner, ev.descriptor)
-    fitness = convert(F, ev.fitness)
+    i = cell_index(archive.inner, ev.descriptor)
     i == 0 && return AddResult(Rejected, zero(F))
-    rate = archive.learning_rate
-    if !inner.occupied[i]
-        floor = archive.threshold_min
-        floor == -Inf && return add_to_empty_cell!(archive, i, x, ev, fitness, fitness, fitness)
-        improvement = fitness - floor
-        improvement > 0 || return AddResult(Rejected, improvement)
-        return add_to_empty_cell!(archive, i, x, ev, fitness, (1 - rate) * floor + rate * fitness, improvement)
-    end
-    threshold = archive.thresholds[i]
-    improvement = fitness - threshold
-    improvement > 0 || return AddResult(Rejected, improvement)
-    previous = inner.fitness[i]
-    archive.thresholds[i] = (1 - rate) * threshold + rate * fitness
-    _store!(inner, i, x, fitness, ev.descriptor)
-    _add_to_sum!(inner, Float64(fitness) - Float64(previous))
-    if fitness >= inner.fitness_max
-        inner.fitness_max = fitness
-        archive.max_stale = false
-    elseif previous == inner.fitness_max
-        archive.max_stale = true
-    end
-    return AddResult(Improved, improvement)
+    fitness = convert(F, ev.fitness)
+    result = classify(archive, i, fitness)
+    result.status == Rejected && return result
+    threshold = next_threshold(archive.learning_rate, archive.thresholds[i], fitness, 1)
+    place!(archive, i, x, ev.descriptor, fitness, threshold)
+    return result
 end
 
-function add_to_empty_cell!(archive::ThresholdArchive, i, x, ev, fitness, threshold, improvement)
-    inner = archive.inner
-    inner.occupied[i] = true
-    push!(inner.occupied_idx, i)
-    archive.thresholds[i] = threshold
-    _store!(inner, i, x, fitness, ev.descriptor)
-    _add_to_sum!(inner, Float64(fitness))
-    if length(inner.occupied_idx) == 1 || fitness >= inner.fitness_max
-        inner.fitness_max = fitness
-        archive.max_stale = false
+# Threshold of a cell after `count` solutions with fitness summing to `total` passed
+# a threshold `t`. One solution gives the update rule itself, so a batch of one
+# agrees with `add!` to the last bit.
+function next_threshold(rate, t, total, count)
+    count == 1 && return rate == 1 ? total : (1 - rate) * t + rate * total
+    kept = (1 - rate)^count
+    return kept * t + (1 - kept) * (total / count)
+end
+
+"""
+    add_batch!(archive::ThresholdArchive, xs, evs) -> Vector{AddResult}
+
+Insert every solution in `xs` with its evaluation from `evs`. Each result is
+computed against the archive as it was before the batch, and the solutions that
+pass the threshold of a cell act on it together; see [`ThresholdArchive`](@ref).
+"""
+function add_batch!(archive::ThresholdArchive{G,F}, xs::AbstractVector, evs::AbstractVector) where {G,F}
+    length(xs) == length(evs) ||
+        throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
+    n = length(xs)
+    results = Vector{AddResult{F}}(undef, n)
+    cells = Vector{Int}(undef, n)
+    passing = Int[]
+    for k in 1:n
+        i = cell_index(archive.inner, evs[k].descriptor)
+        cells[k] = i
+        results[k] = i == 0 ? AddResult(Rejected, zero(F)) :
+                     classify(archive, i, convert(F, evs[k].fitness))
+        results[k].status == Rejected || push!(passing, k)
     end
-    return AddResult(NewCell, improvement)
+    # Group the passing solutions by cell, keeping their order within a cell.
+    sort!(passing; by=k -> cells[k], alg=MergeSort)
+    run_start = 1
+    while run_start <= length(passing)
+        i = cells[passing[run_start]]
+        run_end = run_start
+        while run_end < length(passing) && cells[passing[run_end+1]] == i
+            run_end += 1
+        end
+        best = passing[run_start]
+        total = zero(F)
+        for p in run_start:run_end
+            k = passing[p]
+            fitness = convert(F, evs[k].fitness)
+            total += fitness
+            fitness > convert(F, evs[best].fitness) && (best = k)
+        end
+        count = run_end - run_start + 1
+        highest = convert(F, evs[best].fitness)
+        threshold = archive.threshold_min == -Inf ? highest :
+                    next_threshold(archive.learning_rate, archive.thresholds[i], total, count)
+        place!(archive, i, xs[best], evs[best].descriptor, highest, threshold)
+        run_start = run_end + 1
+    end
+    return results
 end
 
 qd_score(archive::ThresholdArchive; offset=0) = qd_score(archive.inner; offset)

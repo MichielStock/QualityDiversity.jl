@@ -124,7 +124,8 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
 end
 
 """
-    test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true, elitist=true)
+    test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true, elitist=true,
+                 sequential_batch=true)
 
 Check that the archives built by `make_archive()` meet the contract of
 [`AbstractArchive`](@ref). `make_archive` is called without arguments and must
@@ -145,10 +146,17 @@ than its occupant, so that adding the same solution again, or a worse one, is
 below 1, passes `elitist=false`. The checks then require only that a status
 agrees with the sign of `improvement`: `Rejected` for zero or less, `Improved` for
 more than zero.
+
+By default `add_batch!` must give the results of `add!` on each solution in order.
+An archive that computes the results of a batch against its state before the
+batch, such as a [`ThresholdArchive`](@ref), passes `sequential_batch=false`. The
+checks then require only valid results, a batch of the right length, and a
+`NewCell` result for every solution that is stored as a new elite.
 """
 function test_archive(make_archive, prob::QD.AbstractQDProblem;
                       rng::AbstractRNG=Xoshiro(1), n::Integer=200,
-                      check_allocations::Bool=true, elitist::Bool=true)
+                      check_allocations::Bool=true, elitist::Bool=true,
+                      sequential_batch::Bool=true)
     archive = make_archive()
     A = typeof(archive)
     G, F, D = _archive_types(archive)
@@ -221,12 +229,17 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             rs = QD.add_batch!(a, xs, evs)
             @test rs isa AbstractVector{<:QD.AddResult}
             @test length(rs) == n
-            @test rs == [QD.add!(b, x, ev) for (x, ev) in zip(xs, evs)]
-            @test length(a) == length(b)
             @test 1 <= length(a) <= QD.capacity(a)
-            # every solution that fills a cell stays, unless a full archive evicts one
             new_cells = count(r -> r.status == QD.NewCell, rs)
-            @test length(a) < QD.capacity(a) ? new_cells == length(a) : new_cells >= length(a)
+            if sequential_batch
+                @test rs == [QD.add!(b, x, ev) for (x, ev) in zip(xs, evs)]
+                @test length(a) == length(b)
+                # every solution that fills a cell stays, unless a full archive evicts one
+                @test length(a) < QD.capacity(a) ? new_cells == length(a) : new_cells >= length(a)
+            else
+                @test all(r -> r.status in (QD.Rejected, QD.Improved, QD.NewCell), rs)
+                @test new_cells >= length(a)       # solutions that share a new cell all report it
+            end
         end
 
         @testset "elites and sample_elites" begin

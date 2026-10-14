@@ -146,7 +146,9 @@ Insert every solution in `xs` with its evaluation from `evs`, returning one
 when a batch can be inserted faster than one solution at a time.
 
 The default calls [`add!`](@ref QualityDiversity.add!) on each solution in
-order.
+order. An archive may instead compute every result against its state before the
+batch, so that a result does not depend on the other solutions in the batch, as
+[`ThresholdArchive`](@ref) does; it documents this.
 """
 function add_batch! end
 
