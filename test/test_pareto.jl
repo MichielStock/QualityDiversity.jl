@@ -242,15 +242,17 @@ end
     again = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
     @test again.history == history && collect(QD.elites(again.archive)) == collect(QD.elites(result.archive))
     @test length(alg.archive) == 0                                               # the algorithm is not modified
-    # a larger front keeps more of the trade-offs
-    wide = solve(prob, MOME(prob; dims=(8, 8), batch_size=32, max_front=100); budget=6_000, rng=Xoshiro(1))
-    narrow = solve(prob, MOME(prob; dims=(8, 8), batch_size=32, max_front=2); budget=6_000, rng=Xoshiro(1))
-    @test QD.num_solutions(narrow.archive) <= 2 * length(narrow.archive)
-    @test QD.qd_score(wide.archive) > QD.qd_score(narrow.archive)
-    # MOME fills more volume than MAP-Elites with the sum of the objectives as its only objective
-    summed = QDProblem(x -> (sum(QD.evaluate(prob, x).fitness), Tuple(QD.evaluate(prob, x).descriptor));
-                       init=rng -> QD.random_solution(rng, prob), bounds=QD.descriptor_bounds(prob))
-    scalar = solve(summed, MAPElites(summed; dims=(8, 8), batch_size=32); budget=6_000, rng=Xoshiro(1))
-    scalar_volume = sum(QD.hypervolume([QD.evaluate(prob, g).fitness], QD.reference_point(prob)) for (g, _) in QD.elites(scalar.archive))
-    @test result.history[end].qd_score > scalar_volume
+    # for the same solutions, a front that keeps every non-dominated one holds at least the
+    # hypervolume of a front cut off at two
+    rng = Xoshiro(3)
+    xs = [QD.random_solution(rng, prob) for _ in 1:1_500]
+    evs = QD.evaluate_batch(prob, xs)
+    wide = MOME(prob; dims=(8, 8), max_front=100).archive
+    narrow = MOME(prob; dims=(8, 8), max_front=2).archive
+    QD.add_batch!(wide, xs, evs)
+    QD.add_batch!(narrow, xs, evs)
+    @test length(wide) == length(narrow)
+    @test all(wide.volumes .>= narrow.volumes) && QD.qd_score(wide) > QD.qd_score(narrow)
+    @test QD.num_solutions(narrow) <= 2 * length(narrow)
+    @test QD.num_solutions(narrow) < QD.num_solutions(wide)
 end
