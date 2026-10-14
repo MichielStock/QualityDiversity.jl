@@ -17,7 +17,8 @@ whenever a search starts. An emitter keeps its own copy of its ranker.
 
 The rankers are [`TwoStageImprovementRanker`](@ref), [`ImprovementRanker`](@ref),
 [`ObjectiveRanker`](@ref), [`TwoStageObjectiveRanker`](@ref),
-[`RandomDirectionRanker`](@ref) and [`TwoStageRandomDirectionRanker`](@ref).
+[`RandomDirectionRanker`](@ref), [`TwoStageRandomDirectionRanker`](@ref) and
+[`AcceptedRandomDirectionRanker`](@ref).
 """
 abstract type AbstractRanker end
 
@@ -65,8 +66,8 @@ struct TwoStageObjectiveRanker <: AbstractRanker end
     DirectionRanker
 
 Supertype of the rankers that order candidates by their descriptor projected on a
-random direction: [`RandomDirectionRanker`](@ref) and
-[`TwoStageRandomDirectionRanker`](@ref). The direction is drawn when a search starts, from
+random direction: [`RandomDirectionRanker`](@ref),
+[`TwoStageRandomDirectionRanker`](@ref) and [`AcceptedRandomDirectionRanker`](@ref). The direction is drawn when a search starts, from
 a standard normal vector scaled by the extent of the archive along each descriptor
 dimension, so a search that follows it moves toward one part of descriptor space. The
 archive must report its extent with
@@ -92,12 +93,29 @@ RandomDirectionRanker() = RandomDirectionRanker(Float64[])
 
 Ranks candidates first by what the archive did with them, as
 [`TwoStageImprovementRanker`](@ref) does, and then by the projection of their descriptor
-on a random direction. See [`DirectionRanker`](@ref).
+on a random direction. A new cell ranks above an improved cell whatever the projection;
+this is the `2rd` ranker of pyribs. See [`DirectionRanker`](@ref) and, for the ranking
+that the CMA-ME paper describes, [`AcceptedRandomDirectionRanker`](@ref).
 """
 struct TwoStageRandomDirectionRanker <: DirectionRanker
     direction::Vector{Float64}
 end
 TwoStageRandomDirectionRanker() = TwoStageRandomDirectionRanker(Float64[])
+
+"""
+    AcceptedRandomDirectionRanker()
+
+Ranks the candidates that the archive accepted, a new cell or an improvement, above
+those it rejected, and each group by the projection of the descriptor on a random
+direction. A new cell and an improved cell are not told apart. This is the random
+direction emitter as Fontaine et al. (2020) describe it, where only the solutions that
+improve the archive are ranked by their projection; with [`FilterSelection`](@ref) the
+recombined candidates are the accepted ones in that order. See [`DirectionRanker`](@ref).
+"""
+struct AcceptedRandomDirectionRanker <: DirectionRanker
+    direction::Vector{Float64}
+end
+AcceptedRandomDirectionRanker() = AcceptedRandomDirectionRanker(Float64[])
 
 """
     rank_key(ranker::AbstractRanker, ev::Evaluation, result::AddResult)
@@ -151,6 +169,10 @@ rank_key(ranker::RandomDirectionRanker, ev, result) = projection(ranker, ev)
 
 function rank_key(ranker::TwoStageRandomDirectionRanker, ev, result)
     return (status_stage(result), projection(ranker, ev))
+end
+
+function rank_key(ranker::AcceptedRandomDirectionRanker, ev, result)
+    return (Int(result.status != Rejected), projection(ranker, ev))
 end
 
 # Order of the candidates from best to worst, and their keys in that order.

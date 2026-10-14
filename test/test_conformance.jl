@@ -131,10 +131,11 @@ end
         test_emitter(CMAEmitter(4; sigma0=1.0, ranker, selection, restart, x0=zeros(4), batch_size=9), filled(), prob)
     end
     test_emitter(CMAEmitter(4; sigma0=1.0, lower=-5.12, upper=5.12), filled(), prob)
-    for ranker in (TwoStageObjectiveRanker(), RandomDirectionRanker(), TwoStageRandomDirectionRanker())
+    for ranker in (TwoStageObjectiveRanker(), RandomDirectionRanker(), TwoStageRandomDirectionRanker(),
+                   AcceptedRandomDirectionRanker())
         test_emitter(CMAEmitter(4; sigma0=1.0, ranker), filled(), prob)
     end
-    for strategy in (SepCMAES, OpenAIES, LMMAES)
+    for strategy in (PyribsCMAES, SepCMAES, OpenAIES, LMMAES)
         # LMMAES needs a batch smaller than the dimension
         test_emitter(CMAEmitter(4; sigma0=1.0, strategy, batch_size=3 + 3 * (strategy === OpenAIES)), filled(), prob)
     end

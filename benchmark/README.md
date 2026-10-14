@@ -13,5 +13,5 @@ The first run installs the benchmark environment and links the package. Leave
 cores free while it runs: the default `evaluate_batch` uses every thread Julia
 was started with.
 
-`compare/` compares a full MAP-Elites run with pyribs and QDax; see its README
-for the setup and results.
+`compare/` compares a full MAP-Elites run, and CMA-ME and CMA-MAE runs, with pyribs
+and QDax; see its README for the setup and results.
