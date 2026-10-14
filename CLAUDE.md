@@ -151,7 +151,8 @@ descriptor)` so most users never subtype.
 | `Base.empty!(archive)` | optional | |
 
 Concrete archives: `GridArchive`, `CVTArchive`, `CategoricalArchive` (discrete
-descriptors, numbers or labels), `UnstructuredArchive` (novelty-style,
+descriptors, numbers or labels), `ThresholdArchive` (CMA-MAE thresholds around
+a cell archive), `UnstructuredArchive` (novelty-style,
 distance threshold), later `ParetoGridArchive` (MOME).
 
 Storage layout for cell-based archives (`GridArchive`, `CVTArchive`,
@@ -266,6 +267,7 @@ QualityDiversity.jl/
 │   │   ├── nearest_centroid.jl   # k-d tree and k-means for CVTArchive
 │   │   ├── cvt.jl
 │   │   ├── categorical.jl
+│   │   ├── threshold.jl
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -344,8 +346,8 @@ Julia LTS and the current release.
   - [x] `CategoricalArchive` (pyribs): cells from discrete descriptor values
   - [x] `UnstructuredArchive` (QDax) / `ProximityArchive` (pyribs):
         novelty-style, a solution enters if it is far from its neighbours
-  - [ ] Threshold archive for CMA-MAE (pyribs `learning_rate`, `DiscountArchive`),
-        a separate type from `GridArchive`
+  - [x] Threshold archive for CMA-MAE (pyribs `learning_rate`): `ThresholdArchive`,
+        a separate type from `GridArchive` that wraps any cell archive
   - [ ] `CMAEmitter` with improvement ranking, restarts and a CMA-ES core, then
         `CMAME()`; the CMA-MAE, random-direction (CMA-ME-RD) and two-stage
         rankers; further evolution strategies (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
@@ -377,8 +379,8 @@ Settled; change them only with the author's agreement.
 
 - **Fitness thresholds.** `GridArchive` is plain MAP-Elites: an empty cell
   accepts any solution, and a `NewCell` reports `improvement == fitness`.
-  CMA-MAE thresholds (per-cell threshold with a learning rate) live in a
-  separate archive type, added with CMA-ME.
+  CMA-MAE thresholds (per-cell threshold with a learning rate) live in
+  `ThresholdArchive`, which wraps a cell archive.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.

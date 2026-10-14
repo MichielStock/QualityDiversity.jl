@@ -124,7 +124,7 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
 end
 
 """
-    test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true)
+    test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true, elitist=true)
 
 Check that the archives built by `make_archive()` meet the contract of
 [`AbstractArchive`](@ref). `make_archive` is called without arguments and must
@@ -137,10 +137,18 @@ solutions), `sample_elites`, `elites`,
 `add_batch!`, and `empty!` when the archive defines it. With
 `check_allocations`, `cell_index` must not allocate, and neither must `add!`
 when the genotype type is `isbits`.
+
+An archive is `elitist` if a cell only accepts a solution with higher fitness
+than its occupant, so that adding the same solution again, or a worse one, is
+`Rejected`. An archive whose cells accept solutions below the occupant, such as a
+[`ThresholdArchive`](@ref) with a finite `threshold_min` and a `learning_rate`
+below 1, passes `elitist=false`. The checks then require only that a status
+agrees with the sign of `improvement`: `Rejected` for zero or less, `Improved` for
+more than zero.
 """
 function test_archive(make_archive, prob::QD.AbstractQDProblem;
                       rng::AbstractRNG=Xoshiro(1), n::Integer=200,
-                      check_allocations::Bool=true)
+                      check_allocations::Bool=true, elitist::Bool=true)
     archive = make_archive()
     A = typeof(archive)
     G, F, D = _archive_types(archive)
@@ -185,14 +193,15 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             @test length(a) == 1
 
             r = QD.add!(a, xs[1], ev)
-            @test r.status == QD.Rejected
-            @test r.improvement <= 0
+            elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
+            @test (r.status == QD.Rejected) == (r.improvement <= 0)
             @test length(a) == 1
 
             worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor)
             r = QD.add!(a, xs[1], worse)
-            @test r.status == QD.Rejected
-            @test r.improvement < 0
+            elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
+            @test (r.status == QD.Rejected) == (r.improvement <= 0)
+            elitist && @test r.improvement < 0
 
             better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor)
             r = QD.add!(a, xs[2], better)
