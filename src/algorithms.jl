@@ -154,3 +154,50 @@ end
 
 # Length of the solutions of `prob`, from one random solution.
 solution_dim(prob::AbstractQDProblem) = length(random_solution(Random.Xoshiro(0), prob))
+
+"""
+    MOME(prob; dims, reference_point=reference_point(prob), max_front=50, batch_size=64,
+         variation=GaussianMutation(0.1), bounds=descriptor_bounds(prob),
+         genotype=Vector{Float64}, outside=ThrowOutside()) -> QDAlgorithm
+
+Multi-objective MAP-Elites (Pierrot et al., 2022): a [`ParetoGridArchive`](@ref), which keeps a
+Pareto front of at most `max_front` solutions in each cell of a grid with `dims` cells along
+each descriptor dimension, and one [`VariationEmitter`](@ref) that applies `variation` to
+`batch_size` children per round. A parent is a solution drawn uniformly from the front of a
+cell drawn uniformly among the occupied ones. The problem returns a vector of objectives as
+its fitness. `reference_point` is the corner from which hypervolume is measured; a problem
+can supply it with [`reference_point`](@ref QualityDiversity.reference_point).
+
+`solve` returns the archive, and a run records its MOQD score, coverage, the largest
+hypervolume of a cell and the number of solutions.
+
+# Example
+
+```julia
+prob = BiSphere(10)
+result = solve(prob, MOME(prob; dims=(20, 20)); budget=50_000, rng=Xoshiro(1))
+qd_score(result.archive), global_hypervolume(result.archive)
+```
+"""
+# The reference point of the problem, as a default for the keyword of the same name.
+problem_reference_point(prob) = reference_point(prob)
+
+function MOME(prob::AbstractQDProblem; dims::Tuple,
+              reference_point::AbstractVector{<:Real}=problem_reference_point(prob),
+              max_front::Integer=50, batch_size::Integer=64,
+              variation::AbstractVariation=GaussianMutation(0.1),
+              bounds::Tuple=descriptor_bounds(prob), genotype::Type=Vector{Float64},
+              outside::OutsidePolicy=ThrowOutside())
+    archive = ParetoGridArchive(prob; dims, reference_point, max_front, bounds, genotype, outside)
+    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+end
+
+"""
+    MOME(archive::ParetoGridArchive; batch_size=64, variation=GaussianMutation(0.1)) -> QDAlgorithm
+
+MOME over a given archive: `archive` with one [`VariationEmitter`](@ref).
+"""
+function MOME(archive::ParetoGridArchive; batch_size::Integer=64,
+              variation::AbstractVariation=GaussianMutation(0.1))
+    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+end

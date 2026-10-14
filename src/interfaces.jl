@@ -168,6 +168,23 @@ function descriptor_ndims(prob::AbstractQDProblem)
 end
 
 """
+    reference_point(prob::AbstractQDProblem)
+
+A point that lies below the fitness values of interest of a problem with several
+objectives, as the corner from which a [`ParetoGridArchive`](@ref) measures
+hypervolume. Optional: [`MOME`](@ref) takes it from the problem unless it is given.
+
+    reference_point(archive::ParetoGridArchive)
+
+The reference point of the archive.
+"""
+function reference_point end
+
+function reference_point(prob::AbstractQDProblem)
+    throw(ArgumentError("$(nameof(typeof(prob))) does not define reference_point: define it for the problem, or pass the reference point as a keyword"))
+end
+
+"""
     fitness_offset(prob::AbstractQDProblem)
 
 Offset that makes every attainable fitness non-negative, as the default

@@ -124,19 +124,25 @@ nearest cell (and throws for `NaN`), and `RejectOutside()` returns `0`, which is
 cell.
 """
 function cell_index(archive::GridArchive{G,F,N}, d::AbstractVector{<:Real}) where {G,F,N}
+    return grid_cell(archive.dims, archive.lower, archive.upper, archive.outside, d)
+end
+
+# The cell of `d` on a regular grid with `dims` cells over the box `lower` to `upper`; the
+# archives that lay their cells out as a grid share it.
+function grid_cell(dims::NTuple{N,Int}, lower, upper, outside, d::AbstractVector{<:Real}) where {N}
     length(d) == N ||
         throw(ArgumentError("descriptor has $(length(d)) dimensions but the archive has $N"))
     index = 0
     stride = 1
     for i in 1:N
-        lo = archive.lower[i]
-        hi = archive.upper[i]
+        lo = lower[i]
+        hi = upper[i]
         x = d[i]
         if !(lo <= x <= hi)
-            x = resolve_outside(archive.outside, i, x, lo, hi)
+            x = resolve_outside(outside, i, x, lo, hi)
             isnan(x) && return 0
         end
-        n = archive.dims[i]
+        n = dims[i]
         k = min(floor(Int, (x - lo) / (hi - lo) * n) + 1, n)
         index += (k - 1) * stride
         stride *= n

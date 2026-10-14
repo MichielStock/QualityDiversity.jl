@@ -62,6 +62,8 @@ end
     labelled = QDProblem(x -> (-sum(abs2, x), (round(Int, clamp(x[1], -3, 3)), x[2] > 0 ? :pos : x[2] < -1 ? :neg : :zero));
                          init=rng -> 6 .* rand(rng, 3) .- 3, categories=(-3:3, [:neg, :zero, :pos]))
     test_problem(labelled)
+    test_problem(BiSphere(2))
+    test_problem(BiSphere(7))
 
     noisy = StochasticQDProblem((rng, x) -> (-sum(abs2, x) + randn(rng), (clamp(x[1], -1, 1), clamp(x[2], -1, 1)));
                                 init=rng -> 2 .* rand(rng, 3) .- 1, bounds=((-1, 1), (-1, 1)))
@@ -109,6 +111,19 @@ end
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
                      bounds=((-1, 1), (-1, 1)))
     test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))), prob; sequential_batch=false)
+end
+
+@testset "front archives" begin
+    prob = BiSphere(4)
+    reference = QualityDiversity.reference_point(prob)
+    test_front_archive(() -> ParetoGridArchive(prob; dims=(5, 5), reference_point=reference), prob)
+    test_front_archive(() -> ParetoGridArchive(prob; dims=(3, 3), reference_point=reference, max_front=4), prob)
+    test_front_archive(() -> ParetoGridArchive(prob; dims=(4, 4), reference_point=reference, genotype=SVector{4,Float64}), prob)
+    test_front_archive(() -> ParetoGridArchive(prob; dims=(4, 4), reference_point=reference, outside=ClampOutside()), prob)
+    three = QDProblem(x -> (SVector(-sum(abs2, x .- 1), -sum(abs2, x .+ 1), -sum(abs2, x)), (x[1], x[2]));
+                      init=rng -> 4 .* rand(rng, 3) .- 2, bounds=((-2, 2), (-2, 2)))
+    test_front_archive(() -> ParetoGridArchive(three; dims=(4, 4), reference_point=[-100.0, -100.0, -100.0]), three;
+                       check_allocations=false)
 end
 
 @testset "variation" begin

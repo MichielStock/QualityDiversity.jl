@@ -27,7 +27,7 @@ using Test: @inferred, @test, @test_throws, @testset
 
 import ..QualityDiversity as QD
 
-export test_problem, test_archive, test_variation, test_emitter
+export test_problem, test_archive, test_front_archive, test_variation, test_emitter
 
 # Allocation of one call, measured after a warm-up call. The call goes through
 # a function barrier so that the arguments have concrete types.
@@ -347,6 +347,142 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
                 @test isempty(collect(QD.elites(a)))
                 @test QD.add!(a, xs[1], evs[1]).status == QD.NewCell
             end
+        end
+    end
+    return nothing
+end
+
+"""
+    test_front_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true)
+
+Check that the archives built by `make_archive()` meet the contract of an archive that keeps
+a Pareto front in every cell, such as a [`ParetoGridArchive`](@ref). `prob` is a problem with
+a vector fitness whose solutions are evaluated for the checks, and `make_archive()` returns an
+empty archive for it whose reference point lies below the fitness values of `prob`. The
+fitness type of the archive must be a vector of reals.
+
+The result of `add!` must be `NewCell` for an empty cell, `Rejected` with zero `improvement`
+for a solution that a stored one matches in every objective, and `Improved` with a positive
+`improvement` for a solution that beats the front. Every cell must hold a front of solutions
+none of which beats another, `length` counts the occupied cells and `num_solutions` the
+solutions that `elites` yields. `add_batch!` must give each solution the result that it has
+alone against the archive as it was before the batch. `sample_elites` must draw stored
+genotypes, inferrably, and reproducibly from the generator. The metrics must agree with the
+hypervolume of the fronts. `add!` must not allocate for a rejected solution with an `isbits`
+genotype and two objectives when `check_allocations` is true.
+"""
+function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1),
+                            n::Integer=200, check_allocations::Bool=true)
+    archive = make_archive()
+    A = typeof(archive)
+    G, F, D = _archive_types(archive)
+    @testset "test_front_archive($(nameof(A)))" begin
+        @testset "types" begin
+            @test archive isa QD.AbstractArchive{G,F,D}
+            @test isconcretetype(A)
+            @test F <: AbstractVector{<:Real}
+            @test QD.capacity(archive) >= 1
+        end
+
+        @testset "empty archive" begin
+            @test length(archive) == 0 && QD.num_solutions(archive) == 0
+            @test isempty(collect(QD.elites(archive)))
+            @test QD.qd_score(archive) == 0
+            @test QD.coverage(archive) == 0
+            @test_throws "cannot sample elites from an empty archive" QD.sample_elites(Xoshiro(1), archive, 1)
+        end
+
+        xs = [QD.random_solution(rng, prob) for _ in 1:n]
+        evs = QD.evaluate_batch(prob, xs)
+
+        @testset "cell_index" begin
+            for ev in evs
+                i = @inferred QD.cell_index(archive, ev.descriptor)
+                @test 1 <= i <= QD.capacity(archive)
+            end
+            if check_allocations
+                @test allocations(QD.cell_index, archive, evs[1].descriptor) == 0
+            end
+        end
+
+        @testset "add!" begin
+            a = make_archive()
+            ev = evs[1]
+            r = @inferred QD.add!(a, xs[1], ev)
+            @test r.status == QD.NewCell && r.improvement > 0
+            @test length(a) == 1 && QD.num_solutions(a) == 1
+
+            r = QD.add!(a, xs[1], ev)
+            @test r.status == QD.Rejected && r.improvement == 0
+            worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor)
+            r = QD.add!(a, xs[2], worse)
+            @test r.status == QD.Rejected && r.improvement == 0
+            @test QD.num_solutions(a) == 1
+
+            better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor)
+            r = QD.add!(a, xs[3], better)
+            @test r.status == QD.Improved && r.improvement > 0
+            # the new solution beats the old one in every objective and replaces it
+            @test QD.num_solutions(a) == 1
+            @test only(collect(QD.elites(a)))[1] == convert(G, xs[3])
+
+            if check_allocations && isbitstype(G)
+                @test allocations(QD.add!, a, xs[3], better) == 0
+            end
+        end
+
+        @testset "fronts" begin
+            a = make_archive()
+            for (x, ev) in zip(xs, evs)
+                QD.add!(a, x, ev)
+            end
+            stored = collect(QD.elites(a))
+            @test length(stored) == QD.num_solutions(a)
+            cells = Dict{Int,Vector{F}}()
+            for (_, ev) in stored
+                push!(get!(cells, QD.cell_index(a, ev.descriptor), F[]), ev.fitness)
+            end
+            @test length(cells) == length(a)
+            for front in values(cells)
+                @test all(f -> !any(g -> g !== f && all(g .>= f), front), front)
+            end
+            @test QD.qd_score(a) ≈ sum(QD.hypervolume(front, QD.reference_point(a)) for front in values(cells))
+            @test QD.coverage(a) == length(a) / QD.capacity(a)
+            @test QD.max_hypervolume(a) ≈ maximum(QD.hypervolume(front, QD.reference_point(a)) for front in values(cells))
+            @test QD.global_hypervolume(a) >= QD.max_hypervolume(a) - 1e-9
+        end
+
+        @testset "add_batch!" begin
+            a = make_archive()
+            half = n ÷ 2
+            QD.add_batch!(a, xs[1:half], evs[1:half])
+            batch = QD.add_batch!(deepcopy(a), xs[half+1:n], evs[half+1:n])
+            @test batch isa AbstractVector{<:QD.AddResult}
+            @test all(k -> batch[k] == QD.add!(deepcopy(a), xs[half+k], evs[half+k]), 1:min(25, n - half))
+        end
+
+        @testset "result_archive" begin
+            @test QD.result_archive(archive) === archive
+        end
+
+        @testset "elites and sample_elites" begin
+            a = make_archive()
+            QD.add_batch!(a, xs, evs)
+            stored = collect(QD.elites(a))
+            @test all(p -> p[1] isa G && p[2] isa QD.Evaluation, stored)
+            parents = @inferred QD.sample_elites(Xoshiro(3), a, 25)
+            @test parents isa Vector{G}
+            @test all(p -> any(q -> q[1] == p, stored), parents)
+            @test QD.sample_elites(Xoshiro(3), a, 25) == parents
+        end
+
+        @testset "empty!" begin
+            a = make_archive()
+            QD.add_batch!(a, xs, evs)
+            empty!(a)
+            @test length(a) == 0 && QD.num_solutions(a) == 0 && QD.qd_score(a) == 0
+            @test isempty(collect(QD.elites(a)))
+            @test QD.add!(a, xs[1], evs[1]).status == QD.NewCell
         end
     end
     return nothing

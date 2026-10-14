@@ -1,8 +1,8 @@
 # QualityDiversity.jl, pyribs and QDax on Rastrigin
 
 MAP-Elites on the 20-dimensional Rastrigin function, run with the same
-settings in three libraries. The last section does the same for CMA-ME and
-CMA-MAE.
+settings in three libraries. Later sections do the same for CMA-ME and CMA-MAE,
+and for MOME against QDax.
 
 | setting | value |
 |---|---|
@@ -298,4 +298,65 @@ export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_thread
 taskset -c 1 venv/bin/python benchmark/compare/compare_cma.py
 taskset -c 1 venv/bin/python benchmark/compare/compare_cma_qdax.py
 JAX_ENABLE_X64=1 taskset -c 1 venv/bin/python benchmark/compare/compare_cma_qdax.py   # about 8 minutes each
+```
+
+## MOME
+
+`compare_mome.jl` and `compare_mome_qdax.py` run multi-objective MAP-Elites (Pierrot et al.,
+2022) on the two-objective BiSphere benchmark of this package. pyribs has no multi-objective
+archive, so only QualityDiversity.jl and QDax are compared.
+
+| setting | value |
+|---|---|
+| problem | BiSphere, 10 parameters, clipped to [-5.12, 5.12]; objectives `-‖x - 1‖²` and `-‖x + 1‖²`, both maximized; descriptor = mean of the first and of the last 5 clipped parameters |
+| archive | 20 × 20 grid over [-5.12, 5.12]², a Pareto front of at most 50 solutions in each cell |
+| hypervolume | reference point `(-374.5, -374.5)`, the lowest value of both objectives |
+| mutation | Gaussian, σ = 0.2, one emitter, batch size 64; parents drawn from a uniformly chosen occupied cell and then uniformly from its front |
+| initial population | one batch of uniform random solutions |
+| budget | 100 032 evaluations |
+| repeats | 11 runs for QualityDiversity.jl, 3 for QDax (about 11 minutes each), one seed each, after a warm-up run |
+| hardware, software | as above; QualityDiversity.jl in `float64`, QDax at its default `float32` with its own centroid search |
+
+Both print the same columns, and the first lines of the two outputs give the fitness and the
+descriptor of one fixed solution, as a check that the problems agree.
+
+### Results
+
+Median over the runs. The MOQD score is the sum over the cells of the hypervolume of their fronts, and the global
+hypervolume is that of the Pareto front of all solutions together.
+
+| library | median s | evals/s | coverage | MOQD score | global hypervolume | largest cell hypervolume | solutions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| QualityDiversity.jl | 0.038 | 2 647 300 | 0.332 | 15 507 946 | 139 935 | 135 285 | 1 408 |
+| QDax | 686 | 146 | 0.295 | 14 098 354 | 139 930 | 135 329 | 1 398 |
+
+The results agree. The global hypervolume and the hypervolume of the best cell are equal to within
+0.03% and 0.04%. Coverage and MOQD score are noisy from run to run: over 30 seeds the coverage of
+QualityDiversity.jl lies between 0.25 and 0.43 and the MOQD score between 11.9 and 19.0 million,
+and the QDax values are inside those ranges.
+
+QualityDiversity.jl is about 18 000 times faster here. That ratio says little about QDax
+in the setting it is made for. QDax inserts the solutions of a batch one at a time in a scan
+over arrays of fixed shape, which is slow on one CPU core and says nothing about its speed on
+an accelerator, and the problem is cheap. It does show what a single core does with the two
+approaches when the objectives are analytic.
+
+### How the fronts were checked
+
+The per-cell update of QualityDiversity.jl was run on the same insertion sequences as QDax's
+`MOMERepertoire` in one cell, with two and three objectives and fronts of 4, 10 and 50 solutions
+(`test/reference`). Both keep the same solutions in every case, including which solutions a full
+front keeps. The hypervolume agrees with the indicator of pymoo to 1e-15 for two, three and
+four objectives. One difference is by design: QualityDiversity.jl rejects a solution whose
+objectives equal those of a stored one, where QDax keeps both.
+
+### Reproducing
+
+```
+# Julia
+taskset -c 1 julia --threads=1 benchmark/compare/compare_mome.jl
+
+# QDax
+export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+REPEATS=3 taskset -c 1 venv/bin/python benchmark/compare/compare_mome_qdax.py   # about 45 minutes
 ```

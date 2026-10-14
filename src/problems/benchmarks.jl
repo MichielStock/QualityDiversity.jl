@@ -113,3 +113,67 @@ function descriptor_bounds(prob::Sphere)
     limit = SPHERE_LIMIT * prob.dim / 2
     return ((-limit, limit), (-limit, limit))
 end
+
+const BISPHERE_LIMIT = 5.12
+const BISPHERE_CENTER = 1.0
+
+"""
+    BiSphere(dim)
+
+A benchmark with two objectives over `dim` real parameters, `dim ≥ 2`: the negated squared
+distances to the two points `(1, …, 1)` and `(-1, …, -1)`. No solution is best in both; the
+solutions that trade them off best lie on the line between the two points.
+
+The solution is clipped to `[-5.12, 5.12]` before it is scored. The fitness is an
+`SVector{2,Float64}` of the two objectives, which are at most `0`. The descriptor is that of
+[`Rastrigin`](@ref): the mean of the first `dim ÷ 2` clipped parameters and the mean of the
+remaining ones. [`reference_point`](@ref QualityDiversity.reference_point) is the lowest value
+of both objectives, so every solution adds hypervolume.
+
+Solutions are `Vector{Float64}`, drawn uniformly from the clipping box.
+"""
+struct BiSphere <: AbstractQDProblem
+    dim::Int
+    function BiSphere(dim::Integer)
+        dim >= 2 ||
+            throw(ArgumentError("BiSphere needs at least 2 dimensions for its 2-D descriptor, got $dim"))
+        return new(dim)
+    end
+end
+
+function evaluate(prob::BiSphere, x::AbstractVector{<:Real})
+    n = prob.dim
+    length(x) == n ||
+        throw(ArgumentError("solution has $(length(x)) entries but BiSphere has dimension $n"))
+    h = n ÷ 2
+    near = 0.0
+    far = 0.0
+    first_half = 0.0
+    second_half = 0.0
+    for i in 1:n
+        xi = clamp(Float64(x[i]), -BISPHERE_LIMIT, BISPHERE_LIMIT)
+        near += (xi - BISPHERE_CENTER)^2
+        far += (xi + BISPHERE_CENTER)^2
+        if i <= h
+            first_half += xi
+        else
+            second_half += xi
+        end
+    end
+    descriptor = SVector(clamp(first_half / h, -BISPHERE_LIMIT, BISPHERE_LIMIT),
+                         clamp(second_half / (n - h), -BISPHERE_LIMIT, BISPHERE_LIMIT))
+    return Evaluation(SVector(-near, -far), descriptor)
+end
+
+function random_solution(rng::AbstractRNG, prob::BiSphere)
+    return (2 * rand(rng, prob.dim) .- 1) .* BISPHERE_LIMIT
+end
+
+function descriptor_bounds(::BiSphere)
+    return ((-BISPHERE_LIMIT, BISPHERE_LIMIT), (-BISPHERE_LIMIT, BISPHERE_LIMIT))
+end
+
+function reference_point(prob::BiSphere)
+    lowest = -prob.dim * (BISPHERE_LIMIT + BISPHERE_CENTER)^2
+    return SVector(lowest, lowest)
+end

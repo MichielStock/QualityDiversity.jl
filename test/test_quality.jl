@@ -43,6 +43,12 @@ end
     JET.@test_opt target_modules = (QualityDiversity,) step!(noisy_state)
     JET.@test_opt target_modules = (QualityDiversity,) QD.evaluate_batch(Xoshiro(1), noisy, [randn(4), randn(4)])
 
+    bi = BiSphere(4)
+    mome_state = init(bi, MOME(bi; dims=(5, 5), batch_size=8); budget=200, rng=Xoshiro(1))
+    JET.@test_opt target_modules = (QualityDiversity,) step!(mome_state)
+    JET.@test_opt target_modules = (QualityDiversity,) QD.sample_elites(Xoshiro(1), mome_state.archive, 4)
+    JET.@test_opt target_modules = (QualityDiversity,) QD.add!(mome_state.archive, zeros(4), QD.evaluate(bi, zeros(4)))
+
     cma = CMAME(prob; dims=(5, 5), sigma0=1.0, num_emitters=2)
     cma_state = init(prob, cma; budget=200, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(cma_state)

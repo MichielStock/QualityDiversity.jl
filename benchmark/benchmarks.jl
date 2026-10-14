@@ -152,3 +152,24 @@ SUITE["algorithm"]["CMAMAE/step!"] = let alg = CMAMAE(sphere; dims=(100, 100), s
     @benchmarkable step!($state)
 end
 
+
+# ── multi-objective archive ───────────────────────────────
+const bisphere = BiSphere(20)
+const pareto_archive = let a = ParetoGridArchive(bisphere; dims=(100, 100), reference_point=QD.reference_point(bisphere))
+    xs = [QD.random_solution(rng, bisphere) for _ in 1:5_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(bisphere, xs))
+    a
+end
+const pareto_x = QD.random_solution(rng, bisphere)
+const pareto_ev = QD.evaluate(bisphere, pareto_x)
+SUITE["problem"]["BiSphere/evaluate"] = @benchmarkable QD.evaluate($bisphere, $pareto_x)
+SUITE["archive"]["ParetoGridArchive/cell_index"] = @benchmarkable QD.cell_index($pareto_archive, $(pareto_ev.descriptor))
+SUITE["archive"]["ParetoGridArchive/add!/rejected"] = @benchmarkable QD.add!($pareto_archive, $pareto_x, $(QD.Evaluation(pareto_ev.fitness .- 1e6, pareto_ev.descriptor)))
+SUITE["archive"]["ParetoGridArchive/add!/new solution"] = @benchmarkable QD.add!(a, $pareto_x, $pareto_ev) setup = (a = deepcopy($pareto_archive)) evals = 1
+SUITE["archive"]["ParetoGridArchive/sample_elites/n=100"] = @benchmarkable QD.sample_elites($rng, $pareto_archive, 100)
+SUITE["archive"]["ParetoGridArchive/qd_score"] = @benchmarkable qd_score($pareto_archive)
+SUITE["archive"]["ParetoGridArchive/global_hypervolume"] = @benchmarkable global_hypervolume($pareto_archive)
+SUITE["algorithm"]["MOME/step!"] = let alg = MOME(bisphere; dims=(100, 100))
+    state = init(bisphere, alg; budget=10^9, rng=Xoshiro(1))
+    @benchmarkable step!($state)
+end
