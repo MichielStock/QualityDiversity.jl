@@ -236,8 +236,8 @@ These hold for code in `src/`. Tests in `test/` check them.
 - Descriptors are `SVector`s from StaticArrays.jl.
 - Batch outputs are preallocated with types computed from the archive's type
   parameters, not grown with `push!` into an untyped container.
-- No `@inbounds` without profiling evidence; see
-  `.claude/rules/julia-inbounds.md`.
+- No `@inbounds` without profiling evidence. Where one is used, a comment
+  states why the index is in range and the measured gain.
 - Default `evaluate_batch` uses threads. Leave cores free for the user when
   running benchmarks.
 
@@ -320,11 +320,11 @@ Julia LTS and the current release.
 - [x] **Phase 2 — First end-to-end run.** `GridArchive`, `GaussianMutation`,
       `VariationEmitter`, `QDProblem`, `Rastrigin`, `init`/`step!`/`solve`,
       `MAPElites()`. Example `examples/rastrigin.jl` fills an archive.
-- [ ] **Phase 3 — Guarantees.** Metrics, `Testing` submodule, conformance
+- [x] **Phase 3 — Guarantees.** Metrics, `Testing` submodule, conformance
       tests, inference and allocation tests, Aqua/ExplicitImports/JET.
-- [ ] **Phase 4 — Benchmarks.** BenchmarkTools suite; comparison with pyribs
+- [x] **Phase 4 — Benchmarks.** BenchmarkTools suite; comparison with pyribs
       on Rastrigin (same archive shape, batch size, evaluation budget).
-- [ ] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
+- [x] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
       Graphs.jl genotype, custom `vary`, descriptor from graph statistics.
 - [ ] **Phase 6 — More algorithms.** One at a time, easiest first. Each comes
       with tests, a conformance check from `Testing`, and a benchmark entry.
@@ -433,8 +433,6 @@ Ask the author before resolving any of these.
 Comments, docstrings and commit messages describe what is true of the code
 now, for a reader who has only the repository. No references to plans,
 phases, roadmap items, chat sessions, or history ("previously", "for now").
-Full rule: `.claude/rules/code-comments.md`. A hook flags violations after
-each edit.
 
 ### Working with Julia
 
@@ -455,14 +453,3 @@ each edit.
   of the exact text.
 - Keep this file out of the registered package if the author decides so (add
   it to `.git/info/exclude`); until then it is committed.
-
-### Skills available in this repository
-
-| Skill | Use |
-|---|---|
-| `/qd-new-component` | add a problem, archive, variation, emitter or algorithm that meets its contract, with tests |
-| `/profile-performance` | find hot spots, runtime dispatch and allocations; propose fixes |
-| `/qd-benchmark` | maintain the BenchmarkTools suite and the pyribs comparison |
-| `/review-design` | review the type hierarchy and contracts against this file |
-| `/freshen-quality` | add or run Aqua, ExplicitImports and JET checks |
-| `/limit-struct-mutability` | make `mutable struct`s immutable or mark fields `const` |
