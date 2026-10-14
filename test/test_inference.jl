@@ -140,3 +140,22 @@ end
         @test allocated(QD.add!, archive, x, Evaluation(2000.0, SVector(60.0, 60.0))) == 0   # new slot, or eviction
     end
 end
+
+@testset "CategoricalArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (round(x[1]), round(x[2])));
+                     init=rng -> SVector{3,Float64}(6 .* rand(rng, 3) .- 3),
+                     bounds=((-3, 3), (-3, 3)))
+    for outside in (ThrowOutside(), RejectOutside())
+        archive = CategoricalArchive{SVector{3,Float64}}((-3:3, -3:3); outside)
+        x = QD.random_solution(Xoshiro(1), prob)
+        ev = QD.evaluate(prob, x)
+        @inferred QD.cell_index(archive, ev.descriptor)
+        @inferred QD.add!(archive, x, ev)
+        @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+        @test allocated(QD.add!, archive, x, ev) == 0                                         # rejected
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness + 1, ev.descriptor)) == 0   # improvement
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness, SVector(3.0, -3.0))) == 0  # another cell
+    end
+    archive = CategoricalArchive((-3:3, -3:3))
+    @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, SVector(0.0, 0.0))); archive), 4)
+end

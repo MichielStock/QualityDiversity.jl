@@ -47,6 +47,15 @@ end
     test_archive(() -> CVTArchive(centroids, bounds; outside=RejectOutside()), prob)
 end
 
+@testset "categorical archives" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (round(x[1]), round(x[2])));
+                     init=rng -> 6 .* rand(rng, 3) .- 3, bounds=((-3, 3), (-3, 3)))
+    test_archive(() -> CategoricalArchive((-3:3, -3:3)), prob)
+    test_archive(() -> CategoricalArchive((-3:3, -3:3); outside=RejectOutside()), prob)
+    test_archive(() -> CategoricalArchive(([3, -3, 0, 1, -1, 2, -2], -3:3)), prob)
+    test_archive(() -> CategoricalArchive{Vector{Float32},Float32}((-3:3, -3:3)), prob)
+end
+
 @testset "unstructured archives" begin
     prob = Rastrigin(4)
     test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0.5), prob)

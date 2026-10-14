@@ -19,11 +19,12 @@ struct RejectOutside <: OutsidePolicy end
     CellArchive{G,F,D}
 
 Supertype of the archives that divide descriptor space into a fixed number of
-cells and keep the highest-fitness solution found in each: [`GridArchive`](@ref)
-and [`CVTArchive`](@ref). They differ in how a descriptor is assigned to a cell
-and share everything else: storage, `add!`, `add_batch!`, `sample_elites`,
-`elites`, `length`, `capacity`, `empty!` and the metrics, including the running
-totals that make `qd_score`, `max_fitness` and `mean_fitness` constant-time.
+cells and keep the highest-fitness solution found in each: [`GridArchive`](@ref),
+[`CVTArchive`](@ref) and [`CategoricalArchive`](@ref). They differ in how a
+descriptor is assigned to a cell and share everything else: storage, `add!`,
+`add_batch!`, `sample_elites`, `elites`, `length`, `capacity`, `empty!` and the
+metrics, including the running totals that make `qd_score`, `max_fitness` and
+`mean_fitness` constant-time.
 
 A subtype defines [`cell_index`](@ref QualityDiversity.cell_index), returning `0`
 for a descriptor its `outside` policy rejects, and has these fields, which the

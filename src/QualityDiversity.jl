@@ -33,6 +33,7 @@ include("archives/cell_archive.jl")
 include("archives/grid.jl")
 include("archives/nearest_centroid.jl")
 include("archives/cvt.jl")
+include("archives/categorical.jl")
 include("archives/unstructured.jl")
 include("variation/gaussian.jl")
 include("variation/isoline.jl")
@@ -47,7 +48,7 @@ export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
 export QDProblem, Rastrigin
-export GridArchive, CVTArchive, UnstructuredArchive, OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
+export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter
 export MAPElites
