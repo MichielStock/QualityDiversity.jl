@@ -13,8 +13,7 @@ After a generation the vectors and the path of the step size move toward the
 recombined `z` of the parents, and the step size follows the cumulative step size
 rule. The learning rates are `c_σ = 2 batch_size / dim`, `c_d,j = 1 / (1.5^(j-1) dim)`
 and `c_c,j = batch_size / (4^(j-1) dim)`. They require `batch_size < dim`, and
-`n_vectors` is at most `dim`. Unlike the reference implementation, the solutions of a
-batch are not mirrored.
+`n_vectors` is at most `dim`. The solutions of a batch are not mirrored.
 
 The arguments, `sample!`, `update!` and `should_stop` are those of
 [`AbstractEvolutionStrategy`](@ref). `should_stop` also reports a step size below
