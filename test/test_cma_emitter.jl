@@ -16,10 +16,19 @@ fit(f) = Evaluation(f, SVector(0.5, 0.5))
     two = [result(QD.Rejected, 9), result(QD.NewCell, 1), result(QD.Improved, 4),
            result(QD.Improved, 7), result(QD.Rejected, -1)]
     order, values = QD.rank(TwoStageImprovementRanker(), evs, two)
-    @test order == [2, 4, 3, 1, 5] && values == [1.0, 7.0, 4.0, 9.0, -1.0]
+    @test order == [2, 4, 3, 1, 5] && values == [(2, 1.0), (1, 7.0), (1, 4.0), (0, 9.0), (0, -1.0)]
     @test QD.rank_key(TwoStageImprovementRanker(), fit(1.0), result(QD.NewCell, 3)) === (2, 3.0)
     @test QD.rank_key(ObjectiveRanker(), fit(2), result(QD.Rejected, 0)) === 2.0
-    @test QD.ranking_value(4.5) === 4.5 && QD.ranking_value((2, 3.0)) === 3.0
+    # by status first, then by fitness
+    order, values = QD.rank(TwoStageObjectiveRanker(), evs, two)
+    @test order == [2, 4, 3, 5, 1] && values == [(2, 5.0), (1, 5.0), (1, 3.0), (0, 2.0), (0, 1.0)]
+    @test QD.rank_key(TwoStageObjectiveRanker(), fit(2.5), result(QD.Improved, 0)) === (1, 2.5)
+
+    # a batch is flat when the whole key of the best and the worst agree
+    @test QD.key_distance(4.5, 4.0) == 0.5 && QD.key_distance((2, 3.0), (2, 3.0)) == 0
+    @test QD.key_distance((2, 3.0), (0, 3.0)) == 2
+    @test QD.flat_ranking([1.0, 1.0 + 1e-13]) && !QD.flat_ranking([1.0, 1.1]) && !QD.flat_ranking([1.0])
+    @test QD.flat_ranking([(1, 2.0), (1, 2.0)]) && !QD.flat_ranking([(2, 2.0), (0, 2.0)])
 
     # a new ranker defines rank_key
     struct NegativeFitnessRanker <: AbstractRanker end
@@ -240,4 +249,83 @@ end
     mae = CMAMAE(prob; dims, sigma0=0.5, threshold_min=0.0, learning_rate=0.1)
     r = solve(prob, mae; budget=5_000, rng=Xoshiro(1))
     @test r.archive isa GridArchive && issorted(h.max_fitness for h in r.history)
+end
+
+@testset "direction rankers" begin
+    archive = GridArchive((4, 4), ((0, 2), (-10, 10)))
+    ranker = RandomDirectionRanker()
+    @test isempty(ranker.direction)
+    @test_throws "the direction of the ranker is not set" QD.rank_key(ranker, fit(1.0), result(QD.NewCell, 1))
+    QD.reset_ranker!(Xoshiro(1), ranker, archive)
+    @test length(ranker.direction) == 2
+    # reproducible from the generator, and a new draw after each reset
+    other = RandomDirectionRanker()
+    QD.reset_ranker!(Xoshiro(1), other, archive)
+    @test other.direction == ranker.direction
+    QD.reset_ranker!(Xoshiro(2), other, archive)
+    @test other.direction != ranker.direction
+    # a standard normal vector scaled by the extent of the archive
+    scaled = [QD.reset_ranker!(Xoshiro(i), other, archive) === nothing ? copy(other.direction) : nothing for i in 1:4000]
+    @test sqrt(sum(d[1]^2 for d in scaled) / 4000) ≈ 2 rtol = 0.1
+    @test sqrt(sum(d[2]^2 for d in scaled) / 4000) ≈ 20 rtol = 0.1
+
+    # candidates are ordered by the projection of the descriptor
+    ranker.direction .= [1.0, 2.0]
+    evs = [Evaluation(0.0, SVector(1.0, 1.0)), Evaluation(0.0, SVector(0.0, 5.0)), Evaluation(0.0, SVector(2.0, -3.0))]
+    results = [result(QD.Rejected, 0), result(QD.NewCell, 0), result(QD.Improved, 0)]
+    order, keys = QD.rank(ranker, evs, results)
+    @test order == [2, 1, 3] && keys == [10.0, 3.0, -4.0]
+    # in two stages the status comes first
+    two = TwoStageRandomDirectionRanker([1.0, 2.0])
+    order, keys = QD.rank(two, evs, results)
+    @test order == [2, 3, 1] && keys == [(2, 10.0), (1, -4.0), (0, 3.0)]
+    @test_throws "the descriptor has 2 dimensions but the direction has 3" QD.rank_key(RandomDirectionRanker([1.0, 2.0, 3.0]), evs[1], results[1])
+
+    # the archive wrappers report their bounds, and others fail with a message
+    @test QD.descriptor_bounds(archive) == ((0.0, 2.0), (-10.0, 10.0))
+    @test QD.descriptor_bounds(ThresholdArchive(archive; learning_rate=0.1, threshold_min=0.0)) == ((0.0, 2.0), (-10.0, 10.0))
+    @test_throws "UnstructuredArchive does not report the bounds of its descriptor space" QD.reset_ranker!(Xoshiro(1), ranker, UnstructuredArchive{Vector{Float64}}(2; capacity=10, threshold=0.1))
+    # rankers without state ignore the reset
+    @test QD.reset_ranker!(Xoshiro(1), ObjectiveRanker(), archive) === nothing
+end
+
+@testset "CMAEmitter keeps its own ranker and redraws the direction" begin
+    archive = elite_archive()
+    ranker = TwoStageRandomDirectionRanker()
+    a = CMAEmitter(3; sigma0=0.5, ranker)
+    b = CMAEmitter(3; sigma0=0.5, ranker)
+    @test a.ranker !== ranker && a.ranker !== b.ranker && isempty(ranker.direction)
+    @test a isa CMAEmitter{TwoStageRandomDirectionRanker}
+    xs = QD.ask(Xoshiro(1), a, archive)
+    @test length(a.ranker.direction) == 2 && isempty(b.ranker.direction)
+    first_direction = copy(a.ranker.direction)
+    evs = [Evaluation(0.0, SVector(i / 10, 0.0)) for i in 1:QD.batch_size(a)]
+    results = [result(QD.Rejected, 0) for _ in evs]
+    QD.tell!(a, xs, evs, results)
+    @test a.restart_pending
+    QD.ask(Xoshiro(2), a, archive)
+    @test a.ranker.direction != first_direction              # a restart draws a new direction
+    # the algorithm constructors give every emitter its own ranker
+    alg = CMAME(Sphere(4); dims=(4, 4), sigma0=1.0, num_emitters=3, ranker=RandomDirectionRanker())
+    @test length(unique(objectid(e.ranker) for e in alg.emitters)) == 3
+end
+
+@testset "CMAEmitter with each evolution strategy" begin
+    archive = elite_archive()
+    for strategy in (CMAES, SepCMAES, LMMAES, OpenAIES, (dim; kwargs...) -> LMMAES(dim; kwargs..., n_vectors=2))
+        # LMMAES needs a batch smaller than the dimension
+        dim = 10
+        grid = GridArchive{Vector{Float64}}((4, 4), ((-4, 4), (-4, 4)))
+        QD.add!(grid, fill(1.0, dim), Evaluation(-1.0, SVector(0.0, 0.0)))
+        e = CMAEmitter(dim; sigma0=0.5, strategy, batch_size=6)
+        @test e.es isa AbstractEvolutionStrategy && QD.batch_size(e) == 6
+        xs = QD.ask(Xoshiro(1), e, grid)
+        @test length(xs) == 6 && all(x -> length(x) == dim, xs)
+        evs = [Evaluation(-sum(abs2, x), SVector(x[1], x[2])) for x in xs]
+        results = QD.add_batch!(grid, xs, evs)
+        @test QD.tell!(e, xs, evs, results) === nothing
+    end
+    @test CMAEmitter(10; sigma0=1, strategy=OpenAIES).es.batch_size == 2 * cld(4 + floor(Int, 3 * log(10)), 2)
+    @test_throws "strategy must construct an AbstractEvolutionStrategy, got a Int64" CMAEmitter(3; sigma0=1, strategy=(dim; kwargs...) -> 1)
+    @test CMAME(Sphere(10); dims=(4, 4), sigma0=1.0, strategy=SepCMAES).emitters[1] isa CMAEmitter{<:Any,<:Any,<:Any,SepCMAES}
 end

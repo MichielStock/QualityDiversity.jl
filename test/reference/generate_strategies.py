@@ -1,0 +1,113 @@
+# Reference values for test_evolution_strategies.jl: the update equations of CMA-ES
+# (Hansen, 2016, "The CMA Evolution Strategy: A Tutorial"), sep-CMA-ES
+# (Ros and Hansen, 2008, with the constants of pycma), LM-MA-ES (Loshchilov et al.,
+# 2019) and OpenAI-ES (Salimans et al., 2017, with Adam), implemented independently of
+# the package in NumPy and run on fixed inputs. `python3 generate_strategies.py`
+# rewrites `strategies.jl` next to it.
+import numpy as np
+rng = np.random.default_rng(11)
+def fmt(a): return "[" + ", ".join(repr(float(v)) for v in np.ravel(a)) + "]"
+lines = []
+def emit(name, value):
+    if isinstance(value, list) and value and isinstance(value[0], str): value = "[" + ",\n    ".join(value) + "]"
+    elif isinstance(value, list): value = "[" + ", ".join(str(v) for v in value) + "]"
+    lines.append(f"const {name} = {value}")
+def weights(p):
+    w = np.log(p + .5) - np.log(np.arange(1, p + 1)); return w / w.sum()
+out = []
+# ---------------- CMA-ES (Hansen 2016, tutorial) -------------------------------
+n, lam = 5, 8
+x0 = rng.normal(size=n); s0 = 0.7
+mean, sig, C = x0.copy(), s0, np.eye(n); pc = np.zeros(n); ps = np.zeros(n)
+Xs, orders, ps_list = [], [], [4, 2, 4]
+for g, p in enumerate(ps_list, start=1):
+    d, B = np.linalg.eigh(C)
+    Y = (rng.normal(size=(lam, n)) * np.sqrt(d)) @ B.T; X = mean + sig * Y
+    order = rng.permutation(lam); Xs.append(X); orders.append(order)
+    w = weights(p); mu = 1 / np.sum(w**2); sel = Y[order[:p]]
+    cc = (4 + mu/n) / (n + 4 + 2*mu/n); cs = (mu + 2) / (n + mu + 5)
+    c1 = 2 / ((n + 1.3)**2 + mu); cmu = min(1 - c1, 2*(mu - 2 + 1/mu) / ((n + 2)**2 + mu))
+    damps = 1 + 2*max(0, np.sqrt((mu-1)/(n+1)) - 1) + cs
+    chi = np.sqrt(n) * (1 - 1/(4*n) + 1/(21*n*n))
+    invsqrt = B @ np.diag(d**-.5) @ B.T
+    yw = w @ sel; mean = mean + sig * yw
+    ps = (1-cs)*ps + np.sqrt(cs*(2-cs)*mu) * (invsqrt @ yw)
+    hs = float(np.linalg.norm(ps) / np.sqrt(1-(1-cs)**(2*g)) / chi < 1.4 + 2/(n+1))
+    pc = (1-cc)*pc + hs*np.sqrt(cc*(2-cc)*mu)*yw
+    C = (1 + c1*(1-hs)*cc*(2-cc) - c1 - cmu)*C + c1*np.outer(pc, pc) + cmu*(sel.T * w) @ sel
+    sig = sig * np.exp(min(1, cs/damps*(np.linalg.norm(ps)/chi - 1)))
+emit("cma_x0", fmt(x0)); emit("cma_s0", s0)
+emit("cma_X", [fmt(X) for X in Xs]); emit("cma_orders", [list(map(int, o+1)) for o in orders]); emit("cma_parents", ps_list)
+emit("cma_mean", fmt(mean)); emit("cma_sigma", repr(float(sig))); emit("cma_cov", fmt(C))
+# ---------------- sep-CMA-ES (Ros & Hansen 2008; constants of pycma) -------------
+n, lam = 5, 8
+x0 = rng.normal(size=n); s0 = 0.4
+mean, sig, var = x0.copy(), s0, np.ones(n); pc = np.zeros(n); ps = np.zeros(n)
+Xs, orders, ps_list = [], [], [4, 2, 4]
+for g, p in enumerate(ps_list, start=1):
+    Y = rng.normal(size=(lam, n)) * np.sqrt(var); X = mean + sig * Y
+    order = rng.permutation(lam); Xs.append(X); orders.append(order)
+    w = weights(p); mu = 1 / np.sum(w**2); sel = Y[order[:p]]
+    cc = (1 + 1/n + mu/n) / (np.sqrt(n) + 1/n + 2*mu/n); cs = (mu + 2) / (n + mu + 5)
+    c1 = 1 / (n + 2*np.sqrt(n) + mu/n)
+    cmu = min(1 - c1, (.25 + mu + 1/mu - 2) / (n + 4*np.sqrt(n) + mu/2))
+    damps = 1 + 2*max(0, np.sqrt((mu-1)/(n+1)) - 1) + cs
+    chi = np.sqrt(n) * (1 - 1/(4*n) + 1/(21*n*n))
+    yw = w @ sel; mean = mean + sig * yw
+    ps = (1-cs)*ps + np.sqrt(cs*(2-cs)*mu) * yw / np.sqrt(var)
+    hs = float(np.linalg.norm(ps) / np.sqrt(1-(1-cs)**(2*g)) / chi < 1.4 + 2/(n+1))
+    pc = (1-cc)*pc + hs*np.sqrt(cc*(2-cc)*mu)*yw
+    var = (1 + c1*(1-hs)*cc*(2-cc) - c1 - cmu)*var + c1*pc**2 + cmu*(w @ sel**2)
+    sig = sig * np.exp(min(1, cs/damps*(np.linalg.norm(ps)/chi - 1)))
+emit("sep_x0", fmt(x0))
+emit("sep_s0", s0)
+emit("sep_X", [fmt(X) for X in Xs])
+emit("sep_orders", [list(map(int, o+1)) for o in orders])
+emit("sep_parents", ps_list)
+emit("sep_mean", fmt(mean))
+emit("sep_sigma", repr(float(sig)))
+emit("sep_var", fmt(var))
+# ---------------- LM-MA-ES (Loshchilov et al. 2019) ----------------------------
+n, lam, m = 8, 6, 3
+x0 = rng.normal(size=n); s0 = 0.5
+cs_ = 2*lam/n; cd = np.array([1/(1.5**j * n) for j in range(m)]); ccv = np.array([lam/(4.0**j * n) for j in range(m)])
+mean, sig, ps = x0.copy(), s0, np.zeros(n); M = np.zeros((m, n))
+Zs, Ys, Xs, orders, ps_list = [], [], [], [], [3, 3, 2]
+for g, p in enumerate(ps_list):
+    Z = rng.normal(size=(lam, n)); Y = Z.copy()
+    for j in range(min(g, m)):
+        Y = (1-cd[j])*Y + cd[j]*np.outer(Y @ M[j], M[j])
+    X = mean + sig*Y; order = rng.permutation(lam)
+    Zs.append(Z); Ys.append(Y); Xs.append(X); orders.append(order)
+    w = weights(p); mu = 1/np.sum(w**2)
+    zm = w @ Z[order[:p]]; mean = mean + sig * (w @ Y[order[:p]])
+    ps = (1-cs_)*ps + np.sqrt(mu*cs_*(2-cs_))*zm
+    M = (1-ccv)[:, None]*M + np.sqrt(mu*ccv*(2-ccv))[:, None]*zm[None]
+    sig = sig*np.exp(cs_/2*(ps@ps/n - 1))
+emit("lm_x0", fmt(x0))
+emit("lm_s0", s0)
+emit("lm_Z", [fmt(Z) for Z in Zs])
+emit("lm_Y", [fmt(Y) for Y in Ys])
+emit("lm_orders", [list(map(int, o+1)) for o in orders])
+emit("lm_parents", ps_list)
+emit("lm_mean", fmt(mean))
+emit("lm_sigma", repr(float(sig)))
+emit("lm_ps", fmt(ps))
+emit("lm_M", fmt(M))
+# ---------------- OpenAI-ES (Salimans et al. 2017) with Adam -------------------
+n, lam = 4, 8; s0 = 0.3; lr, b1, b2, eps = 0.05, 0.9, 0.999, 1e-8
+x0 = rng.normal(size=n); th = x0.copy(); m1 = np.zeros(n); m2 = np.zeros(n)
+Es, orders = [], []
+for t in range(1, 4):
+    E = rng.normal(size=(lam//2, n)); Es.append(E)
+    order = rng.permutation(lam); orders.append(order)
+    r = np.empty(lam); r[order] = (lam - 1 - np.arange(lam)) / (lam - 1) - .5
+    g = (E * (r[:lam//2] - r[lam//2:])[:, None]).sum(0) / (lam//2 * s0)
+    m1 = b1*m1 + (1-b1)*g; m2 = b2*m2 + (1-b2)*g*g
+    th = th + lr*np.sqrt(1-b2**t)/(1-b1**t) * m1/(np.sqrt(m2)+eps)
+emit("oa_x0", fmt(x0))
+emit("oa_E", [fmt(E) for E in Es])
+emit("oa_orders", [list(map(int, o+1)) for o in orders])
+emit("oa_theta", fmt(th))
+
+open("strategies.jl", "w").write("\n".join(lines) + "\n")

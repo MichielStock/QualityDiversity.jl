@@ -1,12 +1,10 @@
-const RESAMPLE_LIMIT = 1_000
-
 """
     CMAES(dim; sigma0, batch_size=default, lower=-Inf, upper=Inf)
 
 Covariance matrix adaptation evolution strategy (Hansen and Ostermeier, 2001;
 Hansen, 2016, "The CMA Evolution Strategy: A Tutorial"), maximizing. It keeps a
 Gaussian search distribution with mean `m`, step size `σ` and covariance `C`, and
-is the optimizer inside a [`CMAEmitter`](@ref).
+is the default optimizer inside a [`CMAEmitter`](@ref).
 
 A generation has two calls. `sample!(rng, es)` draws `batch_size` solutions,
 `x = m + σ B D z` with `z` standard normal and `C = B D² Bᵀ`, and leaves them in
@@ -21,12 +19,13 @@ or vectors, a sample is drawn again until it lies inside; it is an error if that
 takes more than $(RESAMPLE_LIMIT) draws, which means the distribution has left the
 bounds.
 
-`should_stop(es, values)` reports the termination criteria of CMA-ES: a covariance
+`should_stop(es, keys)` reports the termination criteria of CMA-ES: a covariance
 matrix with a condition number above `1e14`, a distribution that has shrunk below
-`1e-11`, a non-finite state, or `values`, the ranking values from best to worst, being
-flat. `reset!(es, x0)` restarts the search at `x0`.
+`1e-11`, a non-finite state, or `keys`, the ranking keys from best to worst, being
+flat: the best and the worst are within `1e-12` of each other. `reset!(es, x0)`
+restarts the search at `x0`.
 """
-mutable struct CMAES
+mutable struct CMAES <: AbstractEvolutionStrategy
     const dim::Int
     const batch_size::Int
     const sigma0::Float64
@@ -53,38 +52,15 @@ mutable struct CMAES
     step::Vector{Float64}
 end
 
-function default_batch_size(dim::Integer)
-    dim >= 1 || throw(ArgumentError("dim must be at least 1, got $dim"))
-    return 4 + floor(Int, 3 * log(dim))
-end
-
 function CMAES(dim::Integer; sigma0::Real, batch_size::Integer=default_batch_size(dim),
                lower=-Inf, upper=Inf)
-    dim >= 1 || throw(ArgumentError("dim must be at least 1, got $dim"))
-    sigma0 > 0 && isfinite(sigma0) ||
-        throw(ArgumentError("sigma0 must be positive and finite, got $sigma0"))
-    batch_size >= 2 ||
-        throw(ArgumentError("batch_size must be at least 2 so that there is a parent, got $batch_size"))
-    lo = bound_vector(lower, dim, "lower")
-    hi = bound_vector(upper, dim, "upper")
-    for i in 1:dim
-        lo[i] < hi[i] ||
-            throw(ArgumentError("lower[$i] is $(lo[i]) but must be less than upper[$i], which is $(hi[i])"))
-    end
+    lo, hi = check_strategy_arguments(dim, sigma0, batch_size, lower, upper)
     es = CMAES(Int(dim), Int(batch_size), Float64(sigma0), lo, hi,
                zeros(dim), Float64(sigma0), Matrix{Float64}(I, dim, dim),
                Matrix{Float64}(I, dim, dim), ones(dim), Matrix{Float64}(I, dim, dim),
                zeros(dim), zeros(dim), 0, 0,
                zeros(dim, batch_size), zeros(dim, batch_size), zeros(dim), zeros(dim))
     return es
-end
-
-function bound_vector(bound, dim, name)
-    v = bound isa Real ? fill(Float64(bound), dim) : collect(Float64, bound)
-    length(v) == dim ||
-        throw(ArgumentError("$name has $(length(v)) entries but the dimension is $dim"))
-    any(isnan, v) && throw(ArgumentError("$name must not contain NaN"))
-    return v
 end
 
 """
@@ -94,9 +70,7 @@ Restart the search at `x0`: the mean becomes `x0`, the step size `sigma0`, and t
 covariance matrix the identity.
 """
 function reset!(es::CMAES, x0::AbstractVector{<:Real})
-    length(x0) == es.dim ||
-        throw(ArgumentError("x0 has $(length(x0)) entries but the dimension is $(es.dim)"))
-    all(isfinite, x0) || throw(ArgumentError("x0 must be finite"))
+    check_start(x0, es.dim)
     es.mean .= x0
     es.sigma = es.sigma0
     for matrix in (es.cov, es.basis, es.inv_sqrt)
@@ -140,7 +114,7 @@ function sample!(rng::AbstractRNG, es::CMAES)
             end
             draws += 1
             draws > RESAMPLE_LIMIT &&
-                throw(ErrorException("could not draw a solution inside the bounds in $RESAMPLE_LIMIT tries; the mean is $(es.mean) and the step size $(es.sigma)"))
+                throw(resample_error("the mean is $(es.mean) and the step size $(es.sigma)"))
         end
     end
     return es.x
@@ -148,8 +122,7 @@ end
 
 # Recombination weights for `parents` parents, and the constants of the update.
 function strategy_constants(dim, parents)
-    weights = [log(parents + 0.5) - log(i) for i in 1:parents]
-    weights ./= sum(weights)
+    weights = recombination_weights(parents)
     mueff = 1 / sum(abs2, weights)
     cc = (4 + mueff / dim) / (dim + 4 + 2 * mueff / dim)
     cs = (mueff + 2) / (dim + mueff + 5)
@@ -221,16 +194,11 @@ function update_eigensystem!(es::CMAES)
 end
 
 """
-    should_stop(es::CMAES, values) -> Bool
+    should_stop(es::CMAES, keys) -> Bool
 
-Whether the search has converged or broken down; see [`CMAES`](@ref). `values` are
-the ranking values of the last batch from best to worst.
+Whether the search has converged or broken down; see [`CMAES`](@ref). `keys` are the
+ranking keys of the last batch from best to worst.
 """
-function should_stop(es::CMAES, values::AbstractVector{<:Real})
-    isfinite(es.sigma) && all(isfinite, es.mean) && all(isfinite, es.eigenvalues) || return true
-    lo, hi = extrema(es.eigenvalues)
-    hi / lo > 1e14 && return true
-    es.sigma * sqrt(hi) < 1e-11 && return true
-    length(values) >= 2 && abs(first(values) - last(values)) < 1e-12 && return true
-    return false
+function should_stop(es::CMAES, keys::AbstractVector)
+    return covariance_converged(es.sigma, es.mean, es.eigenvalues, keys)
 end

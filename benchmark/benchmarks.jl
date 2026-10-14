@@ -125,6 +125,18 @@ SUITE["emitter"]["CMAEmitter/tell!"] = let xs = QD.ask(rng, CMAEmitter(20; sigma
     # tell! needs a fresh ask before each call; only tell! is timed
     @benchmarkable QD.tell!(e, $xs, $evs, $results) setup = (e = CMAEmitter(20; sigma0=0.5); QD.ask($rng, e, $cma_archive)) evals = 1
 end
+for (name, kwargs) in (("SepCMAES", (; strategy=SepCMAES)), ("LMMAES", (; strategy=LMMAES)),
+                       ("OpenAIES", (; strategy=OpenAIES)),
+                       ("RandomDirection", (; ranker=TwoStageRandomDirectionRanker())))
+    SUITE["emitter"]["CMAEmitter/$name/ask"] = let e = CMAEmitter(20; sigma0=0.5, kwargs...)
+        @benchmarkable QD.ask($rng, $e, $cma_archive)
+    end
+    SUITE["emitter"]["CMAEmitter/$name/tell!"] = let xs = QD.ask(rng, CMAEmitter(20; sigma0=0.5, kwargs...), cma_archive)
+        evs = QD.evaluate_batch(sphere, xs)
+        results = QD.add_batch!(deepcopy(cma_archive), xs, evs)
+        @benchmarkable QD.tell!(e, $xs, $evs, $results) setup = (e = CMAEmitter(20; sigma0=0.5, $kwargs...); QD.ask($rng, e, $cma_archive)) evals = 1
+    end
+end
 SUITE["algorithm"]["CMAME/step!"] = let alg = CMAME(sphere; dims=(100, 100), sigma0=0.5)
     state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
     @benchmarkable step!($state)

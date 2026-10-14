@@ -184,9 +184,10 @@ bounded genotypes, and `UniformCrossover(proportion)`. A user with a custom geno
 | `batch_size(emitter)` | required | |
 
 Concrete emitters: `VariationEmitter(op; batch_size)` (select parents
-uniformly, apply `op`) and `CMAEmitter` (a CMA-ES search distribution whose update
+uniformly, apply `op`) and `CMAEmitter` (a search distribution whose update
 is driven by a ranker, a selection rule and a restart rule, all types chosen by
-dispatch). An emitter with state may require `tell!` to follow the `ask` that
+dispatch; the optimizer is an `AbstractEvolutionStrategy`: `CMAES`, `SepCMAES`,
+`LMMAES` or `OpenAIES`). An emitter with state may require `tell!` to follow the `ask` that
 produced the batch.
 
 **Algorithm and state** — CommonSolve.jl interface:
@@ -279,7 +280,11 @@ QualityDiversity.jl/
 │   │   └── crossover.jl         # UniformCrossover
 │   ├── emitters/
 │   │   ├── variation_emitter.jl
+│   │   ├── evolution_strategy.jl # AbstractEvolutionStrategy and what the strategies share
 │   │   ├── cma_es.jl             # the CMA-ES optimizer inside CMAEmitter
+│   │   ├── sep_cma_es.jl
+│   │   ├── lm_ma_es.jl
+│   │   ├── openai_es.jl
 │   │   ├── rankers.jl
 │   │   └── cma_emitter.jl
 │   ├── solve.jl                  # QDAlgorithm, QDState, QDResult, init/step!/solve!
@@ -356,8 +361,8 @@ Julia LTS and the current release.
   - [x] `CMAEmitter` with a CMA-ES core, the two-stage improvement, improvement
         and objective rankers, filter and mu selection, and restart rules;
         `CMAME()` and `CMAMAE()`
-  - [ ] Random-direction ranker (CMA-ME-RD); further evolution strategies
-        (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
+  - [x] Random-direction rankers (CMA-ME-RD) and the two-stage objective ranker;
+        further evolution strategies (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
   - [ ] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
   - [ ] `SlidingBoundariesArchive` (pyribs), `BanditScheduler` for choosing
         among emitters (pyribs), `DensityArchive` and `DNSArchive` (pyribs)
@@ -410,7 +415,12 @@ Settled; change them only with the author's agreement.
   is filled before the first `ask`. `sigma0` has no default. `CMAME` defaults to the
   rules of CMA-ME (two-stage improvement ranking, filter selection, restart after a
   rejected batch) and `CMAMAE` to those of CMA-MAE (improvement ranking, mu
-  selection, restart on convergence only) over a `ThresholdArchive`.
+  selection, restart on convergence only) over a `ThresholdArchive`. The optimizer is
+  chosen by the `strategy` keyword (a type, `CMAES` by default). A ranker may hold
+  state, such as a random direction: an emitter keeps its own copy of its ranker, and
+  calls `reset_ranker!(rng, ranker, archive)` whenever a search starts. A batch is flat
+  when the whole ranking key of its best and its worst candidate agree, status
+  included, as in pyribs and QDax.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.

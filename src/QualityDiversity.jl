@@ -42,7 +42,11 @@ include("variation/isoline.jl")
 include("variation/polynomial.jl")
 include("variation/crossover.jl")
 include("emitters/variation_emitter.jl")
+include("emitters/evolution_strategy.jl")
 include("emitters/cma_es.jl")
+include("emitters/sep_cma_es.jl")
+include("emitters/lm_ma_es.jl")
+include("emitters/openai_es.jl")
 include("emitters/rankers.jl")
 include("emitters/cma_emitter.jl")
 include("solve.jl")
@@ -57,7 +61,9 @@ export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, Thresho
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter, CMAEmitter
-export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker
+export AbstractEvolutionStrategy, CMAES, SepCMAES, LMMAES, OpenAIES
+export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker,
+    TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker
 export FilterSelection, MuSelection
 export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
 export MAPElites, CMAME, CMAMAE
@@ -71,6 +77,7 @@ export qd_score, coverage, max_fitness, mean_fitness
 @compat public vary, n_parents
 @compat public CellArchive, centroids, thresholds
 @compat public Testing
-@compat public ask, tell!, batch_size, rank_key, ranking_value, SelectionRule, RestartRule
+@compat public reset!, sample!, update!, should_stop
+@compat public ask, tell!, batch_size, rank_key, reset_ranker!, SelectionRule, RestartRule
 
 end
