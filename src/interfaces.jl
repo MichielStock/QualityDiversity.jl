@@ -24,14 +24,45 @@ Fitness is maximized. A problem that minimizes returns the negated value.
 abstract type AbstractQDProblem end
 
 """
-    evaluate(prob::AbstractQDProblem, x) -> Evaluation
+    AbstractStochasticQDProblem
 
-Fitness and descriptor of one solution `x`. Required.
+Supertype of problems whose evaluation is random: scoring the same solution twice can
+give different fitness or descriptors. It is a subtype of [`AbstractQDProblem`](@ref).
+Instead of `evaluate(prob, x)`, such a problem defines
+
+- [`evaluate(rng, prob, x)`](@ref QualityDiversity.evaluate) → [`Evaluation`](@ref),
+  which draws all its randomness from `rng`,
+
+next to the other required methods of [`AbstractQDProblem`](@ref).
+
+A run stays reproducible from its seed, whatever the number of threads. Before a batch
+is evaluated, [`evaluate_batch(rng, prob, xs)`](@ref QualityDiversity.evaluate_batch)
+draws one seed per solution from the generator of the run, in the order of the batch,
+and gives every solution its own `Xoshiro` generator, so which thread evaluates a
+solution makes no difference. Deterministic problems do not use the generator of the run.
+
+[`StochasticQDProblem`](@ref) wraps a function, and [`Sampled`](@ref) evaluates a
+stochastic problem several times and returns the average.
+"""
+abstract type AbstractStochasticQDProblem <: AbstractQDProblem end
+
+"""
+    evaluate(prob::AbstractQDProblem, x) -> Evaluation
+    evaluate(rng::AbstractRNG, prob::AbstractStochasticQDProblem, x) -> Evaluation
+
+Fitness and descriptor of one solution `x`. Required. A stochastic problem takes the
+generator that it draws its randomness from as the first argument; see
+[`AbstractStochasticQDProblem`](@ref).
 """
 function evaluate end
 
+function evaluate(prob::AbstractStochasticQDProblem, x)
+    throw(ArgumentError("$(nameof(typeof(prob))) is a stochastic problem: call evaluate(rng, prob, x) with a random number generator"))
+end
+
 """
     evaluate_batch(prob::AbstractQDProblem, xs) -> Vector{<:Evaluation}
+    evaluate_batch(rng::AbstractRNG, prob::AbstractQDProblem, xs) -> Vector{<:Evaluation}
 
 Evaluate every solution in `xs`, returning one [`Evaluation`](@ref) per
 solution in the same order. Optional: a problem specializes it to evaluate a
@@ -45,6 +76,14 @@ to the device, runs array operations or a kernel, and copies the fitness and
 descriptor values back. `examples/gpu_evaluation.jl` does this for any array
 type of the GPU packages (CUDA.jl, Metal.jl, AMDGPU.jl, oneAPI.jl). The
 package itself does not depend on any of them.
+
+The method with a generator is the one that [`step!`](@ref) calls, with the generator
+of the run. For a deterministic problem it calls `evaluate_batch(prob, xs)` and leaves
+the generator untouched. For an [`AbstractStochasticQDProblem`](@ref) it draws one seed
+per solution from `rng`, in the order of the batch, and evaluates solution `i` with
+`evaluate(Xoshiro(seed_i), prob, xs[i])`, so the results do not depend on the number
+of threads. A stochastic problem can define its own method with a generator, for
+example to evaluate a batch on a device.
 """
 function evaluate_batch end
 
@@ -56,6 +95,36 @@ function evaluate_batch(prob::AbstractQDProblem, xs::AbstractVector)
     end
     return evs
 end
+
+evaluate_batch(rng::AbstractRNG, prob::AbstractQDProblem, xs::AbstractVector) =
+    evaluate_batch(prob, xs)
+
+function evaluate_batch(prob::AbstractStochasticQDProblem, xs::AbstractVector)
+    throw(ArgumentError("$(nameof(typeof(prob))) is a stochastic problem: call evaluate_batch(rng, prob, xs) with a random number generator"))
+end
+
+function evaluate_batch(rng::AbstractRNG, prob::AbstractStochasticQDProblem, xs::AbstractVector)
+    # One draw at a time: the seed of a solution is the draw at its position, whatever the
+    # length of the batch.
+    seeds = [rand(rng, UInt64) for _ in xs]
+    T = Base.promote_op(evaluate, Random.Xoshiro, typeof(prob), eltype(xs))
+    evs = Vector{T}(undef, length(xs))
+    Threads.@threads for i in eachindex(xs)
+        evs[i] = evaluate(Random.Xoshiro(seeds[i]), prob, xs[i])
+    end
+    return evs
+end
+
+"""
+    evaluations_per_solution(prob::AbstractQDProblem) -> Int
+
+How many times the underlying function is evaluated to score one solution. Optional;
+the default is `1`. [`Sampled`](@ref) returns its number of samples, and the budget of a
+run counts these evaluations.
+"""
+function evaluations_per_solution end
+
+evaluations_per_solution(::AbstractQDProblem) = 1
 
 """
     random_solution(rng::AbstractRNG, prob::AbstractQDProblem)

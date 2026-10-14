@@ -9,6 +9,7 @@ const QD = QualityDiversity
 @testset "QualityDiversity" begin
     @testset "contracts" begin include("test_contracts.jl") end
     @testset "problems" begin include("test_problems.jl") end
+    @testset "stochastic problems" begin include("test_stochastic.jl") end
     @testset "archives" begin include("test_archives.jl") end
     @testset "cvt archive" begin include("test_cvt.jl") end
     @testset "categorical archive" begin include("test_categorical.jl") end

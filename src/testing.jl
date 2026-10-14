@@ -23,7 +23,7 @@ that the results have the right types, and, for archives, that `cell_index`
 module Testing
 
 using Random: AbstractRNG, Xoshiro
-using Test: @inferred, @test, @testset
+using Test: @inferred, @test, @test_throws, @testset
 
 import ..QualityDiversity as QD
 
@@ -36,10 +36,49 @@ function allocations(f::F, args::Vararg{Any,N}) where {F,N}
     return @allocated f(args...)
 end
 
+# Tests the descriptor space of `prob` and returns its categories (or `nothing`) and
+# its bounds (or `nothing`).
+function test_descriptor_space(prob)
+    categories = hasmethod(QD.descriptor_categories, Tuple{typeof(prob)}) ?
+                 QD.descriptor_categories(prob) : nothing
+    bounds = categories === nothing ? QD.descriptor_bounds(prob) : nothing
+    if categories === nothing
+        @testset "descriptor_bounds" begin
+            @test bounds isa Tuple
+            @test !isempty(bounds)
+            @test all(b -> length(b) == 2 && b[1] < b[2], bounds)
+        end
+    else
+        @testset "descriptor_categories" begin
+            @test categories isa Tuple
+            @test !isempty(categories)
+            @test all(c -> !isempty(c), categories)
+        end
+    end
+    return categories, bounds
+end
+
+# Tests that one evaluation has the types and the descriptor space of the problem.
+function test_evaluation_values(ev, categories, bounds)
+    @test ev isa QD.Evaluation
+    @test ev.fitness isa Union{Real,AbstractVector{<:Real}}
+    if categories === nothing
+        @test ev.descriptor isa AbstractVector{<:Real}
+        @test length(ev.descriptor) == length(bounds)
+        @test all(i -> bounds[i][1] <= ev.descriptor[i] <= bounds[i][2], eachindex(bounds))
+    else
+        @test ev.descriptor isa Tuple
+        @test length(ev.descriptor) == length(categories)
+        @test all(i -> any(isequal(ev.descriptor[i]), categories[i]), eachindex(categories))
+    end
+    return nothing
+end
+
 """
     test_problem(prob; rng=Xoshiro(1), n=5, rtol=0)
 
-Check that `prob` meets the contract of [`AbstractQDProblem`](@ref).
+Check that `prob` meets the contract of [`AbstractQDProblem`](@ref), or of
+[`AbstractStochasticQDProblem`](@ref).
 
 `random_solution` is called `n` times. Every solution must evaluate to an
 [`Evaluation`](@ref) with a real or vector fitness and a descriptor that lies
@@ -53,26 +92,15 @@ positive. A problem that evaluates batches on a GPU, in lower precision, agrees
 only up to rounding: with `rtol` the fitness and descriptor values then have to
 match within the relative tolerance `rtol`, and within `rtol` in absolute terms
 for values near zero.
+
+For a stochastic problem, `evaluate(rng, prob, x)` must give the same result for the same
+seed, `evaluate(prob, x)` without a generator must throw, and `evaluate_batch(rng, prob,
+xs)` must be reproducible from the generator. `rtol` does not apply.
 """
 function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n::Integer=5,
                       rtol::Real=0)
     @testset "test_problem($(nameof(typeof(prob))))" begin
-        categories = hasmethod(QD.descriptor_categories, Tuple{typeof(prob)}) ?
-                     QD.descriptor_categories(prob) : nothing
-        bounds = categories === nothing ? QD.descriptor_bounds(prob) : nothing
-        if categories === nothing
-            @testset "descriptor_bounds" begin
-                @test bounds isa Tuple
-                @test !isempty(bounds)
-                @test all(b -> length(b) == 2 && b[1] < b[2], bounds)
-            end
-        else
-            @testset "descriptor_categories" begin
-                @test categories isa Tuple
-                @test !isempty(categories)
-                @test all(c -> !isempty(c), categories)
-            end
-        end
+        categories, bounds = test_descriptor_space(prob)
 
         xs = [QD.random_solution(rng, prob) for _ in 1:n]
         @testset "random_solution" begin
@@ -83,19 +111,7 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
         @testset "evaluate" begin
             for x in xs
                 ev = @inferred QD.evaluate(prob, x)
-                @test ev isa QD.Evaluation
-                @test ev.fitness isa Union{Real,AbstractVector{<:Real}}
-                if categories === nothing
-                    @test ev.descriptor isa AbstractVector{<:Real}
-                    @test length(ev.descriptor) == length(bounds)
-                    @test all(i -> bounds[i][1] <= ev.descriptor[i] <= bounds[i][2],
-                              eachindex(bounds))
-                else
-                    @test ev.descriptor isa Tuple
-                    @test length(ev.descriptor) == length(categories)
-                    @test all(i -> any(isequal(ev.descriptor[i]), categories[i]),
-                              eachindex(categories))
-                end
+                test_evaluation_values(ev, categories, bounds)
                 @test QD.evaluate(prob, x) == ev
             end
         end
@@ -118,6 +134,52 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
 
         @testset "fitness_offset" begin
             @test QD.fitness_offset(prob) isa Real
+        end
+
+        @testset "evaluations_per_solution" begin
+            @test QD.evaluations_per_solution(prob) isa Integer
+            @test QD.evaluations_per_solution(prob) >= 1
+        end
+    end
+    return nothing
+end
+
+function test_problem(prob::QD.AbstractStochasticQDProblem; rng::AbstractRNG=Xoshiro(1),
+                      n::Integer=5)
+    @testset "test_problem($(nameof(typeof(prob))))" begin
+        categories, bounds = test_descriptor_space(prob)
+
+        xs = [QD.random_solution(rng, prob) for _ in 1:n]
+        @testset "random_solution" begin
+            @test isconcretetype(eltype(xs))
+            @test QD.random_solution(Xoshiro(7), prob) == QD.random_solution(Xoshiro(7), prob)
+        end
+
+        @testset "evaluate" begin
+            for x in xs
+                ev = @inferred QD.evaluate(Xoshiro(3), prob, x)
+                test_evaluation_values(ev, categories, bounds)
+                # every random number comes from the generator, so a seed fixes the result
+                @test QD.evaluate(Xoshiro(3), prob, x) == ev
+            end
+            @test_throws "is a stochastic problem" QD.evaluate(prob, xs[1])
+        end
+
+        @testset "evaluate_batch" begin
+            evs = QD.evaluate_batch(Xoshiro(5), prob, xs)
+            @test evs isa AbstractVector{<:QD.Evaluation}
+            @test length(evs) == n
+            @test QD.evaluate_batch(Xoshiro(5), prob, xs) == evs
+            @test_throws "is a stochastic problem" QD.evaluate_batch(prob, xs)
+        end
+
+        @testset "fitness_offset" begin
+            @test QD.fitness_offset(prob) isa Real
+        end
+
+        @testset "evaluations_per_solution" begin
+            @test QD.evaluations_per_solution(prob) isa Integer
+            @test QD.evaluations_per_solution(prob) >= 1
         end
     end
     return nothing

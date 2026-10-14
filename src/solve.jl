@@ -44,7 +44,8 @@ Prepare a run. The archive and emitters of `alg` are copied, so `alg` is not
 modified, and the copy is filled with `init_size` solutions from
 [`random_solution`](@ref QualityDiversity.random_solution).
 
-`budget` is the number of evaluations, including the initial ones. A run stops
+`budget` is the number of evaluations, including the initial ones. A problem that
+evaluates a solution several times, such as [`Sampled`](@ref), counts every one. A run stops
 at the first step that reaches it, so it can overshoot by less than one round
 of emitter batches. `callback(state)` is called after initialization and after
 every step. Pass a seeded `rng` for a reproducible run.
@@ -55,8 +56,9 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
                           callback=nothing,
                           init_size::Integer=sum(batch_size, alg.emitters))
     init_size >= 1 || throw(ArgumentError("init_size must be at least 1, got $init_size"))
-    budget >= init_size ||
-        throw(ArgumentError("budget ($budget) is smaller than the initial population ($init_size)"))
+    initial_evals = init_size * evaluations_per_solution(prob)
+    budget >= initial_evals ||
+        throw(ArgumentError("budget ($budget) is smaller than the initial population ($initial_evals)"))
     check_compatible(prob, alg.archive)
     state = QDState(prob, deepcopy(alg.archive), deepcopy(alg.emitters), rng,
                     Int(budget), callback, 0, MetricsRecord[])
@@ -94,9 +96,9 @@ function initial_solutions(rng, prob, ::AbstractArchive{G}, n) where {G}
 end
 
 function evaluate_and_add!(state::QDState, xs)
-    evs = evaluate_batch(state.problem, xs)
+    evs = evaluate_batch(state.rng, state.problem, xs)
     results = add_batch!(state.archive, xs, evs)
-    state.n_evals += length(xs)
+    state.n_evals += length(xs) * evaluations_per_solution(state.problem)
     return evs, results
 end
 
