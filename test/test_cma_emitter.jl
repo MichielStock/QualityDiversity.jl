@@ -1,0 +1,243 @@
+result(status, improvement) = AddResult(status, Float64(improvement))
+fit(f) = Evaluation(f, SVector(0.5, 0.5))
+
+@testset "rankers" begin
+    evs = [fit(1.0), fit(5.0), fit(3.0), fit(5.0), fit(2.0)]
+    results = [result(QD.Rejected, -2), result(QD.NewCell, 5), result(QD.Improved, 4),
+               result(QD.Improved, 1), result(QD.Rejected, -1)]
+
+    # by fitness; the tie between the second and the fourth keeps the order of the batch
+    order, values = QD.rank(ObjectiveRanker(), evs, results)
+    @test order == [2, 4, 3, 5, 1] && values == [5.0, 5.0, 3.0, 2.0, 1.0]
+    # by improvement alone
+    order, values = QD.rank(ImprovementRanker(), evs, results)
+    @test order == [2, 3, 4, 5, 1] && values == [5.0, 4.0, 1.0, -1.0, -2.0]
+    # by status first: a new cell above improvements above rejections
+    two = [result(QD.Rejected, 9), result(QD.NewCell, 1), result(QD.Improved, 4),
+           result(QD.Improved, 7), result(QD.Rejected, -1)]
+    order, values = QD.rank(TwoStageImprovementRanker(), evs, two)
+    @test order == [2, 4, 3, 1, 5] && values == [1.0, 7.0, 4.0, 9.0, -1.0]
+    @test QD.rank_key(TwoStageImprovementRanker(), fit(1.0), result(QD.NewCell, 3)) === (2, 3.0)
+    @test QD.rank_key(ObjectiveRanker(), fit(2), result(QD.Rejected, 0)) === 2.0
+    @test QD.ranking_value(4.5) === 4.5 && QD.ranking_value((2, 3.0)) === 3.0
+
+    # a new ranker defines rank_key
+    struct NegativeFitnessRanker <: AbstractRanker end
+    QD.rank_key(::NegativeFitnessRanker, ev, result) = -Float64(ev.fitness)
+    order, _ = QD.rank(NegativeFitnessRanker(), evs, results)
+    @test order == [1, 5, 3, 2, 4]
+end
+
+@testset "selection and restart rules" begin
+    @test QD.parent_count(FilterSelection(), 7, 36) == 7
+    @test QD.parent_count(FilterSelection(), 0, 36) == 0
+    @test QD.parent_count(MuSelection(), 7, 36) == 18
+    @test QD.parent_count(MuSelection(), 0, 7) == 3
+
+    @test QD.restart_due(NoImprovementRestart(), 4, 0)
+    @test !QD.restart_due(NoImprovementRestart(), 4, 1)
+    @test !QD.restart_due(ConvergenceRestart(), 4, 0)
+    @test [QD.restart_due(PeriodicRestart(3), i, 5) for i in 1:7] == [false, false, true, false, false, true, false]
+    @test_throws "iterations must be at least 1, got 0" PeriodicRestart(0)
+end
+
+@testset "CMAEmitter construction" begin
+    e = CMAEmitter(10; sigma0=0.5)
+    @test e isa CMAEmitter{TwoStageImprovementRanker,FilterSelection,NoImprovementRestart}
+    @test QD.batch_size(e) == 4 + floor(Int, 3 * log(10)) && e.iterations == 0 && e.restarts == 0
+    @test QD.batch_size(CMAEmitter(10; sigma0=1, batch_size=20)) == 20
+    f = CMAEmitter([1.0, 2.0, 3.0]; sigma0=1, ranker=ImprovementRanker(), selection=MuSelection(),
+                   restart=PeriodicRestart(5))
+    @test f isa CMAEmitter{ImprovementRanker,MuSelection,PeriodicRestart} && f.es.dim == 3 && f.x0 == [1.0, 2.0, 3.0]
+    @test CMAEmitter(Float32[1, 2]; sigma0=1).x0 isa Vector{Float64}
+
+    @test_throws UndefKeywordError CMAEmitter(3)
+    @test_throws "sigma0 must be positive and finite, got -1" CMAEmitter(3; sigma0=-1)
+    @test_throws "dim must be at least 1, got 0" CMAEmitter(0; sigma0=1)
+    @test_throws "batch_size must be at least 2 so that there is a parent, got 1" CMAEmitter(3; sigma0=1, batch_size=1)
+    @test_throws "x0 has 2 entries but the dimension is 3" CMAEmitter(3; sigma0=1, x0=[1.0, 2.0])
+    @test_throws "x0 must be finite" CMAEmitter(2; sigma0=1, x0=[1.0, Inf])
+end
+
+# An archive with a few elites around the origin.
+function elite_archive(; G=Vector{Float64}, dims=(8, 8), n=3, kwargs...)
+    archive = GridArchive{G}(dims, ((-4, 4), (-4, 4)); kwargs...)
+    for i in 1:3
+        x = convert(G, fill(Float64(i), n))
+        QD.add!(archive, x, Evaluation(-Float64(i), SVector(i - 2.0, 0.0)))
+    end
+    return archive
+end
+
+@testset "CMAEmitter ask and tell!" begin
+    archive = elite_archive()
+    emitter = CMAEmitter(3; sigma0=0.5)
+    xs = QD.ask(Xoshiro(1), emitter, archive)
+    @test xs isa Vector{Vector{Float64}} && length(xs) == QD.batch_size(emitter)
+    @test QD.ask(Xoshiro(1), CMAEmitter(3; sigma0=0.5), archive) == xs          # reproducible from the rng
+    @test QD.ask(Xoshiro(2), CMAEmitter(3; sigma0=0.5), archive) != xs
+
+    evs = QD.evaluate_batch(QDProblem(x -> (-sum(abs2, x), (x[1], x[2])); init=rng -> zeros(3),
+                                      bounds=((-4, 4), (-4, 4))), xs)
+    results = QD.add_batch!(archive, xs, evs)
+    @test QD.tell!(emitter, xs, evs, results) === nothing
+    @test emitter.iterations == 1
+    @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(emitter, xs, evs, results)
+
+    fresh = CMAEmitter(3; sigma0=0.5)
+    @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(fresh, xs, evs, results)
+    QD.ask(Xoshiro(1), fresh, archive)
+    @test_throws "expected $(QD.batch_size(fresh)) solutions, evaluations and results but got 1, 1 and 1" QD.tell!(fresh, xs[1:1], evs[1:1], results[1:1])
+
+    # genotypes of other types
+    f32 = QD.ask(Xoshiro(1), CMAEmitter(3; sigma0=0.5), elite_archive(G=Vector{Float32}))
+    @test f32 isa Vector{Vector{Float32}}
+    sv = QD.ask(Xoshiro(1), CMAEmitter(3; sigma0=0.5), elite_archive(G=SVector{3,Float64}))
+    @test sv isa Vector{SVector{3,Float64}}
+
+    @test_throws "cannot sample elites from an empty archive" QD.ask(Xoshiro(1), CMAEmitter(3; sigma0=1), GridArchive((2,), ((0, 1),)))
+    @test_throws "the solutions of the archive have 3 entries but the emitter has dimension 2" QD.ask(Xoshiro(1), CMAEmitter(2; sigma0=1), archive)
+end
+
+@testset "CMAEmitter starts from x0 or from an elite" begin
+    archive = elite_archive()
+    # the first batch is centered on x0, and every later start on an elite
+    e = CMAEmitter([10.0, 10.0, 10.0]; sigma0=0.1, batch_size=400)
+    xs = QD.ask(Xoshiro(1), e, archive)
+    @test all(abs.(sum(xs) ./ 400 .- 10) .< 0.05)
+    e = CMAEmitter(3; sigma0=0.1, batch_size=400)
+    xs = QD.ask(Xoshiro(1), e, archive)
+    center = sum(xs) ./ 400
+    @test any(i -> all(abs.(center .- i) .< 0.05), 1:3)       # one of the elites [1,1,1], [2,2,2], [3,3,3]
+end
+
+@testset "CMAEmitter restarts" begin
+    n = 3
+    archive = elite_archive()
+    all_rejected(k) = [result(QD.Rejected, -i) for i in 1:k]
+    evs(k, f=0.0) = [Evaluation(f - i, SVector(0.0, 0.0)) for i in 1:k]
+    ask_tell!(e, results; rng=Xoshiro(1)) = (xs = QD.ask(rng, e, archive); QD.tell!(e, xs, evs(length(xs)), results(length(xs))); xs)
+
+    # no improvement: restart after a batch that the archive rejected
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8)
+    ask_tell!(e, all_rejected)
+    @test e.restarts == 1 && e.restart_pending && e.iterations == 1
+    @test e.es.mean == [9.0, 9.0, 9.0]                       # a filter selection with no parent does not move
+    xs = QD.ask(Xoshiro(2), e, archive)                      # the restart happens here
+    @test !e.restart_pending && e.es.sigma == 0.5
+    @test any(i -> e.es.mean == fill(Float64(i), n), 1:3)    # from an elite of the archive
+
+    # an accepted candidate keeps the search going
+    one_added(k) = [result(i == 1 ? QD.Improved : QD.Rejected, i == 1 ? 3 : -i) for i in 1:k]
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8)
+    xs = ask_tell!(e, one_added)
+    @test e.restarts == 0 && !e.restart_pending
+    @test e.es.mean ≈ xs[1]                                  # one parent: the mean moves to it
+
+    # only convergence restarts with the convergence rule, so a rejected batch does not
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=ConvergenceRestart(),
+                   selection=MuSelection())
+    ask_tell!(e, all_rejected)
+    @test e.restarts == 0 && e.es.mean != [9.0, 9.0, 9.0]    # a mu selection moves anyway
+
+    # periodic restarts
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=PeriodicRestart(2),
+                   selection=MuSelection())
+    for i in 1:6
+        ask_tell!(e, one_added; rng=Xoshiro(i))
+    end
+    @test e.restarts == 3 && e.iterations == 6
+
+    # CMA-ES convergence restarts: a flat batch (all values equal) stops the search
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=ConvergenceRestart(),
+                   ranker=ObjectiveRanker(), selection=MuSelection())
+    xs = QD.ask(Xoshiro(1), e, archive)
+    QD.tell!(e, xs, [fit(1.0) for _ in xs], all_rejected(8))
+    @test e.restarts == 1
+end
+
+@testset "CMAEmitter respects bounds" begin
+    prob = QDProblem(x -> (-sum(abs2, x .- 0.9), (x[1], x[2])); init=rng -> rand(rng, 4), bounds=((0, 1), (0, 1)))
+    archive = GridArchive(prob; dims=(8, 8))
+    emitters = Tuple(CMAEmitter(4; sigma0=0.5, lower=0.0, upper=1.0, ranker=ImprovementRanker(),
+                                selection=MuSelection(), restart=ConvergenceRestart()) for _ in 1:2)
+    result = solve(prob, QDAlgorithm(archive, emitters); budget=2_000, rng=Xoshiro(1))
+    stored = first.(collect(QD.elites(result.archive)))
+    @test all(x -> all(0 .<= x .<= 1), stored)
+    @test max_fitness(result.archive) > -0.01                # the optimum is the corner 0.9
+end
+
+@testset "CMAEmitter with an objective ranker maximizes" begin
+    prob = Sphere(10)
+    archive = GridArchive(prob; dims=(1, 1))
+    emitter = CMAEmitter(10; sigma0=1.0, ranker=ObjectiveRanker(), selection=MuSelection(),
+                         restart=ConvergenceRestart(), batch_size=12)
+    result = solve(prob, QDAlgorithm(archive, (emitter,)); budget=4_000, rng=Xoshiro(1))
+    @test max_fitness(result.archive) > 99.99
+end
+
+@testset "CMAME and CMAMAE" begin
+    prob = Sphere(10)
+    alg = CMAME(prob; dims=(8, 8), sigma0=0.5)
+    @test alg isa QDAlgorithm && alg.archive isa GridArchive && length(alg.emitters) == 5
+    @test all(e -> e isa CMAEmitter{TwoStageImprovementRanker,FilterSelection,NoImprovementRestart}, alg.emitters)
+    @test all(e -> e.es.dim == 10 && e.es.sigma0 == 0.5, alg.emitters)
+    @test alg.emitters[1] !== alg.emitters[2]
+    @test length(CMAME(prob; dims=(8, 8), sigma0=0.5, num_emitters=2, batch_size=11).emitters) == 2
+    @test QD.batch_size(CMAME(prob; dims=(8, 8), sigma0=0.5, batch_size=11).emitters[1]) == 11
+    @test CMAME(prob; dims=(8, 8), sigma0=0.5, selection=MuSelection()).emitters[1] isa CMAEmitter{<:Any,MuSelection}
+    @test CMAME(prob; dims=(8, 8), sigma0=0.5, genotype=Vector{Float32}, fitness=Float32).archive isa
+          GridArchive{Vector{Float32},Float32}
+    @test_throws UndefKeywordError CMAME(prob; dims=(8, 8))
+    @test_throws "num_emitters must be at least 1, got 0" CMAME(prob; dims=(8, 8), sigma0=0.5, num_emitters=0)
+    @test_throws "dims" CMAME(Rastrigin(4); sigma0=1)
+
+    mae = CMAMAE(prob; dims=(8, 8), sigma0=0.5, threshold_min=0.0, learning_rate=0.1)
+    @test mae.archive isa ThresholdArchive && mae.archive.learning_rate == 0.1 && mae.archive.threshold_min == 0.0
+    @test all(e -> e isa CMAEmitter{ImprovementRanker,MuSelection,ConvergenceRestart}, mae.emitters)
+    @test CMAMAE(prob; dims=(8, 8), sigma0=0.5, threshold_min=0).archive.learning_rate == 0.01
+    @test_throws UndefKeywordError CMAMAE(prob; dims=(8, 8), sigma0=0.5)
+
+    # any archive: the dimension is given
+    cvt = CVTArchive(Xoshiro(1), prob; cells=40, samples=2_000)
+    over_cvt = CMAME(cvt; sigma0=0.5, dim=10, num_emitters=2)
+    @test over_cvt.archive === cvt && length(over_cvt.emitters) == 2
+    r = solve(prob, over_cvt; budget=1_500, rng=Xoshiro(1))
+    @test r.archive isa CVTArchive && length(r.archive) > 5
+    @test_throws UndefKeywordError CMAME(cvt; sigma0=0.5)
+
+    # the archive and the problem must agree on the descriptor dimensions
+    @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, CMAME(GridArchive((4,), ((0, 1),)); sigma0=1, dim=10); budget=100)
+end
+
+# Sum of QD scores of several seeds.
+function total_qd_score(prob, make; seeds, budget)
+    return sum(qd_score(solve(prob, make(); budget, rng=Xoshiro(s)).archive) for s in seeds)
+end
+
+@testset "CMA-ME and CMA-MAE fill an archive better than MAP-Elites" begin
+    prob = Sphere(10)
+    dims = (16, 16)
+    seeds = 1:4
+    budget = 15_000
+    map_elites = total_qd_score(prob, () -> MAPElites(prob; dims, batch_size=30, variation=GaussianMutation(0.5)); seeds, budget)
+    cma_me = total_qd_score(prob, () -> CMAME(prob; dims, sigma0=0.5); seeds, budget)
+    cma_mae = total_qd_score(prob, () -> CMAMAE(prob; dims, sigma0=0.5, threshold_min=0.0, learning_rate=0.1); seeds, budget)
+    @test cma_me > 1.05 * map_elites
+    @test cma_mae > 1.15 * map_elites
+    @test cma_mae > cma_me
+
+    # a run is reproducible from its seed
+    a = solve(prob, CMAME(prob; dims, sigma0=0.5); budget=3_000, rng=Xoshiro(7))
+    b = solve(prob, CMAME(prob; dims, sigma0=0.5); budget=3_000, rng=Xoshiro(7))
+    @test a.history == b.history && collect(QD.elites(a.archive)) == collect(QD.elites(b.archive))
+    # the algorithm is not modified by a run
+    alg = CMAME(prob; dims, sigma0=0.5)
+    solve(prob, alg; budget=2_000, rng=Xoshiro(1))
+    @test length(alg.archive) == 0 && all(e -> e.iterations == 0 && !e.started, alg.emitters)
+
+    # CMA-MAE reports the result archive, whose elites are the best of each cell
+    mae = CMAMAE(prob; dims, sigma0=0.5, threshold_min=0.0, learning_rate=0.1)
+    r = solve(prob, mae; budget=5_000, rng=Xoshiro(1))
+    @test r.archive isa GridArchive && issorted(h.max_fitness for h in r.history)
+end

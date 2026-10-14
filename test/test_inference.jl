@@ -67,6 +67,23 @@ end
     @test allocated(QD.vary, Xoshiro(1), UniformCrossover(), x, x) == child
 end
 
+@testset "inference with CMA emitters" begin
+    prob = Rastrigin(6)
+    for alg in (CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2),
+                CMAMAE(prob; dims=(8, 8), sigma0=1.0, threshold_min=-500.0, learning_rate=0.1, num_emitters=2),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=ObjectiveRanker(), selection=MuSelection()))
+        state = @inferred init(prob, alg; budget=600, rng=Xoshiro(1))
+        emitter = state.emitters[1]
+        xs = @inferred QD.ask(Xoshiro(1), emitter, state.archive)
+        evs = QD.evaluate_batch(prob, xs)
+        results = QD.add_batch!(state.archive, xs, evs)
+        @inferred QD.tell!(emitter, xs, evs, results)
+        @inferred QD.batch_size(emitter)
+        @inferred step!(state)
+        @inferred solve!(state)
+    end
+end
+
 @testset "inference with several emitters" begin
     prob = Rastrigin(4)
     archive = GridArchive(prob; dims=(5, 5))

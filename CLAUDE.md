@@ -184,8 +184,10 @@ bounded genotypes, and `UniformCrossover(proportion)`. A user with a custom geno
 | `batch_size(emitter)` | required | |
 
 Concrete emitters: `VariationEmitter(op; batch_size)` (select parents
-uniformly, apply `op`), later `CMAEmitter` (improvement ranking, CMA-ES
-update, restarts).
+uniformly, apply `op`) and `CMAEmitter` (a CMA-ES search distribution whose update
+is driven by a ranker, a selection rule and a restart rule, all types chosen by
+dispatch). An emitter with state may require `tell!` to follow the `ask` that
+produced the batch.
 
 **Algorithm and state** — CommonSolve.jl interface:
 
@@ -261,7 +263,7 @@ QualityDiversity.jl/
 │   ├── evaluation.jl             # Evaluation, AddStatus, AddResult
 │   ├── problems/
 │   │   ├── qdproblem.jl          # QDProblem wrapper
-│   │   └── benchmarks.jl         # Sphere, Rastrigin, PlanarArm
+│   │   └── benchmarks.jl         # Sphere, Rastrigin, later PlanarArm
 │   ├── archives/
 │   │   ├── cell_archive.jl       # CellArchive: shared storage, add!, metrics
 │   │   ├── grid.jl
@@ -277,6 +279,8 @@ QualityDiversity.jl/
 │   │   └── crossover.jl         # UniformCrossover
 │   ├── emitters/
 │   │   ├── variation_emitter.jl
+│   │   ├── cma_es.jl             # the CMA-ES optimizer inside CMAEmitter
+│   │   ├── rankers.jl
 │   │   └── cma_emitter.jl
 │   ├── solve.jl                  # QDAlgorithm, QDState, QDResult, init/step!/solve!
 │   ├── algorithms.jl             # MAPElites(), CMAME(), ... constructors
@@ -349,9 +353,11 @@ Julia LTS and the current release.
         novelty-style, a solution enters if it is far from its neighbours
   - [x] Threshold archive for CMA-MAE (pyribs `learning_rate`): `ThresholdArchive`,
         a separate type from `GridArchive` that wraps any cell archive
-  - [ ] `CMAEmitter` with improvement ranking, restarts and a CMA-ES core, then
-        `CMAME()`; the CMA-MAE, random-direction (CMA-ME-RD) and two-stage
-        rankers; further evolution strategies (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
+  - [x] `CMAEmitter` with a CMA-ES core, the two-stage improvement, improvement
+        and objective rankers, filter and mu selection, and restart rules;
+        `CMAME()` and `CMAMAE()`
+  - [ ] Random-direction ranker (CMA-ME-RD); further evolution strategies
+        (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
   - [ ] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
   - [ ] `SlidingBoundariesArchive` (pyribs), `BanditScheduler` for choosing
         among emitters (pyribs), `DensityArchive` and `DNSArchive` (pyribs)
@@ -397,6 +403,14 @@ Settled; change them only with the author's agreement.
   metrics, while emitters read the `ThresholdArchive`. With `learning_rate=1` and
   `threshold_min=-Inf` the archive is its own result. `threshold_min=-Inf`
   requires `learning_rate=1`.
+- **CMA emitters.** `CMAEmitter` works on real vectors. `tell!` has neither the
+  random number generator nor the archive, so it only marks a restart; the next
+  `ask` starts the new search from a random elite, drawn with the run's generator.
+  Without `x0` the first search starts from a random elite as well, so the archive
+  is filled before the first `ask`. `sigma0` has no default. `CMAME` defaults to the
+  rules of CMA-ME (two-stage improvement ranking, filter selection, restart after a
+  rejected batch) and `CMAMAE` to those of CMA-MAE (improvement ranking, mu
+  selection, restart on convergence only) over a `ThresholdArchive`.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.

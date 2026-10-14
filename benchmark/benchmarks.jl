@@ -108,3 +108,29 @@ SUITE["archive"]["ThresholdArchive/add_batch!/n=100"] = let xs = [QD.random_solu
     evs = QD.evaluate_batch(prob, xs)
     @benchmarkable QD.add_batch!($threshold, $xs, $evs)
 end
+
+# ── CMA-ES emitters ───────────────────────────────────────
+const sphere = Sphere(20)
+const cma_archive = let a = GridArchive(sphere; dims=(100, 100))
+    xs = [QD.random_solution(rng, sphere) for _ in 1:2_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(sphere, xs))
+    a
+end
+const cma_emitter = CMAEmitter(20; sigma0=0.5)
+SUITE["emitter"]["Sphere/evaluate"] = @benchmarkable QD.evaluate($sphere, $(QD.random_solution(rng, sphere)))
+SUITE["emitter"]["CMAEmitter/ask"] = @benchmarkable QD.ask($rng, $cma_emitter, $cma_archive)
+SUITE["emitter"]["CMAEmitter/tell!"] = let xs = QD.ask(rng, CMAEmitter(20; sigma0=0.5), cma_archive)
+    evs = QD.evaluate_batch(sphere, xs)
+    results = QD.add_batch!(deepcopy(cma_archive), xs, evs)
+    # tell! needs a fresh ask before each call; only tell! is timed
+    @benchmarkable QD.tell!(e, $xs, $evs, $results) setup = (e = CMAEmitter(20; sigma0=0.5); QD.ask($rng, e, $cma_archive)) evals = 1
+end
+SUITE["algorithm"]["CMAME/step!"] = let alg = CMAME(sphere; dims=(100, 100), sigma0=0.5)
+    state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
+    @benchmarkable step!($state)
+end
+SUITE["algorithm"]["CMAMAE/step!"] = let alg = CMAMAE(sphere; dims=(100, 100), sigma0=0.5, threshold_min=0.0, learning_rate=0.01)
+    state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
+    @benchmarkable step!($state)
+end
+

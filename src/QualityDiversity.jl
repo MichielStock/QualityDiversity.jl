@@ -21,7 +21,8 @@ module QualityDiversity
 
 using CommonSolve: CommonSolve, init, step!, solve!, solve
 using Compat: @compat
-using Random: Random, AbstractRNG
+using LinearAlgebra: Diagonal, I, Symmetric, eigen, mul!, norm
+using Random: Random, AbstractRNG, randn!
 using StaticArrays: SVector
 
 include("evaluation.jl")
@@ -41,6 +42,9 @@ include("variation/isoline.jl")
 include("variation/polynomial.jl")
 include("variation/crossover.jl")
 include("emitters/variation_emitter.jl")
+include("emitters/cma_es.jl")
+include("emitters/rankers.jl")
+include("emitters/cma_emitter.jl")
 include("solve.jl")
 include("algorithms.jl")
 include("testing.jl")
@@ -48,12 +52,15 @@ include("testing.jl")
 export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
-export QDProblem, Rastrigin
+export QDProblem, Rastrigin, Sphere
 export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
-export VariationEmitter
-export MAPElites
+export VariationEmitter, CMAEmitter
+export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker
+export FilterSelection, MuSelection
+export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
+export MAPElites, CMAME, CMAMAE
 export init, step!, solve!, solve
 export qd_score, coverage, max_fitness, mean_fitness
 
@@ -64,6 +71,6 @@ export qd_score, coverage, max_fitness, mean_fitness
 @compat public vary, n_parents
 @compat public CellArchive, centroids, thresholds
 @compat public Testing
-@compat public ask, tell!, batch_size
+@compat public ask, tell!, batch_size, rank_key, ranking_value, SelectionRule, RestartRule
 
 end

@@ -1,0 +1,220 @@
+"""
+    SelectionRule
+
+Supertype of the rules that say how many of the ranked candidates a
+[`CMAEmitter`](@ref) recombines into the next mean: [`FilterSelection`](@ref) and
+[`MuSelection`](@ref).
+"""
+abstract type SelectionRule end
+
+"""
+    FilterSelection()
+
+Recombine the candidates that the archive accepted: a new cell or an improvement.
+This is the selection of CMA-ME. With no such candidate the distribution does not
+change.
+"""
+struct FilterSelection <: SelectionRule end
+
+"""
+    MuSelection()
+
+Recombine the best half of the candidates, as CMA-ES does. This is the selection of
+CMA-MAE.
+"""
+struct MuSelection <: SelectionRule end
+
+parent_count(::FilterSelection, added, batch_size) = added
+parent_count(::MuSelection, added, batch_size) = batch_size ÷ 2
+
+"""
+    RestartRule
+
+Supertype of the rules that tell a [`CMAEmitter`](@ref) when to abandon its search
+and start again from a random elite of the archive: [`NoImprovementRestart`](@ref),
+[`ConvergenceRestart`](@ref) and [`PeriodicRestart`](@ref). Whatever the rule, the
+emitter also restarts when CMA-ES reports that it has converged or broken down.
+"""
+abstract type RestartRule end
+
+"""
+    NoImprovementRestart()
+
+Restart after a batch in which the archive accepted no candidate. This is the rule of
+CMA-ME.
+"""
+struct NoImprovementRestart <: RestartRule end
+
+"""
+    ConvergenceRestart()
+
+Restart only when CMA-ES reports that it has converged or broken down.
+"""
+struct ConvergenceRestart <: RestartRule end
+
+"""
+    PeriodicRestart(iterations)
+
+Restart every `iterations` batches.
+"""
+struct PeriodicRestart <: RestartRule
+    iterations::Int
+    function PeriodicRestart(iterations::Integer)
+        iterations >= 1 || throw(ArgumentError("iterations must be at least 1, got $iterations"))
+        return new(iterations)
+    end
+end
+
+restart_due(::NoImprovementRestart, iterations, added) = added == 0
+restart_due(::ConvergenceRestart, iterations, added) = false
+restart_due(rule::PeriodicRestart, iterations, added) = iterations % rule.iterations == 0
+
+"""
+    CMAEmitter(dim; sigma0, batch_size, ranker, selection, restart, x0, lower, upper)
+    CMAEmitter(x0::AbstractVector; sigma0, ...)
+
+Emitter that searches for solutions with CMA-ES, the covariance matrix adaptation
+evolution strategy, in the sense of CMA-ME (Fontaine et al., 2020): it keeps a
+Gaussian distribution of solutions, and after every batch it moves the distribution
+toward the candidates that its `ranker` places first. Solutions are real vectors of
+length `dim`; the genotype type of the archive can be any `AbstractVector` type that
+a vector of `Float64` converts to.
+
+- `sigma0`: the initial step size, the standard deviation of the distribution. It has
+  no default, because it depends on the scale of the solutions.
+- `batch_size`: the number of candidates per batch, `4 + floor(3 log(dim))` by
+  default.
+- `ranker`: how the candidates are ordered, [`TwoStageImprovementRanker`](@ref) by
+  default. Use [`ImprovementRanker`](@ref) with a [`ThresholdArchive`](@ref), and
+  [`ObjectiveRanker`](@ref) for an emitter that only maximizes the fitness.
+- `selection`: how many of the ranked candidates are recombined,
+  [`FilterSelection`](@ref) by default or [`MuSelection`](@ref).
+- `restart`: when to start again, [`NoImprovementRestart`](@ref) by default.
+- `x0`: the mean of the first distribution. Without it, and after every restart, the
+  mean is a random elite of the archive, so the archive must hold a solution when the
+  emitter first asks. The second form takes `dim` and `x0` from a vector.
+- `lower`, `upper`: bounds of the solutions, scalars or vectors. A sample outside is
+  drawn again.
+
+`ask` draws a batch, and the next call of `tell!` must be with the results for that
+batch. `tell!` ranks the candidates, adapts the distribution and decides on a
+restart; the restart itself happens at the following `ask`, which has the random
+number generator and the archive to choose the new start from. The emitter has the
+properties `iterations`, the number of batches told, and `restarts`.
+
+# Example
+
+```jldoctest
+julia> using QualityDiversity, Random
+
+julia> prob = Rastrigin(10);
+
+julia> alg = CMAME(prob; dims=(20, 20), sigma0=1.0, num_emitters=3);
+
+julia> result = solve(prob, alg; budget=3_000, rng=Xoshiro(1));
+
+julia> coverage(result.archive) > 0.1
+true
+```
+"""
+mutable struct CMAEmitter{R<:AbstractRanker,S<:SelectionRule,T<:RestartRule} <: AbstractEmitter
+    const es::CMAES
+    const ranker::R
+    const selection::S
+    const restart_rule::T
+    const x0::Union{Nothing,Vector{Float64}}
+    iterations::Int
+    restarts::Int
+    # The search has been started: the distribution holds a mean.
+    started::Bool
+    # The last batch was told, and the next ask starts again from an elite.
+    restart_pending::Bool
+    # A batch was asked and is waiting for its results.
+    asked::Bool
+end
+
+function CMAEmitter(dim::Integer; sigma0::Real, batch_size::Integer=default_batch_size(dim),
+                    ranker::AbstractRanker=TwoStageImprovementRanker(),
+                    selection::SelectionRule=FilterSelection(),
+                    restart::RestartRule=NoImprovementRestart(),
+                    x0::Union{Nothing,AbstractVector{<:Real}}=nothing,
+                    lower=-Inf, upper=Inf)
+    es = CMAES(dim; sigma0, batch_size, lower, upper)
+    if x0 !== nothing
+        length(x0) == dim ||
+            throw(ArgumentError("x0 has $(length(x0)) entries but the dimension is $dim"))
+        all(isfinite, x0) || throw(ArgumentError("x0 must be finite"))
+    end
+    start = x0 === nothing ? nothing : collect(Float64, x0)
+    return CMAEmitter{typeof(ranker),typeof(selection),typeof(restart)}(
+        es, ranker, selection, restart, start, 0, 0, false, false, false)
+end
+
+CMAEmitter(x0::AbstractVector{<:Real}; kwargs...) = CMAEmitter(length(x0); x0, kwargs...)
+
+batch_size(emitter::CMAEmitter) = emitter.es.batch_size
+
+# The mean of the next search: `x0` for the first one if the emitter has it, and a
+# random elite of the archive otherwise.
+function start_mean(rng, emitter::CMAEmitter, archive)
+    x0 = emitter.x0
+    if !emitter.started && x0 !== nothing
+        return x0
+    end
+    return elite_start(rng, archive, emitter.es.dim)
+end
+
+function elite_start(rng, archive, dim)
+    elite = sample_elites(rng, archive, 1)[1]
+    length(elite) == dim ||
+        throw(ArgumentError("the solutions of the archive have $(length(elite)) entries but the emitter has dimension $dim"))
+    return collect(Float64, elite)
+end
+
+"""
+    ask(rng, emitter::CMAEmitter, archive) -> Vector{G}
+
+A batch of candidates drawn from the search distribution. The first call, and the
+first after a restart, starts a new search from a random elite of `archive`
+(the first call uses `x0` if the emitter has one).
+"""
+function ask(rng::AbstractRNG, emitter::CMAEmitter, archive::AbstractArchive{G}) where {G}
+    es = emitter.es
+    if !emitter.started || emitter.restart_pending
+        reset!(es, start_mean(rng, emitter, archive))
+        emitter.started = true
+        emitter.restart_pending = false
+    end
+    sample!(rng, es)
+    emitter.asked = true
+    xs = Vector{G}(undef, es.batch_size)
+    for k in 1:es.batch_size
+        xs[k] = convert(G, es.x[:, k])
+    end
+    return xs
+end
+
+"""
+    tell!(emitter::CMAEmitter, xs, evs, results)
+
+Rank the batch that the last `ask` returned, adapt the search distribution to it, and
+schedule a restart if the restart rule or CMA-ES asks for one. `xs`, `evs` and
+`results` must be those of that batch, in the order of `ask`.
+"""
+function tell!(emitter::CMAEmitter, xs, evs, results)
+    emitter.asked ||
+        throw(ArgumentError("tell! needs the results of the batch that the last ask returned, but nothing was asked since the last tell!"))
+    es = emitter.es
+    (length(xs) == es.batch_size && length(evs) == es.batch_size && length(results) == es.batch_size) ||
+        throw(ArgumentError("expected $(es.batch_size) solutions, evaluations and results but got $(length(xs)), $(length(evs)) and $(length(results))"))
+    emitter.asked = false
+    emitter.iterations += 1
+    added = count(r -> r.status != Rejected, results)
+    order, values = rank(emitter.ranker, evs, results)
+    update!(es, order, parent_count(emitter.selection, added, es.batch_size))
+    if should_stop(es, values) || restart_due(emitter.restart_rule, emitter.iterations, added)
+        emitter.restart_pending = true
+        emitter.restarts += 1
+    end
+    return nothing
+end
