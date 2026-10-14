@@ -320,11 +320,11 @@ Julia LTS and the current release.
 - [x] **Phase 2 — First end-to-end run.** `GridArchive`, `GaussianMutation`,
       `VariationEmitter`, `QDProblem`, `Rastrigin`, `init`/`step!`/`solve`,
       `MAPElites()`. Example `examples/rastrigin.jl` fills an archive.
-- [ ] **Phase 3 — Guarantees.** Metrics, `Testing` submodule, conformance
+- [x] **Phase 3 — Guarantees.** Metrics, `Testing` submodule, conformance
       tests, inference and allocation tests, Aqua/ExplicitImports/JET.
-- [ ] **Phase 4 — Benchmarks.** BenchmarkTools suite; comparison with pyribs
+- [x] **Phase 4 — Benchmarks.** BenchmarkTools suite; comparison with pyribs
       on Rastrigin (same archive shape, batch size, evaluation budget).
-- [ ] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
+- [x] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
       Graphs.jl genotype, custom `vary`, descriptor from graph statistics.
 - [ ] **Phase 6 — More algorithms.** One at a time, easiest first. Each comes
       with tests, a conformance check from `Testing`, and a benchmark entry.
@@ -416,7 +416,11 @@ Ask the author before resolving any of these.
   editing `Project.toml`.
 - Annotate method arguments only as tightly as the implementation needs.
   `AbstractVector{<:Real}`, not `Vector{Float64}`. Annotate to control
-  dispatch, not to document intent.
+  dispatch, not to document intent. An `AbstractArray` annotation promises
+  that the code works for offset axes, views and GPU arrays; see
+  `.claude/rules/julia-generic-indexing.md`.
+- Use American spelling. Avoid jargon that experts in the field do not widely
+  accept, and do not let technical prose read like a pitch deck.
 - Parametric constructors: inner constructor with unconstrained value
   arguments; outer constructors compute type parameters and delegate inward,
   so `T(args...)`, `T{A}(args...)` and `T{A,B}(args...)` coerce identically.
@@ -433,8 +437,8 @@ Ask the author before resolving any of these.
 Comments, docstrings and commit messages describe what is true of the code
 now, for a reader who has only the repository. No references to plans,
 phases, roadmap items, chat sessions, or history ("previously", "for now").
-Full rule: `.claude/rules/code-comments.md`. A hook flags violations after
-each edit.
+Full rule: `.claude/rules/code-comments.md`. A hook (`.claude/hooks/`) flags
+violations after each edit.
 
 ### Working with Julia
 
@@ -445,6 +449,10 @@ each edit.
   BenchmarkTools, JET live in the global environment, not in this project).
 - `julia +lts` runs the LTS, `julia +release` the current release (juliaup).
   Run the full suite on both before declaring a phase done.
+- When adding a dependency, choose it on its merits, not because it happens
+  to be installed.
+- Run `Pkg.test()` as the final check before a pull request; iterate with
+  Revise and targeted includes.
 - Do not add developer tools (BenchmarkTools, JET, Cthulhu, Revise) to the
   package's `[deps]`. Test-only dependencies go in `test/Project.toml`.
 
@@ -452,17 +460,30 @@ each edit.
 
 - Subject lines ≤ 50 characters where possible, ≤ 72 at most.
 - Do not post comments, issues or PRs on GitHub without the author's approval
-  of the exact text.
+  of the exact text, and do not represent the author on GitHub without
+  consent.
+- Reference an issue or PR that motivated a change in a code comment, not in
+  the subject line. Close issues with `Fixes #xyz` in the body; for several,
+  write `Fixes #abc; fixes #def` (ranges and comma lists do not work).
+- Attribute agent assistance with an `Assisted-by:` trailer naming the model,
+  not `Co-authored-by`.
+- Do not commit planning documents, agent conversations or benchmark
+  narratives. Add them to `.git/info/exclude`.
 - Keep this file out of the registered package if the author decides so (add
   it to `.git/info/exclude`); until then it is committed.
 
 ### Skills available in this repository
+
+The skills live in the user-level `~/.claude/skills` (see
+[timholy/claude_config](https://github.com/timholy/claude_config)); none is
+stored in this repository.
 
 | Skill | Use |
 |---|---|
 | `/qd-new-component` | add a problem, archive, variation, emitter or algorithm that meets its contract, with tests |
 | `/profile-performance` | find hot spots, runtime dispatch and allocations; propose fixes |
 | `/qd-benchmark` | maintain the BenchmarkTools suite and the pyribs comparison |
-| `/review-design` | review the type hierarchy and contracts against this file |
-| `/freshen-quality` | add or run Aqua, ExplicitImports and JET checks |
+| `/review-design`, `/review-api`, `/review-integration`, `/review-implement` | review the type hierarchy, public API and integration against this file, then implement the plan |
+| `/freshen-aqua`, `/freshen-explicit-imports`, `/freshen-runic`, `/freshen-coverage`, `/freshen-docstrings`, `/freshen-docs`, `/freshen-generic-axes` | bring one quality check up to date |
+| `/freshen-package` | run the `/freshen-*` skills in a sensible order |
 | `/limit-struct-mutability` | make `mutable struct`s immutable or mark fields `const` |
