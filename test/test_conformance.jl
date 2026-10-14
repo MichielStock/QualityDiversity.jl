@@ -62,6 +62,14 @@ end
     labelled = QDProblem(x -> (-sum(abs2, x), (round(Int, clamp(x[1], -3, 3)), x[2] > 0 ? :pos : x[2] < -1 ? :neg : :zero));
                          init=rng -> 6 .* rand(rng, 3) .- 3, categories=(-3:3, [:neg, :zero, :pos]))
     test_problem(labelled)
+
+    noisy = StochasticQDProblem((rng, x) -> (-sum(abs2, x) + randn(rng), (clamp(x[1], -1, 1), clamp(x[2], -1, 1)));
+                                init=rng -> 2 .* rand(rng, 3) .- 1, bounds=((-1, 1), (-1, 1)))
+    test_problem(noisy)
+    test_problem(Sampled(noisy; num_samples=3))
+    test_problem(Sampled(noisy; num_samples=4, expectation=Median()))
+    test_problem(StochasticQDProblem((rng, x) -> (randn(rng), (rand(rng, 1:3), :ring));
+                                     init=rng -> randn(rng, 2), categories=(1:3, [:chain, :ring])))
     test_archive(() -> CategoricalArchive(labelled), labelled; sequential_batch=false)
     test_archive(() -> CategoricalArchive(labelled; outside=RejectOutside()), labelled; sequential_batch=false)
     test_archive(() -> CategoricalArchive(labelled; genotype=Vector{Float32}, fitness=Float32), labelled; sequential_batch=false)
@@ -158,6 +166,14 @@ QD.vary(rng, ::MutatingVariation, parent) = (parent[1] += 1; parent)
 
 @testset "the checks reject types that break their contract" begin
     @test failures(() -> test_problem(BadProblem())) > 0
+
+    # a stochastic problem that ignores the generator it is given, and one that draws from a
+    # global generator, are not reproducible from a seed
+    struct GlobalNoise <: AbstractStochasticQDProblem end
+    QD.evaluate(rng::Xoshiro, ::GlobalNoise, x) = Evaluation(randn(), SVector(0.5))
+    QD.random_solution(rng::Xoshiro, ::GlobalNoise) = [0.5]
+    QD.descriptor_bounds(::GlobalNoise) = ((0.0, 1.0),)
+    @test failures(() -> test_problem(GlobalNoise())) > 0
     @test failures(() -> test_variation(MutatingVariation(), [1.0, 2.0])) > 0
     # a crossover that reports one parent, and a mutation checked as a crossover
     @test failures(() -> test_variation(IsoLineVariation(), [1.0, 2.0])) > 0

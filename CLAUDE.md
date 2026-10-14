@@ -137,6 +137,16 @@ Fitness is **maximized**. Users who minimize return the negated value.
 `QDProblem(f; init, bounds)` (or `categories` instead of `bounds`) wraps a plain function `f(x) -> (fitness,
 descriptor)` so most users never subtype.
 
+`AbstractStochasticQDProblem <: AbstractQDProblem` is for noisy evaluation. It defines
+`evaluate(rng, prob, x)` instead of `evaluate(prob, x)`, and `evaluate_batch(rng, prob, xs)`
+draws one seed per solution from the run's generator, in the order of the batch, and gives
+each solution its own `Xoshiro` before the threaded section, so a run is reproducible from
+its seed whatever the number of threads. Deterministic problems do not consume the run's
+generator. `StochasticQDProblem(f; init, bounds)` wraps `f(rng, x)`, and
+`Sampled(prob; num_samples, expectation=Average())` scores a solution by the average (or
+`Median()`) of `num_samples` evaluations. `evaluations_per_solution(prob)` is how many
+evaluations one solution costs; the budget of a run counts them.
+
 **`AbstractArchive{G,F,D}`**
 
 | Function | Status | Meaning |
@@ -264,6 +274,7 @@ QualityDiversity.jl/
 │   ├── evaluation.jl             # Evaluation, AddStatus, AddResult
 │   ├── problems/
 │   │   ├── qdproblem.jl          # QDProblem wrapper
+│   │   ├── stochastic.jl         # StochasticQDProblem, Sampled
 │   │   └── benchmarks.jl         # Sphere, Rastrigin, later PlanarArm
 │   ├── archives/
 │   │   ├── cell_archive.jl       # CellArchive: shared storage, add!, metrics
@@ -366,8 +377,9 @@ Julia LTS and the current release.
   - [ ] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
   - [ ] `SlidingBoundariesArchive` (pyribs), `BanditScheduler` for choosing
         among emitters (pyribs), `DensityArchive` and `DNSArchive` (pyribs)
-  - [ ] Stochastic problems and MAP-Elites with low spread (QDax `MELS`), after
-        the stochastic-evaluation decision below
+  - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
+  - [ ] MAP-Elites with low spread (QDax `MELS`): an archive that stores a spread
+        for every cell, on top of the stochastic problems
 - [ ] **Phase 7 — Extensions and docs.** Makie (heatmaps, ECDF, CQD score),
       ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
       emitter; Documenter site with tutorials.
@@ -424,6 +436,15 @@ Settled; change them only with the author's agreement.
   that pyribs computes, for reproducing results produced with pyribs; `CMAES` follows
   the textbook `c1`. `AcceptedRandomDirectionRanker` is the random direction ranking of
   the CMA-ME paper; the two-stage one is that of pyribs.
+- **Stochastic evaluation.** Noisy problems receive an explicit generator,
+  `evaluate(rng, prob, x)`, and opt in through `AbstractStochasticQDProblem`;
+  deterministic problems keep `evaluate(prob, x)`. The loop calls
+  `evaluate_batch(state.rng, prob, xs)`: for a stochastic problem it draws one `UInt64`
+  seed per solution from the run's generator, one draw at a time in the order of the
+  batch, before the threaded section, and evaluates solution `i` with `Xoshiro(seed_i)`.
+  Results depend on the seed of the run and not on the number of threads. `Sampled`
+  evaluates the wrapped problem `num_samples` times with the generator of the solution, and
+  every evaluation counts against the budget.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.
@@ -447,13 +468,9 @@ Settled; change them only with the author's agreement.
 
 Ask the author before resolving any of these.
 
-- **Stochastic evaluation.** Direction: noisy problems receive an explicit RNG
-  (`evaluate(rng, prob, x)`), so runs stay reproducible from the seed. To keep
-  results independent of the thread count, the loop draws one seed per solution
-  from the run's RNG before the threaded section and gives each solution its
-  own `Xoshiro`. Deterministic problems keep `evaluate(prob, x)`; noisy ones
-  opt in through a subtype such as `AbstractStochasticQDProblem`. Details are
-  settled when it is implemented.
+- **Stored values of noisy problems.** `Sampled` averages repeated evaluations before
+  they reach the archive, as QDax's MAP-Elites-sampling does. Open: whether archives
+  should also store a spread per cell, as QDax's `MELS` does, and what replaces an elite.
 - **Phenotype storage.** In chemistry the mutated object (e.g. a reaction
   sequence) often differs from the described object (the product). The mapping
   from genotype to phenotype belongs to the problem; the open question is

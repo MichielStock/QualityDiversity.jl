@@ -47,33 +47,41 @@ struct DescriptorCategories{T<:Tuple}
     values::T
 end
 
-function QDProblem(f; init, bounds=nothing, categories=nothing)
+# The descriptor space of `QDProblem` and `StochasticQDProblem`: a tuple of `(lo, hi)`
+# pairs, or a `DescriptorCategories`.
+function descriptor_space(bounds, categories)
     (bounds === nothing) == (categories === nothing) &&
         throw(ArgumentError("give exactly one of bounds and categories"))
-    bounds === nothing && return QDProblem(f, init, DescriptorCategories(Tuple(categories)))
+    bounds === nothing && return DescriptorCategories(Tuple(categories))
     isempty(bounds) && throw(ArgumentError("bounds must have one (lo, hi) pair per descriptor dimension"))
     normalized = map(bounds) do b
         length(b) == 2 ||
             throw(ArgumentError("each bound must be a (lo, hi) pair, got $b"))
         (Float64(b[1]), Float64(b[2]))
     end
-    return QDProblem(f, init, Tuple(normalized))
+    return Tuple(normalized)
 end
 
-function evaluate(prob::QDProblem{F,I,B}, x) where {F,I,B<:Tuple}
-    fitness, descriptor = prob.f(x)
-    N = fieldcount(B)
+QDProblem(f; init, bounds=nothing, categories=nothing) =
+    QDProblem(f, init, descriptor_space(bounds, categories))
+
+function make_evaluation(space::Tuple, fitness, descriptor)
+    N = length(space)
     length(descriptor) == N ||
         throw(ArgumentError("descriptor has $(length(descriptor)) dimensions but the problem bounds have $N"))
     return Evaluation(fitness, SVector{N,Float64}(descriptor))
 end
 
-function evaluate(prob::QDProblem{F,I,<:DescriptorCategories}, x) where {F,I}
-    fitness, descriptor = prob.f(x)
-    N = length(prob.space.values)
+function make_evaluation(space::DescriptorCategories, fitness, descriptor)
+    N = length(space.values)
     length(descriptor) == N ||
         throw(ArgumentError("descriptor has $(length(descriptor)) dimensions but the problem categories have $N"))
     return Evaluation(fitness, Tuple(descriptor))
+end
+
+function evaluate(prob::QDProblem, x)
+    fitness, descriptor = prob.f(x)
+    return make_evaluation(prob.space, fitness, descriptor)
 end
 
 random_solution(rng::AbstractRNG, prob::QDProblem) = prob.init(rng)

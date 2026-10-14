@@ -27,9 +27,15 @@ end
 
 # ── problem ───────────────────────────────────────────────
 SUITE["problem"]["evaluate"] = @benchmarkable QD.evaluate($prob, $x)
+const noisy = StochasticQDProblem((rng, x) -> (-sum(abs2, x) + randn(rng), (x[1], x[2]));
+                                  init=rng -> randn(rng, 20), bounds=((-3, 3), (-3, 3)))
+const sampled = Sampled(noisy; num_samples=10)
+SUITE["problem"]["StochasticQDProblem/evaluate"] = @benchmarkable QD.evaluate($rng, $noisy, $x)
+SUITE["problem"]["Sampled/evaluate"] = @benchmarkable QD.evaluate($rng, $sampled, $x)
 for n in (36, 100, 1000)
     xs = [QD.random_solution(rng, prob) for _ in 1:n]
     SUITE["problem"]["evaluate_batch"]["batch=$n"] = @benchmarkable QD.evaluate_batch($prob, $xs)
+    SUITE["problem"]["StochasticQDProblem/evaluate_batch"]["batch=$n"] = @benchmarkable QD.evaluate_batch($rng, $noisy, $xs)
 end
 
 # ── variation ─────────────────────────────────────────────

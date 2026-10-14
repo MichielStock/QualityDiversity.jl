@@ -211,3 +211,19 @@ end
         @inferred QD.add_batch!(archive, xs, QD.evaluate_batch(prob, xs))
     end
 end
+
+@testset "inference with stochastic problems" begin
+    noisy = StochasticQDProblem((rng, x) -> (-sum(abs2, x) + randn(rng), (x[1], x[2]));
+                                init=rng -> randn(rng, 4), bounds=((-3, 3), (-3, 3)))
+    x = QD.random_solution(Xoshiro(1), noisy)
+    @inferred QD.evaluate(Xoshiro(1), noisy, x)
+    @inferred QD.evaluate(Xoshiro(1), Sampled(noisy; num_samples=3), x)
+    @inferred QD.evaluate(Xoshiro(1), Sampled(noisy; num_samples=3, expectation=Median()), x)
+    @inferred QD.evaluate_batch(Xoshiro(1), noisy, [x, x])
+    @inferred QD.evaluations_per_solution(Sampled(noisy; num_samples=3))
+    for prob in (noisy, Sampled(noisy; num_samples=3))
+        state = @inferred init(prob, MAPElites(prob; dims=(5, 5), batch_size=8); budget=400, rng=Xoshiro(1))
+        @inferred step!(state)
+        @inferred solve!(state)
+    end
+end

@@ -29,6 +29,7 @@ include("evaluation.jl")
 include("interfaces.jl")
 include("metrics.jl")
 include("problems/qdproblem.jl")
+include("problems/stochastic.jl")
 include("problems/benchmarks.jl")
 include("archives/cell_archive.jl")
 include("archives/grid.jl")
@@ -54,9 +55,9 @@ include("algorithms.jl")
 include("testing.jl")
 
 export Evaluation, AddStatus, AddResult
-export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
+export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
-export QDProblem, Rastrigin, Sphere
+export QDProblem, StochasticQDProblem, Sampled, Average, Median, Rastrigin, Sphere
 export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
@@ -72,7 +73,7 @@ export init, step!, solve!, solve
 export qd_score, coverage, max_fitness, mean_fitness
 
 @compat public Rejected, Improved, NewCell
-@compat public evaluate, evaluate_batch, random_solution, descriptor_bounds,
+@compat public evaluate, evaluate_batch, evaluations_per_solution, Expectation, expectation, random_solution, descriptor_bounds,
     descriptor_categories, fitness_offset
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
