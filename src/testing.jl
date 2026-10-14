@@ -149,9 +149,10 @@ more than zero.
 
 By default `add_batch!` must give the results of `add!` on each solution in order.
 An archive that computes the results of a batch against its state before the
-batch, such as a [`ThresholdArchive`](@ref), passes `sequential_batch=false`. The
-checks then require only valid results, a batch of the right length, and a
-`NewCell` result for every solution that is stored as a new elite.
+batch, such as a [`GridArchive`](@ref) or a [`ThresholdArchive`](@ref), passes
+`sequential_batch=false`. The checks then require that the results are valid and
+that the result of each solution equals that of adding the solution alone to the
+archive as it was before the batch.
 """
 function test_archive(make_archive, prob::QD.AbstractQDProblem;
                       rng::AbstractRNG=Xoshiro(1), n::Integer=200,
@@ -239,7 +240,24 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             else
                 @test all(r -> r.status in (QD.Rejected, QD.Improved, QD.NewCell), rs)
                 @test new_cells >= length(a)       # solutions that share a new cell all report it
+                # each result is that of the solution added alone to the archive before the batch
+                half = n ÷ 2
+                before = make_archive()
+                QD.add_batch!(before, xs[1:half], evs[1:half])
+                batch = QD.add_batch!(deepcopy(before), xs[half+1:n], evs[half+1:n])
+                @test all(k -> batch[k] == QD.add!(deepcopy(before), xs[half+k], evs[half+k]),
+                          1:min(25, n - half))
             end
+        end
+
+        @testset "result_archive" begin
+            a = make_archive()
+            QD.add_batch!(a, xs, evs)
+            r = QD.result_archive(a)
+            @test r isa QD.AbstractArchive{G,F,D}
+            @test length(r) >= length(a)
+            @test QD.max_fitness(r) >= QD.max_fitness(a)
+            @test QD.result_archive(r) === r
         end
 
         @testset "elites and sample_elites" begin

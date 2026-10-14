@@ -7,7 +7,7 @@ const MetricsRecord = @NamedTuple{n_evals::Int, qd_score::Float64, coverage::Flo
 State of a running algorithm, created by `init(prob, alg; ...)`. It holds the
 problem, working copies of the algorithm's archive and emitters, the random
 number generator, the number of evaluations so far, and `history`, a vector
-with the archive metrics after initialization and after every step.
+with the metrics of the result archive after initialization and after every step.
 
 Fields are read with `state.archive`, `state.n_evals`, `state.history`, and so
 on.
@@ -26,8 +26,9 @@ end
 """
     QDResult
 
-Outcome of [`solve`](@ref): the filled `archive`, the metrics `history`, and the
-number of evaluations `n_evals`.
+Outcome of [`solve`](@ref): the `archive` of the best solutions found, which is
+[`result_archive`](@ref QualityDiversity.result_archive) of the algorithm's
+archive, the metrics `history`, and the number of evaluations `n_evals`.
 """
 struct QDResult{A<:AbstractArchive}
     archive::A
@@ -100,7 +101,7 @@ function evaluate_and_add!(state::QDState, xs)
 end
 
 function record_metrics!(state::QDState)
-    archive = state.archive
+    archive = result_archive(state.archive)
     offset = fitness_offset(state.problem)
     push!(state.history, (n_evals=state.n_evals,
                           qd_score=Float64(qd_score(archive; offset)),
@@ -148,5 +149,5 @@ function CommonSolve.solve!(state::QDState)
     while state.n_evals < state.budget
         CommonSolve.step!(state)
     end
-    return QDResult(state.archive, state.history, state.n_evals)
+    return QDResult(result_archive(state.archive), state.history, state.n_evals)
 end

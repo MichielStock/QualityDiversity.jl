@@ -147,12 +147,13 @@ descriptor)` so most users never subtype.
 | `elites(archive)` | required | iterator over `(genotype, evaluation)` of occupied cells |
 | `Base.length(archive)` | required | number of occupied cells |
 | `capacity(archive)` | required | number of cells |
-| `add_batch!(archive, xs, evs)` | optional | default: loop over `add!` |
+| `add_batch!(archive, xs, evs)` | optional | default: loop over `add!`; the cell archives and `ThresholdArchive` compute every result against the archive as it was before the batch |
+| `result_archive(archive)` | optional | the archive of the best solutions found, which `solve` returns and whose metrics a run records; default: the archive itself |
 | `Base.empty!(archive)` | optional | |
 
 Concrete archives: `GridArchive`, `CVTArchive`, `CategoricalArchive` (discrete
 descriptors, numbers or labels), `ThresholdArchive` (CMA-MAE thresholds around
-a cell archive), `UnstructuredArchive` (novelty-style,
+a cell archive, with a result archive of the best solutions), `UnstructuredArchive` (novelty-style,
 distance threshold), later `ParetoGridArchive` (MOME).
 
 Storage layout for cell-based archives (`GridArchive`, `CVTArchive`,
@@ -381,6 +382,21 @@ Settled; change them only with the author's agreement.
   accepts any solution, and a `NewCell` reports `improvement == fitness`.
   CMA-MAE thresholds (per-cell threshold with a learning rate) live in
   `ThresholdArchive`, which wraps a cell archive.
+- **Batch results.** `add_batch!` of the cell archives and of
+  `ThresholdArchive` computes the status and `improvement` of every solution
+  against the archive as it was before the batch, as pyribs and QDax do, so that
+  emitters rank candidates independently of the order in the batch. Of the
+  solutions that enter a cell the best is kept (the first on a tie), so a cell
+  archive ends up as if the solutions had been added one at a time.
+  `ThresholdArchive` moves a threshold by the batch rule of the CMA-MAE paper.
+  Archives without their own `add_batch!` (`UnstructuredArchive`) loop over `add!`.
+- **Result archive.** A `ThresholdArchive` replaces the elite of a cell whenever
+  a solution passes the threshold, so its elites can get worse (as in CMA-MAE
+  and pyribs). It therefore also offers every solution to a plain archive, and
+  `result_archive(archive)` returns it; `solve` returns it and a run records its
+  metrics, while emitters read the `ThresholdArchive`. With `learning_rate=1` and
+  `threshold_min=-Inf` the archive is its own result. `threshold_min=-Inf`
+  requires `learning_rate=1`.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.

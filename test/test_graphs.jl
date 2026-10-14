@@ -54,8 +54,8 @@ end
     G = SimpleGraph{Int}
 
     test_problem(prob)
-    test_archive(() -> GridArchive(prob; dims=(8, 8), genotype=G), prob)
-    test_archive(() -> GridArchive(prob; dims=(8, 8), genotype=G, outside=ClampOutside()), prob)
+    test_archive(() -> GridArchive(prob; dims=(8, 8), genotype=G), prob; sequential_batch=false)
+    test_archive(() -> GridArchive(prob; dims=(8, 8), genotype=G, outside=ClampOutside()), prob; sequential_batch=false)
     test_variation(op, erdos_renyi(10, 0.3; rng=Xoshiro(2)))
 
     archive = GridArchive(prob; dims=(8, 8), genotype=G)

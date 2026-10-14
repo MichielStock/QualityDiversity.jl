@@ -148,7 +148,7 @@ when a batch can be inserted faster than one solution at a time.
 The default calls [`add!`](@ref QualityDiversity.add!) on each solution in
 order. An archive may instead compute every result against its state before the
 batch, so that a result does not depend on the other solutions in the batch, as
-[`ThresholdArchive`](@ref) does; it documents this.
+the cell archives and [`ThresholdArchive`](@ref) do; it documents this.
 """
 function add_batch! end
 
@@ -195,6 +195,18 @@ function elites end
 Number of cells in `archive`, occupied or not. Required.
 """
 function capacity end
+
+"""
+    result_archive(archive::AbstractArchive)
+
+The archive that holds the best solutions found, which [`solve`](@ref) returns and
+whose metrics a run records. Optional: the default is `archive` itself. An archive
+whose elites can get worse, such as a [`ThresholdArchive`](@ref), returns a
+separate archive that keeps the best solution of each cell.
+"""
+function result_archive end
+
+result_archive(archive::AbstractArchive) = archive
 
 # ── Variation ─────────────────────────────────────────────
 

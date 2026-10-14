@@ -71,9 +71,65 @@ end
     a = GridArchive((2,), ((0, 1),))
     evs = [Evaluation(1.0, SVector(0.1)), Evaluation(2.0, SVector(0.2)), Evaluation(1.0, SVector(0.9))]
     rs = QD.add_batch!(a, [[1.0], [2.0], [3.0]], evs)
-    @test [r.status for r in rs] == [QD.NewCell, QD.Improved, QD.NewCell]
+    # the results are against the empty archive, so both solutions in the first cell are new
+    @test [r.status for r in rs] == [QD.NewCell, QD.NewCell, QD.NewCell]
+    @test [r.improvement for r in rs] == [1.0, 2.0, 1.0]
     @test rs isa Vector{AddResult{Float64}}
+    @test sort(first.(collect(QD.elites(a)))) == [[2.0], [3.0]]          # the better one stays
     @test_throws "got 1 solutions but 3 evaluations" QD.add_batch!(a, [[1.0]], evs)
+    @test isempty(QD.add_batch!(a, Vector{Float64}[], Evaluation{Float64,SVector{1,Float64}}[]))
+end
+
+# The results of a batch are against the archive before it; the archive after it
+# is the one that adding the solutions one at a time gives.
+@testset "add_batch! of the cell archives" begin
+    ev(f, d) = Evaluation(f, d)
+    makers = (() -> GridArchive((6, 6), ((0, 1), (0, 1))),
+              () -> CVTArchive(Xoshiro(1), 20, ((0, 1), (0, 1)); samples=1_000),
+              () -> GridArchive{Vector{Float32},Float32}((6, 6), ((0, 1), (0, 1)); outside=RejectOutside()))
+    for make in makers
+        a = make()
+        d = SVector(0.3, 0.3)
+        QD.add!(a, [0.0], ev(5.0, d))
+        # one occupied cell: below the occupant, above it, further above it, equal to it
+        rs = QD.add_batch!(a, [[1.0], [2.0], [3.0], [4.0]], [ev(3.0, d), ev(7.0, d), ev(9.0, d), ev(5.0, d)])
+        @test [r.status for r in rs] == [QD.Rejected, QD.Improved, QD.Improved, QD.Rejected]
+        @test [r.improvement for r in rs] == [-2, 2, 4, 0]
+        @test only(first.(collect(QD.elites(a)))) == [3.0]
+        @test max_fitness(a) == 9 && qd_score(a) == 9
+        # a tie among the solutions that enter goes to the first
+        b = make()
+        QD.add_batch!(b, [[1.0], [2.0]], [ev(4.0, d), ev(4.0, d)])
+        @test only(first.(collect(QD.elites(b)))) == [1.0]
+    end
+
+    rng = Xoshiro(8)
+    for make in makers, _ in 1:20
+        one_by_one = make(); batched = make()
+        for _ in 1:3
+            xs = [[rand(rng)] for _ in 1:40]
+            evs = [ev(-10 * rand(rng), rand(rng, SVector{2,Float64})) for _ in 1:40]
+            before = deepcopy(batched)
+            rs = QD.add_batch!(batched, xs, evs)
+            foreach((x, e) -> QD.add!(one_by_one, x, e), xs, evs)
+            # each result is that of the solution added alone to the archive before the batch
+            @test all(k -> rs[k] == QD.add!(deepcopy(before), xs[k], evs[k]), 1:40)
+            @test collect(QD.elites(batched)) == collect(QD.elites(one_by_one))
+            @test qd_score(batched; offset=10) ≈ qd_score(one_by_one; offset=10) rtol = 1e-12
+            @test max_fitness(batched) == max_fitness(one_by_one)
+        end
+    end
+
+    # a descriptor the archive discards does not stop the others
+    r = GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside())
+    rs = QD.add_batch!(r, [[1.0], [2.0]], [ev(1.0, SVector(5.0, 0.5)), ev(2.0, SVector(0.1, 0.1))])
+    @test [x.status for x in rs] == [QD.Rejected, QD.NewCell] && rs[1].improvement == 0.0
+    @test_throws "descriptor component 1 is 5.0" QD.add_batch!(GridArchive((2, 2), ((0, 1), (0, 1))),
+                                                        [[1.0]], [ev(1.0, SVector(5.0, 0.5))])
+    c = CategoricalArchive((1:3, [:a, :b]))
+    rs = QD.add_batch!(c, [[1.0], [2.0], [3.0]], [ev(1.0, (1, :a)), ev(2.0, (1, :a)), ev(0.5, (3, :b))])
+    @test [x.status for x in rs] == fill(QD.NewCell, 3) && length(c) == 2
+    @test Set(first.(collect(QD.elites(c)))) == Set([[2.0], [3.0]])
 end
 
 @testset "GridArchive.sample_elites" begin

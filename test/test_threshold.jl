@@ -14,6 +14,18 @@
     @test ThresholdArchive(CategoricalArchive((1:3, [:a, :b]))).inner isa CategoricalArchive
     @test ThresholdArchive(GridArchive((2,), ((0, 1),)); threshold_min=0).learning_rate == 1.0
 
+    # the defaults keep the best solutions in the archive itself; otherwise a copy collects them
+    @test a.result === nothing && QD.result_archive(a) === a
+    c = ThresholdArchive(GridArchive((4, 4), ((0, 1), (0, 1))); learning_rate=0.5, threshold_min=0)
+    @test c.result isa GridArchive && c.result !== c.inner && length(c.result) == 0
+    @test QD.result_archive(c) === c.result && QD.capacity(c.result) == 16
+    @test ThresholdArchive(GridArchive((4, 4), ((0, 1), (0, 1))); threshold_min=0).result isa GridArchive
+    own = GridArchive((4, 4), ((0, 1), (0, 1)))
+    @test ThresholdArchive(GridArchive((4, 4), ((0, 1), (0, 1))); learning_rate=0.5, threshold_min=0, result=own).result === own
+    @test ThresholdArchive(GridArchive((4, 4), ((0, 1), (0, 1))); learning_rate=0.5, threshold_min=0, result=nothing).result === nothing
+    cat = ThresholdArchive(CategoricalArchive((1:3, [:a, :b])); learning_rate=0.5, threshold_min=0)
+    @test cat.result isa CategoricalArchive && cat.result !== cat.inner
+
     full = GridArchive((2, 2), ((0, 1), (0, 1)))
     QD.add!(full, [1.0], Evaluation(1.0, SVector(0.1, 0.1)))
     @test_throws "the archive to wrap must be empty but holds 1 solutions" ThresholdArchive(full)
@@ -24,6 +36,12 @@
     @test_throws "threshold_min can only be -Inf if learning_rate is 1, got 0.5; give a finite threshold_min" ThresholdArchive(grid; learning_rate=0.5)
     @test_throws "threshold_min can only be -Inf if learning_rate is 1, got 0; give a finite" ThresholdArchive(grid; learning_rate=0)
     @test_throws MethodError ThresholdArchive(GridArchive{Vector{Float64},Int}((2, 2), ((0, 1), (0, 1))))
+    @test_throws "result must be empty but holds 1 solutions" ThresholdArchive(grid; learning_rate=0.5, threshold_min=0, result=full)
+    @test_throws "result must be a GridArchive of the same type as the archive it belongs to, got a CVTArchive" ThresholdArchive(
+        GridArchive((2, 2), ((0, 1), (0, 1))); learning_rate=0.5, threshold_min=0,
+        result=CVTArchive(Xoshiro(1), 4, ((0, 1), (0, 1)); samples=100))
+    g = GridArchive((2, 2), ((0, 1), (0, 1)))
+    @test_throws "result must be a different archive from the one it belongs to" ThresholdArchive(g; learning_rate=0.5, threshold_min=0, result=g)
 end
 
 @testset "ThresholdArchive thresholds and improvement" begin
@@ -62,13 +80,22 @@ end
     @test only(first.(collect(QD.elites(a)))) == [5.0]
     @test max_fitness(a) == 9.5 && qd_score(a) == 9.5 && mean_fitness(a) == 9.5
 
+    # the result archive holds the best solution of the cell, 12, which the elite no longer is
+    best = QD.result_archive(a)
+    @test best isa GridArchive && max_fitness(best) == 12.0 && only(first.(collect(QD.elites(best)))) == [4.0]
+    @test length(best) == 1
+
     # another cell is independent
     r = QD.add!(a, [6.0], ev(2.0, (0.9, 0.9)))
     @test r.status == QD.NewCell && r.improvement == 2.0 && QD.thresholds(a)[4] == 1.0
     @test length(a) == 2 && max_fitness(a) == 9.5 && qd_score(a; offset=10) == 9.5 + 2 + 20
 
+    # a solution the archive rejects still reaches the result archive: -2 is below the minimum
+    @test length(best) == 2 && QD.add!(a, [7.0], ev(-2.0, (0.1, 0.9))).status == QD.Rejected
+    @test length(best) == 3 && length(a) == 2
+
     empty!(a)
-    @test length(a) == 0 && QD.thresholds(a) == zeros(4) && qd_score(a) == 0
+    @test length(a) == 0 && QD.thresholds(a) == zeros(4) && qd_score(a) == 0 && length(best) == 0
     @test_throws "max_fitness is undefined" max_fitness(a)
     @test QD.add!(a, [1.0], ev(1.0)).status == QD.NewCell
 
@@ -152,6 +179,13 @@ end
     @test QD.thresholds(a) ≈ QD.thresholds(b)
     @test sort(first.(collect(QD.elites(a)))) == sort(first.(collect(QD.elites(b))))
 
+    # the result archive receives every solution of the batch
+    a = new_archive(learning_rate=0.5, threshold_min=0)
+    QD.add_batch!(a, [[1.0], [2.0], [3.0], [4.0]], [ev(10.0), ev(6.0), ev(-1.0), ev(3.0, (0.9, 0.9))])
+    @test sort(first.(collect(QD.elites(QD.result_archive(a))))) == [[1.0], [4.0]]
+    @test length(QD.result_archive(a)) == 2 && length(a) == 2
+    @test max_fitness(QD.result_archive(a)) == 10.0
+
     # rejected descriptors, errors
     r = new_archive()
     @test_throws "got 2 solutions but 1 evaluations" QD.add_batch!(r, [[1.0], [2.0]], [ev(1.0)])
@@ -190,9 +224,12 @@ end
     rng = Xoshiro(11)
     for rate in (0.1, 0.5, 1.0)
         a = ThresholdArchive(GridArchive((8, 8), ((0, 1), (0, 1))); learning_rate=rate, threshold_min=-200)
+        plain = GridArchive((8, 8), ((0, 1), (0, 1)))
         for round in 1:20, k in 1:30
             evs = [Evaluation(-100 * rand(rng), rand(rng, SVector{2,Float64})) for _ in 1:10]
-            isodd(k) ? QD.add_batch!(a, fill([0.0], 10), evs) : foreach(e -> QD.add!(a, [0.0], e), evs)
+            xs = [[Float64(round), Float64(k), Float64(j)] for j in 1:10]
+            isodd(k) ? QD.add_batch!(a, xs, evs) : foreach((x, e) -> QD.add!(a, x, e), xs, evs)
+            QD.add_batch!(plain, xs, evs)
             if round % 5 == 0 && k == 30       # the metrics can be read at any time
                 @test max_fitness(a) == generic_max_fitness(a)
                 @test qd_score(a; offset=250.5) ≈ generic_qd_score(a; offset=250.5) rtol = 1e-14
@@ -200,6 +237,9 @@ end
             end
         end
         @test coverage(a) == length(a) / QD.capacity(a)
+        # the result archive is the archive that MAP-Elites would hold
+        @test collect(QD.elites(QD.result_archive(a))) == collect(QD.elites(plain))
+        @test max_fitness(QD.result_archive(a)) >= max_fitness(a)
         # every threshold is at most the best fitness that ever entered, and elites exceed no threshold by much
         @test all(<=(0), QD.thresholds(a))
     end
@@ -235,11 +275,30 @@ end
     alg = MAPElites(archive; batch_size=50, variation=IsoLineVariation(0.05, 0.3))
     result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
     @test result.n_evals == 6_000
-    @test result.archive isa ThresholdArchive && length(archive) == 0
+    # a run returns the archive of the best solutions, and reports its metrics
+    @test result.archive isa GridArchive && length(archive) == 0 && length(archive.result) == 0
     @test length(result.archive) > 30
+    @test issorted(r.max_fitness for r in result.history)        # the soft archive's maximum can fall
+    @test issorted(r.qd_score for r in result.history)
+    @test result.history[end].max_fitness == max_fitness(result.archive)
+    @test result.history[end].qd_score == qd_score(result.archive; offset=QD.fitness_offset(prob))
     @test solve(prob, alg; budget=6_000, rng=Xoshiro(1)).history == result.history
-    @test all(r -> isfinite(r.max_fitness), result.history)
-    @test result.archive.inner !== archive.inner       # the run works on a copy
+
+    # stepping by hand: the working archive is the threshold archive
+    state = init(prob, alg; budget=1_000, rng=Xoshiro(1))
+    @test state.archive isa ThresholdArchive && QD.result_archive(state.archive) isa GridArchive
+    @test length(QD.result_archive(state.archive)) >= length(state.archive)
+
+    # with the defaults the archive is its own result and the run matches plain MAP-Elites
+    own = MAPElites(ThresholdArchive(GridArchive(prob; dims=(10, 10))); batch_size=50, variation=IsoLineVariation(0.05, 0.3))
+    plain = MAPElites(prob; dims=(10, 10), batch_size=50, variation=IsoLineVariation(0.05, 0.3))
+    a = solve(prob, own; budget=3_000, rng=Xoshiro(2))
+    b = solve(prob, plain; budget=3_000, rng=Xoshiro(2))
+    @test a.archive isa ThresholdArchive
+    # the metrics agree up to the order in which the running sum was accumulated
+    @test length(a.history) == length(b.history)
+    @test all(i -> all(k -> isapprox(a.history[i][k], b.history[i][k]; rtol=1e-12), keys(a.history[i])),
+              eachindex(a.history))
 
     wrong = ThresholdArchive(GridArchive((3,), ((0, 1),)))
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)

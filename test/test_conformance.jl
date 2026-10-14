@@ -27,42 +27,42 @@ end
 
 @testset "archives" begin
     prob = Rastrigin(4)
-    test_archive(() -> GridArchive(prob; dims=(8, 8)), prob)
-    test_archive(() -> GridArchive(prob; dims=(1, 1)), prob)
-    test_archive(() -> GridArchive(prob; dims=(5, 3)), prob)
-    test_archive(() -> GridArchive(prob; dims=(8, 8), genotype=Vector{Float32}), prob)
-    test_archive(() -> GridArchive(prob; dims=(8, 8), fitness=Float32), prob)
-    test_archive(() -> GridArchive(prob; dims=(8, 8), outside=ClampOutside()), prob)
-    test_archive(() -> GridArchive(prob; dims=(8, 8), outside=RejectOutside()), prob)
+    test_archive(() -> GridArchive(prob; dims=(8, 8)), prob; sequential_batch=false)
+    test_archive(() -> GridArchive(prob; dims=(1, 1)), prob; sequential_batch=false)
+    test_archive(() -> GridArchive(prob; dims=(5, 3)), prob; sequential_batch=false)
+    test_archive(() -> GridArchive(prob; dims=(8, 8), genotype=Vector{Float32}), prob; sequential_batch=false)
+    test_archive(() -> GridArchive(prob; dims=(8, 8), fitness=Float32), prob; sequential_batch=false)
+    test_archive(() -> GridArchive(prob; dims=(8, 8), outside=ClampOutside()), prob; sequential_batch=false)
+    test_archive(() -> GridArchive(prob; dims=(8, 8), outside=RejectOutside()), prob; sequential_batch=false)
 end
 
 @testset "CVT archives" begin
     prob = Rastrigin(4)
     centroids = QD.centroids(CVTArchive(Xoshiro(1), prob; cells=40, samples=4_000))
     bounds = QD.descriptor_bounds(prob)
-    test_archive(() -> CVTArchive(centroids, bounds), prob)
-    test_archive(() -> CVTArchive(centroids[1:1], bounds), prob)
-    test_archive(() -> CVTArchive{Vector{Float32},Float32}(centroids, bounds), prob)
-    test_archive(() -> CVTArchive(centroids, bounds; outside=ClampOutside()), prob)
-    test_archive(() -> CVTArchive(centroids, bounds; outside=RejectOutside()), prob)
+    test_archive(() -> CVTArchive(centroids, bounds), prob; sequential_batch=false)
+    test_archive(() -> CVTArchive(centroids[1:1], bounds), prob; sequential_batch=false)
+    test_archive(() -> CVTArchive{Vector{Float32},Float32}(centroids, bounds), prob; sequential_batch=false)
+    test_archive(() -> CVTArchive(centroids, bounds; outside=ClampOutside()), prob; sequential_batch=false)
+    test_archive(() -> CVTArchive(centroids, bounds; outside=RejectOutside()), prob; sequential_batch=false)
 end
 
 @testset "categorical archives" begin
     # numeric categories, with a problem that has bounds
     prob = QDProblem(x -> (-sum(abs2, x), (round(x[1]), round(x[2])));
                      init=rng -> 6 .* rand(rng, 3) .- 3, bounds=((-3, 3), (-3, 3)))
-    test_archive(() -> CategoricalArchive((-3:3, -3:3)), prob)
-    test_archive(() -> CategoricalArchive((-3:3, -3:3); outside=RejectOutside()), prob)
-    test_archive(() -> CategoricalArchive(([3, -3, 0, 1, -1, 2, -2], -3:3)), prob)
-    test_archive(() -> CategoricalArchive{Vector{Float32},Float32}((-3:3, -3:3)), prob)
+    test_archive(() -> CategoricalArchive((-3:3, -3:3)), prob; sequential_batch=false)
+    test_archive(() -> CategoricalArchive((-3:3, -3:3); outside=RejectOutside()), prob; sequential_batch=false)
+    test_archive(() -> CategoricalArchive(([3, -3, 0, 1, -1, 2, -2], -3:3)), prob; sequential_batch=false)
+    test_archive(() -> CategoricalArchive{Vector{Float32},Float32}((-3:3, -3:3)), prob; sequential_batch=false)
 
     # labels, with a problem that has categories
     labelled = QDProblem(x -> (-sum(abs2, x), (round(Int, clamp(x[1], -3, 3)), x[2] > 0 ? :pos : x[2] < -1 ? :neg : :zero));
                          init=rng -> 6 .* rand(rng, 3) .- 3, categories=(-3:3, [:neg, :zero, :pos]))
     test_problem(labelled)
-    test_archive(() -> CategoricalArchive(labelled), labelled)
-    test_archive(() -> CategoricalArchive(labelled; outside=RejectOutside()), labelled)
-    test_archive(() -> CategoricalArchive(labelled; genotype=Vector{Float32}, fitness=Float32), labelled)
+    test_archive(() -> CategoricalArchive(labelled), labelled; sequential_batch=false)
+    test_archive(() -> CategoricalArchive(labelled; outside=RejectOutside()), labelled; sequential_batch=false)
+    test_archive(() -> CategoricalArchive(labelled; genotype=Vector{Float32}, fitness=Float32), labelled; sequential_batch=false)
 end
 
 @testset "threshold archives" begin
@@ -98,7 +98,7 @@ end
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
                      bounds=((-1, 1), (-1, 1)))
-    test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))), prob)
+    test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))), prob; sequential_batch=false)
 end
 
 @testset "variation" begin

@@ -104,3 +104,7 @@ SUITE["archive"]["ThresholdArchive/add!/rejected"] = @benchmarkable QD.add!($thr
 SUITE["archive"]["ThresholdArchive/add!/improved"] =
     @benchmarkable QD.add!($threshold, $x, $(QD.Evaluation(ev.fitness + 1000, ev.descriptor)))
 SUITE["archive"]["ThresholdArchive/metrics/max_fitness"] = @benchmarkable max_fitness($threshold)
+SUITE["archive"]["ThresholdArchive/add_batch!/n=100"] = let xs = [QD.random_solution(rng, prob) for _ in 1:BATCH]
+    evs = QD.evaluate_batch(prob, xs)
+    @benchmarkable QD.add_batch!($threshold, $xs, $evs)
+end
