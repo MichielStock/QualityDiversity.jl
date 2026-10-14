@@ -77,25 +77,74 @@ function add!(archive::CellArchive{G,F}, x, ev::Evaluation{<:Real}) where {G,F}
     i = cell_index(archive, ev.descriptor)
     fitness = convert(F, ev.fitness)
     i == 0 && return AddResult(Rejected, zero(F))
+    result = classify(archive, i, fitness)
+    result.status == Rejected || place!(archive, i, x, ev.descriptor, fitness)
+    return result
+end
+
+# Status and improvement of a solution with `fitness` for cell `i`, without
+# changing the archive.
+function classify(archive::CellArchive, i, fitness)
+    archive.occupied[i] || return AddResult(NewCell, fitness)
+    improvement = fitness - archive.fitness[i]
+    return AddResult(improvement > 0 ? Improved : Rejected, improvement)
+end
+
+# Makes `x` the occupant of cell `i`, keeping the running totals up to date. It
+# does not check `fitness` against the occupant.
+function place!(archive::CellArchive, i, x, descriptor, fitness)
     if !archive.occupied[i]
         archive.occupied[i] = true
         push!(archive.occupied_idx, i)
-        _store!(archive, i, x, fitness, ev.descriptor)
+        _store!(archive, i, x, fitness, descriptor)
         _add_to_sum!(archive, Float64(fitness))
         archive.fitness_max = length(archive.occupied_idx) == 1 ? fitness : max(archive.fitness_max, fitness)
-        return AddResult(NewCell, fitness)
+        return nothing
     end
     previous = archive.fitness[i]
-    improvement = fitness - previous
-    if improvement > 0
-        _store!(archive, i, x, fitness, ev.descriptor)
-        # The difference is taken in Float64, where it is exact for Float32
-        # and smaller fitness types.
-        _add_to_sum!(archive, Float64(fitness) - Float64(previous))
-        archive.fitness_max = max(archive.fitness_max, fitness)
-        return AddResult(Improved, improvement)
+    _store!(archive, i, x, fitness, descriptor)
+    # The difference is taken in Float64, where it is exact for Float32
+    # and smaller fitness types.
+    _add_to_sum!(archive, Float64(fitness) - Float64(previous))
+    archive.fitness_max = max(archive.fitness_max, fitness)
+    return nothing
+end
+
+"""
+    add_batch!(archive::CellArchive, xs, evs) -> Vector{AddResult}
+
+Insert every solution in `xs` with its evaluation from `evs`. The status and
+`improvement` of each solution are computed against the archive as it was before
+the batch, so they do not depend on the other solutions in the batch: two
+solutions that both beat the occupant of a cell are both `Improved`, and two
+that fill the same empty cell are both `NewCell`. Of the solutions that enter a
+cell, the one with the highest fitness (the first, on a tie) is kept, so the
+archive afterwards is the one that adding the solutions one at a time gives.
+"""
+function add_batch!(archive::CellArchive{G,F}, xs::AbstractVector, evs::AbstractVector) where {G,F}
+    length(xs) == length(evs) ||
+        throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
+    Base.require_one_based_indexing(xs, evs)
+    n = length(xs)
+    results = Vector{AddResult{F}}(undef, n)
+    cells = Vector{Int}(undef, n)
+    for k in 1:n
+        i = cell_index(archive, evs[k].descriptor)
+        cells[k] = i
+        results[k] = i == 0 ? AddResult(Rejected, zero(F)) :
+                     classify(archive, i, convert(F, evs[k].fitness))
     end
-    return AddResult(Rejected, improvement)
+    # Every result is fixed; placing a solution only if it beats what is in its
+    # cell by now leaves the best of the solutions that entered.
+    for k in 1:n
+        results[k].status == Rejected && continue
+        i = cells[k]
+        fitness = convert(F, evs[k].fitness)
+        if !archive.occupied[i] || fitness > archive.fitness[i]
+            place!(archive, i, xs[k], evs[k].descriptor, fitness)
+        end
+    end
+    return results
 end
 
 # Neumaier's compensated summation, for any archive with the fields

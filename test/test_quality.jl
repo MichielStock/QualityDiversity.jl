@@ -8,8 +8,10 @@ end
 
 # These names are used on purpose although their owners do not declare them
 # public: the CommonSolve verbs are the interface this package extends, and the
-# others are stable Base and Random functions.
-const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail)
+# others are stable, documented Base and Random functions (`require_one_based_indexing`
+# is declared public from Julia 1.11 on).
+const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail,
+                               :require_one_based_indexing)
 
 @testset "ExplicitImports" begin
     @test ExplicitImports.check_no_implicit_imports(QualityDiversity) === nothing

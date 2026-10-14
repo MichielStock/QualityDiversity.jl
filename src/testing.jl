@@ -124,7 +124,8 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
 end
 
 """
-    test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true)
+    test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true, elitist=true,
+                 sequential_batch=true)
 
 Check that the archives built by `make_archive()` meet the contract of
 [`AbstractArchive`](@ref). `make_archive` is called without arguments and must
@@ -137,10 +138,26 @@ solutions), `sample_elites`, `elites`,
 `add_batch!`, and `empty!` when the archive defines it. With
 `check_allocations`, `cell_index` must not allocate, and neither must `add!`
 when the genotype type is `isbits`.
+
+An archive is `elitist` if a cell only accepts a solution with higher fitness
+than its occupant, so that adding the same solution again, or a worse one, is
+`Rejected`. An archive whose cells accept solutions below the occupant, such as a
+[`ThresholdArchive`](@ref) with a finite `threshold_min` and a `learning_rate`
+below 1, passes `elitist=false`. The checks then require only that a status
+agrees with the sign of `improvement`: `Rejected` for zero or less, `Improved` for
+more than zero.
+
+By default `add_batch!` must give the results of `add!` on each solution in order.
+An archive that computes the results of a batch against its state before the
+batch, such as a [`GridArchive`](@ref) or a [`ThresholdArchive`](@ref), passes
+`sequential_batch=false`. The checks then require that the results are valid and
+that the result of each solution equals that of adding the solution alone to the
+archive as it was before the batch.
 """
 function test_archive(make_archive, prob::QD.AbstractQDProblem;
                       rng::AbstractRNG=Xoshiro(1), n::Integer=200,
-                      check_allocations::Bool=true)
+                      check_allocations::Bool=true, elitist::Bool=true,
+                      sequential_batch::Bool=true)
     archive = make_archive()
     A = typeof(archive)
     G, F, D = _archive_types(archive)
@@ -185,14 +202,15 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             @test length(a) == 1
 
             r = QD.add!(a, xs[1], ev)
-            @test r.status == QD.Rejected
-            @test r.improvement <= 0
+            elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
+            @test (r.status == QD.Rejected) == (r.improvement <= 0)
             @test length(a) == 1
 
             worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor)
             r = QD.add!(a, xs[1], worse)
-            @test r.status == QD.Rejected
-            @test r.improvement < 0
+            elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
+            @test (r.status == QD.Rejected) == (r.improvement <= 0)
+            elitist && @test r.improvement < 0
 
             better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor)
             r = QD.add!(a, xs[2], better)
@@ -212,12 +230,34 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             rs = QD.add_batch!(a, xs, evs)
             @test rs isa AbstractVector{<:QD.AddResult}
             @test length(rs) == n
-            @test rs == [QD.add!(b, x, ev) for (x, ev) in zip(xs, evs)]
-            @test length(a) == length(b)
             @test 1 <= length(a) <= QD.capacity(a)
-            # every solution that fills a cell stays, unless a full archive evicts one
             new_cells = count(r -> r.status == QD.NewCell, rs)
-            @test length(a) < QD.capacity(a) ? new_cells == length(a) : new_cells >= length(a)
+            if sequential_batch
+                @test rs == [QD.add!(b, x, ev) for (x, ev) in zip(xs, evs)]
+                @test length(a) == length(b)
+                # every solution that fills a cell stays, unless a full archive evicts one
+                @test length(a) < QD.capacity(a) ? new_cells == length(a) : new_cells >= length(a)
+            else
+                @test all(r -> r.status in (QD.Rejected, QD.Improved, QD.NewCell), rs)
+                @test new_cells >= length(a)       # solutions that share a new cell all report it
+                # each result is that of the solution added alone to the archive before the batch
+                half = n ÷ 2
+                before = make_archive()
+                QD.add_batch!(before, xs[1:half], evs[1:half])
+                batch = QD.add_batch!(deepcopy(before), xs[half+1:n], evs[half+1:n])
+                @test all(k -> batch[k] == QD.add!(deepcopy(before), xs[half+k], evs[half+k]),
+                          1:min(25, n - half))
+            end
+        end
+
+        @testset "result_archive" begin
+            a = make_archive()
+            QD.add_batch!(a, xs, evs)
+            r = QD.result_archive(a)
+            @test r isa QD.AbstractArchive{G,F,D}
+            @test length(r) >= length(a)
+            @test QD.max_fitness(r) >= QD.max_fitness(a)
+            @test QD.result_archive(r) === r
         end
 
         @testset "elites and sample_elites" begin

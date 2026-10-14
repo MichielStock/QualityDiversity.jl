@@ -35,6 +35,7 @@ include("archives/nearest_centroid.jl")
 include("archives/cvt.jl")
 include("archives/categorical.jl")
 include("archives/unstructured.jl")
+include("archives/threshold.jl")
 include("variation/gaussian.jl")
 include("variation/isoline.jl")
 include("variation/polynomial.jl")
@@ -48,7 +49,8 @@ export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
 export QDProblem, Rastrigin
-export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
+export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive
+export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter
 export MAPElites
@@ -58,9 +60,9 @@ export qd_score, coverage, max_fitness, mean_fitness
 @compat public Rejected, Improved, NewCell
 @compat public evaluate, evaluate_batch, random_solution, descriptor_bounds,
     descriptor_categories, fitness_offset
-@compat public add!, add_batch!, cell_index, sample_elites, elites, capacity
+@compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
-@compat public CellArchive, centroids
+@compat public CellArchive, centroids, thresholds
 @compat public Testing
 @compat public ask, tell!, batch_size
 

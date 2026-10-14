@@ -93,3 +93,18 @@ end
 SUITE["archive"]["UnstructuredArchive/cell_index (1000 slots)"] = @benchmarkable QD.cell_index($unstructured, $d)
 SUITE["archive"]["UnstructuredArchive/add!/rejected"] = @benchmarkable QD.add!($unstructured, $x, $ev)
 SUITE["archive"]["UnstructuredArchive/sample_elites/n=100"] = @benchmarkable QD.sample_elites($rng, $unstructured, 100)
+
+const threshold = let a = ThresholdArchive(new_archive(); learning_rate=0.1, threshold_min=-800.0)
+    xs = [QD.random_solution(rng, prob) for _ in 1:20_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
+    a
+end
+SUITE["archive"]["ThresholdArchive/cell_index"] = @benchmarkable QD.cell_index($threshold, $d)
+SUITE["archive"]["ThresholdArchive/add!/rejected"] = @benchmarkable QD.add!($threshold, $x, $ev)
+SUITE["archive"]["ThresholdArchive/add!/improved"] =
+    @benchmarkable QD.add!($threshold, $x, $(QD.Evaluation(ev.fitness + 1000, ev.descriptor)))
+SUITE["archive"]["ThresholdArchive/metrics/max_fitness"] = @benchmarkable max_fitness($threshold)
+SUITE["archive"]["ThresholdArchive/add_batch!/n=100"] = let xs = [QD.random_solution(rng, prob) for _ in 1:BATCH]
+    evs = QD.evaluate_batch(prob, xs)
+    @benchmarkable QD.add_batch!($threshold, $xs, $evs)
+end
