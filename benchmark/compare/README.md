@@ -1,7 +1,8 @@
 # QualityDiversity.jl, pyribs and QDax on Rastrigin
 
 MAP-Elites on the 20-dimensional Rastrigin function, run with the same
-settings in three libraries.
+settings in three libraries. The last section does the same for CMA-ME and
+CMA-MAE.
 
 | setting | value |
 |---|---|
@@ -199,4 +200,102 @@ taskset -c 1 venv/bin/python benchmark/compare/compare.py
 QDAX_GRID_LOOKUP=1 taskset -c 1 venv/bin/python benchmark/compare/compare_qdax.py
 JAX_ENABLE_X64=1 QDAX_GRID_LOOKUP=1 taskset -c 1 venv/bin/python benchmark/compare/compare_qdax.py
 REPEATS=3 taskset -c 1 venv/bin/python benchmark/compare/compare_qdax.py   # about 15 minutes
+```
+
+## CMA-ME and CMA-MAE
+
+`compare_cma.jl`, `compare_cma.py` and `compare_cma_qdax.py` run the emitters of
+CMA-ME (Fontaine et al., 2020) and CMA-MAE (Fontaine and Nikolaidis, 2023) on the
+same Rastrigin problem and the same 100 × 100 grid.
+
+| setting | value |
+|---|---|
+| emitters | 5 independent CMA-ES searches, each with batch size 12 (`4 + floor(3 log 20)`), initial step size 1, first search from the origin, no bounds on the solutions |
+| methods | CMA-ME with improvement emitters, with optimizing emitters, and with random direction emitters; CMA-MAE (learning rate 0.01, minimum threshold -820) |
+| budget | 100 020 evaluations |
+| repeats | 11 runs per method, one seed each, after a warm-up run; QDax compiles once per method |
+| hardware, software | as above; QDax at `float32` and `float64`, the others in `float64` |
+
+Each library's own defaults are used for everything not listed. QualityDiversity.jl
+steps the emitters one after the other, as the CMA-ME paper does, pyribs adds the
+solutions of all emitters at once, and QDax runs one emitter of its pool per step.
+
+### Results
+
+Median over 11 runs. Time is for the whole budget on one core. Coverage and QD score
+are those of the archive of the best solutions (QD-score offset 820).
+
+| method | library | median s | coverage | max fitness | QD score |
+|---|---|---:|---:|---:|---:|
+| CMA-ME, improvement | QualityDiversity.jl | 0.591 | 0.999 | -126.7 | 4 654 785 |
+| | pyribs | 3.285 | 0.999 | -119.9 | 4 638 187 |
+| | QDax, float32 | 12.82 | 0.998 | -129.0 | 4 704 976 |
+| | QDax, float64 | 13.21 | 0.998 | -127.6 | 4 702 235 |
+| CMA-ME, optimizing | QualityDiversity.jl | 0.732 | 0.079 | -15.4 | 490 787 |
+| | pyribs | 2.962 | 0.081 | -17.9 | 504 191 |
+| | QDax, float32 | 13.13 | 0.621 | -114.2 | 3 248 358 |
+| | QDax, float64 | 13.34 | 0.625 | -116.8 | 3 263 107 |
+| CMA-ME, random direction | QualityDiversity.jl | 0.626 | 0.999 | -131.5 | 4 291 023 |
+| | pyribs | 3.396 | 0.999 | -132.1 | 4 301 840 |
+| | QDax, float32 | 13.05 | 0.815 | -129.5 | 3 648 340 |
+| | QDax, float64 | 13.41 | 0.817 | -127.0 | 3 634 406 |
+| CMA-MAE | QualityDiversity.jl | 0.687 | 0.444 | -90.1 | 2 543 936 |
+| | pyribs | 3.700 | 0.582 | -111.1 | 3 060 205 |
+| CMA-MAE, covariance update of pyribs | QualityDiversity.jl | 0.753 | 0.570 | -118.8 | 3 037 135 |
+
+QDax has no CMA-MAE.
+
+QualityDiversity.jl is four to six times faster than pyribs and about 20 times
+faster than QDax on this CPU run. The QDax time says little about QDax on an accelerator, which
+this does not measure: each QDax step here is a batch of 12, far too small to use one.
+
+### Where the libraries agree and differ
+
+- **CMA-ME with improvement, optimizing and random direction emitters:**
+  QualityDiversity.jl and pyribs agree within the spread between seeds. The
+  optimizing emitter fills few cells in both, as in the CMA-ME paper.
+- **QDax's emitters behave differently.** Its optimizing emitters fill far more cells
+  (coverage 0.62 against 0.08), and its random direction emitters fill fewer (0.82
+  against 0.999). From reading the QDax code: it recombines all
+  candidates of a batch with log-decreasing weights, not the best half or the
+  accepted ones (a comment in the code says this departs from the paper), it
+  restarts on its own rules, and an emitter measures improvement against the archive as
+  it stood after that emitter's previous batch, not before the current one. It is a
+  looser variant of CMA-ME, so its columns are not a check on the other two.
+- **CMA-MAE: pyribs reaches a higher coverage than QualityDiversity.jl.** The cause
+  is in pyribs's CMA-ES. Its rank-one covariance term is `c1² pc pcᵀ`, where
+  Hansen's tutorial and the LM-MA-ES paper (Algorithm 1) have `c1 pc pcᵀ`, so the
+  covariance matrix adapts almost only through the rank-mu term and the search stays
+  rounder for longer, which helps CMA-MAE fill the grid. QualityDiversity.jl follows
+  the textbook update. The CMA-MAE paper ran all its experiments with pyribs. With
+  `strategy=PyribsCMAES`, which only changes that coefficient, QualityDiversity.jl
+  reaches 0.570 coverage and a QD score of 3.04 million against 0.582 and 3.06
+  million for pyribs. Swapping the textbook term into pyribs lowers its CMA-MAE
+  coverage from 0.58 to 0.46, and the step size rule and the scaling of the path make
+  no difference. CMA-ME with improvement emitters is the same with either update
+  (QD scores 4.65 million with the textbook term and 4.64 million with the pyribs term).
+- **Random direction ranking.** The CMA-ME paper ranks the accepted solutions by
+  their projection on the direction, without putting new cells first. pyribs and
+  `TwoStageRandomDirectionRanker` rank new cells first; `AcceptedRandomDirectionRanker`
+  follows the paper. Here both give the same QD score (4.29 million).
+
+### Not measured
+
+The same caveats as for MAP-Elites hold: no GPU, one core, a cheap objective, and a
+spread of about ±10% in time between runs. In addition, 5 emitters of batch 12 and
+100 000 evaluations are small next to the CMA-MAE paper (15 emitters of batch 36 and
+10 000 iterations), so the QD scores here do not compare with its tables.
+
+### Reproducing
+
+```
+# Julia
+taskset -c 1 julia --threads=1 benchmark/compare/compare_cma.jl
+
+# pyribs and QDax
+export OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+taskset -c 1 venv/bin/python benchmark/compare/compare_cma.py
+taskset -c 1 venv/bin/python benchmark/compare/compare_cma_qdax.py
+JAX_ENABLE_X64=1 taskset -c 1 venv/bin/python benchmark/compare/compare_cma_qdax.py   # about 8 minutes each
 ```

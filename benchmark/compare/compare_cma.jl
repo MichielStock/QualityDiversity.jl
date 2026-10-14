@@ -40,6 +40,17 @@ const METHODS = (
     "CMA-MAE" =>
         () -> CMAMAE(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
                      threshold_min=THRESHOLD_MIN, learning_rate=LEARNING_RATE),
+    # Rows that only this package has: the random direction ranking that the CMA-ME paper
+    # describes, and the covariance update of pyribs (see PyribsCMAES).
+    "CMA-ME, random direction emitters, ranking of the paper" =>
+        () -> CMAME(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
+                    ranker=AcceptedRandomDirectionRanker()),
+    "CMA-MAE, covariance update of pyribs" =>
+        () -> CMAMAE(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
+                     threshold_min=THRESHOLD_MIN, learning_rate=LEARNING_RATE, strategy=PyribsCMAES),
+    "CMA-ME, improvement emitters, covariance update of pyribs" =>
+        () -> CMAME(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
+                    strategy=PyribsCMAES),
 )
 
 const seed = Ref(0)

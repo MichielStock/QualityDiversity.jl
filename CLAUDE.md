@@ -420,7 +420,10 @@ Settled; change them only with the author's agreement.
   state, such as a random direction: an emitter keeps its own copy of its ranker, and
   calls `reset_ranker!(rng, ranker, archive)` whenever a search starts. A batch is flat
   when the whole ranking key of its best and its worst candidate agree, status
-  included, as in pyribs and QDax.
+  included, as in pyribs and QDax. `PyribsCMAES` is CMA-ES with the rank-one weight `c1²`
+  that pyribs computes, for reproducing results produced with pyribs; `CMAES` follows
+  the textbook `c1`. `AcceptedRandomDirectionRanker` is the random direction ranking of
+  the CMA-ME paper; the two-stage one is that of pyribs.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.

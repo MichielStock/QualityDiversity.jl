@@ -241,3 +241,28 @@ end
     @test es.sigma ≈ cma_sigma rtol = 1e-10
     @test vec(es.cov) ≈ cma_cov rtol = 1e-10
 end
+
+@testset "PyribsCMAES weakens the rank-one term" begin
+    n = length(cma_x0)
+    textbook = QD.CMAES(n; sigma0=cma_s0, batch_size=8)
+    pyribs = PyribsCMAES(n; sigma0=cma_s0, batch_size=8)
+    @test textbook.rank_one isa QD.TextbookRankOne && pyribs.rank_one isa QD.PyribsRankOne
+    @test pyribs isa QD.CMAES && pyribs.batch_size == 8 && pyribs.sigma0 == cma_s0
+    for es in (textbook, pyribs)
+        QD.reset!(es, cma_x0)
+        load_batch!(es, columns(cma_X[1], n))
+        QD.update!(es, cma_orders[1], cma_parents[1])
+    end
+    # one update from the same batch: same mean, step size and path, and a covariance
+    # that differs by (c1 - c1²) pc pcᵀ
+    c1 = QD.strategy_constants(n, cma_parents[1])[5]
+    @test pyribs.mean == textbook.mean && pyribs.sigma == textbook.sigma && pyribs.path_c == textbook.path_c
+    @test textbook.cov - pyribs.cov ≈ (c1 - c1^2) .* (textbook.path_c * textbook.path_c') atol = 1e-14
+    @test norm(textbook.path_c) > 0.1 && textbook.cov != pyribs.cov
+    @test QD.rank_one_rate(QD.TextbookRankOne(), 0.1) == 0.1 && QD.rank_one_rate(QD.PyribsRankOne(), 0.1) ≈ 0.01
+    # the variant fills an archive through an emitter
+    prob = Sphere(6)
+    alg = CMAME(prob; dims=(6, 6), sigma0=0.5, num_emitters=2, strategy=PyribsCMAES)
+    @test alg.emitters[1].es isa QD.CMAES{QD.PyribsRankOne}
+    @test coverage(solve(prob, alg; budget=1_000, rng=Xoshiro(1)).archive) > 0.1
+end

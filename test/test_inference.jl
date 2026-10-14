@@ -74,6 +74,8 @@ end
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=ObjectiveRanker(), selection=MuSelection()),
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=TwoStageRandomDirectionRanker()),
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=RandomDirectionRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=AcceptedRandomDirectionRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=PyribsCMAES),
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=TwoStageObjectiveRanker()),
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=SepCMAES),
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=OpenAIES),

@@ -1,10 +1,42 @@
 """
-    CMAES(dim; sigma0, batch_size=default, lower=-Inf, upper=Inf)
+    RankOneRule
+
+Supertype of the rules that set the weight of the rank-one term `c1 pc pcᵀ` in the
+covariance update of [`CMAES`](@ref): [`TextbookRankOne`](@ref) and
+[`PyribsRankOne`](@ref).
+"""
+abstract type RankOneRule end
+
+"""
+    TextbookRankOne()
+
+The rank-one term of the covariance update with weight `c1`, as in Hansen (2016) and
+Loshchilov et al. (2019). This is the default of [`CMAES`](@ref).
+"""
+struct TextbookRankOne <: RankOneRule end
+
+"""
+    PyribsRankOne()
+
+The rank-one term with weight `c1²`, which is what pyribs computes: it multiplies the
+term by `c1` twice. The term is then much weaker, and the covariance matrix adapts
+almost only through the rank-mu update, so a search stays rounder for longer. Use it
+through [`PyribsCMAES`](@ref) to compare with results produced by pyribs.
+"""
+struct PyribsRankOne <: RankOneRule end
+
+rank_one_rate(::TextbookRankOne, c1) = c1
+rank_one_rate(::PyribsRankOne, c1) = c1^2
+
+"""
+    CMAES(dim; sigma0, batch_size=default, lower=-Inf, upper=Inf, rank_one=TextbookRankOne())
 
 Covariance matrix adaptation evolution strategy (Hansen and Ostermeier, 2001;
 Hansen, 2016, "The CMA Evolution Strategy: A Tutorial"), maximizing. It keeps a
 Gaussian search distribution with mean `m`, step size `σ` and covariance `C`, and
-is the default optimizer inside a [`CMAEmitter`](@ref).
+is the default optimizer inside a [`CMAEmitter`](@ref). `rank_one`, a
+[`RankOneRule`](@ref), sets the weight of the rank-one covariance term;
+[`PyribsCMAES`](@ref) is the variant that reproduces pyribs.
 
 A generation has two calls. `sample!(rng, es)` draws `batch_size` solutions,
 `x = m + σ B D z` with `z` standard normal and `C = B D² Bᵀ`, and leaves them in
@@ -25,7 +57,7 @@ matrix with a condition number above `1e14`, a distribution that has shrunk belo
 flat: the best and the worst are within `1e-12` of each other. `reset!(es, x0)`
 restarts the search at `x0`.
 """
-mutable struct CMAES <: AbstractEvolutionStrategy
+mutable struct CMAES{R<:RankOneRule} <: AbstractEvolutionStrategy
     const dim::Int
     const batch_size::Int
     const sigma0::Float64
@@ -50,16 +82,17 @@ mutable struct CMAES <: AbstractEvolutionStrategy
     # Scratch space for a draw.
     z::Vector{Float64}
     step::Vector{Float64}
+    const rank_one::R
 end
 
 function CMAES(dim::Integer; sigma0::Real, batch_size::Integer=default_batch_size(dim),
-               lower=-Inf, upper=Inf)
+               lower=-Inf, upper=Inf, rank_one::RankOneRule=TextbookRankOne())
     lo, hi = check_strategy_arguments(dim, sigma0, batch_size, lower, upper)
     es = CMAES(Int(dim), Int(batch_size), Float64(sigma0), lo, hi,
                zeros(dim), Float64(sigma0), Matrix{Float64}(I, dim, dim),
                Matrix{Float64}(I, dim, dim), ones(dim), Matrix{Float64}(I, dim, dim),
                zeros(dim), zeros(dim), 0, 0,
-               zeros(dim, batch_size), zeros(dim, batch_size), zeros(dim), zeros(dim))
+               zeros(dim, batch_size), zeros(dim, batch_size), zeros(dim), zeros(dim), rank_one)
     return es
 end
 
@@ -164,7 +197,7 @@ function update!(es::CMAES, order::AbstractVector{<:Integer}, parents::Integer)
     # Covariance: rank-one update from the path and rank-mu update from the parents.
     delta = (1 - hsig) * cc * (2 - cc)
     es.cov .*= 1 + c1 * delta - c1 - cmu
-    es.cov .+= c1 .* (es.path_c * es.path_c')
+    es.cov .+= rank_one_rate(es.rank_one, c1) .* (es.path_c * es.path_c')
     mul!(es.cov, ys .* weights', ys', cmu, 1.0)
 
     es.sigma *= exp(min(1.0, (cs / damps) * (norm_ps / chi_n - 1)))
@@ -202,3 +235,14 @@ ranking keys of the last batch from best to worst.
 function should_stop(es::CMAES, keys::AbstractVector)
     return covariance_converged(es.sigma, es.mean, es.eigenvalues, keys)
 end
+
+"""
+    PyribsCMAES(dim; sigma0, batch_size=default, lower=-Inf, upper=Inf)
+
+[`CMAES`](@ref) with the rank-one covariance weight of pyribs, `c1²` instead of `c1`;
+see [`PyribsRankOne`](@ref). It exists to reproduce results that were produced with
+pyribs, such as those of the CMA-MAE paper, where it makes a search explore with rounder
+distributions. Pass it as `strategy=PyribsCMAES` to a [`CMAEmitter`](@ref),
+[`CMAME`](@ref) or [`CMAMAE`](@ref).
+"""
+PyribsCMAES(dim::Integer; kwargs...) = CMAES(dim; kwargs..., rank_one=PyribsRankOne())

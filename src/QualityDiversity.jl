@@ -61,9 +61,10 @@ export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, Thresho
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter, CMAEmitter
-export AbstractEvolutionStrategy, CMAES, SepCMAES, LMMAES, OpenAIES
+export AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES
 export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker,
-    TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker
+    TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker,
+    AcceptedRandomDirectionRanker
 export FilterSelection, MuSelection
 export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
 export MAPElites, CMAME, CMAMAE
@@ -78,6 +79,7 @@ export qd_score, coverage, max_fitness, mean_fitness
 @compat public CellArchive, centroids, thresholds
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop
+@compat public RankOneRule, TextbookRankOne, PyribsRankOne
 @compat public ask, tell!, batch_size, rank_key, reset_ranker!, SelectionRule, RestartRule
 
 end

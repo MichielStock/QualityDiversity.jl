@@ -279,6 +279,14 @@ end
     two = TwoStageRandomDirectionRanker([1.0, 2.0])
     order, keys = QD.rank(two, evs, results)
     @test order == [2, 3, 1] && keys == [(2, 10.0), (1, -4.0), (0, 3.0)]
+    # the ranking of the CMA-ME paper: accepted above rejected, a new cell is not above an improvement
+    accepted = AcceptedRandomDirectionRanker([1.0, 2.0])
+    order, keys = QD.rank(accepted, evs, results)
+    @test order == [2, 3, 1] && keys == [(1, 10.0), (1, -4.0), (0, 3.0)]
+    # an improvement with a larger projection than a new cell ranks first here, and second in two stages
+    mixed = [result(QD.NewCell, 0), result(QD.Improved, 0), result(QD.Rejected, 0)]
+    @test QD.rank(accepted, evs, mixed)[1] == [2, 1, 3]
+    @test QD.rank(two, evs, mixed)[1] == [1, 2, 3]
     @test_throws "the descriptor has 2 dimensions but the direction has 3" QD.rank_key(RandomDirectionRanker([1.0, 2.0, 3.0]), evs[1], results[1])
 
     # the archive wrappers report their bounds, and others fail with a message
