@@ -496,6 +496,20 @@ Ask the author before resolving any of these.
   with the two-argument `Evaluation(fitness, descriptor)` kept. Decide before
   the first example that needs it.
 
+## Minor things still to do
+
+Small follow-ups that do not block anything. Take them up when convenient.
+
+- **MOME duplicates.** `ParetoGridArchive` rejects a solution whose objective vector equals
+  that of a stored solution; QDax's `MOMERepertoire` keeps both. Decide whether to keep our
+  rule (it stops a front from filling with identical points) or match QDax.
+- **MOME full front.** A full front rejects a new solution that beats none of it, which is what
+  QDax's code does (checked against `MOMERepertoire` on test sequences, `test/reference`).
+  The MOME paper (Pierrot et al., 2022, "Multi-Objective Quality Diversity Optimization")
+  has not been read: check what it says about a full front, for example whether it removes the
+  solution with the smallest crowding distance instead, and change the rule or document the
+  difference.
+
 ---
 
 ## Conventions
