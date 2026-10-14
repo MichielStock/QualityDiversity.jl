@@ -1,6 +1,18 @@
 const MetricsRecord = @NamedTuple{n_evals::Int, qd_score::Float64, coverage::Float64,
                                   max_fitness::Float64, mean_fitness::Float64}
 
+# The record of the metrics of an archive that `history` holds. An archive with other
+# metrics defines `metrics_record_type` and `metrics_record`.
+metrics_record_type(::Type{<:AbstractArchive}) = MetricsRecord
+
+function metrics_record(archive::AbstractArchive, n_evals, offset)
+    return (n_evals=n_evals,
+            qd_score=Float64(qd_score(archive; offset)),
+            coverage=Float64(coverage(archive)),
+            max_fitness=Float64(max_fitness(archive)),
+            mean_fitness=Float64(mean_fitness(archive)))
+end
+
 """
     QDState
 
@@ -12,7 +24,7 @@ with the metrics of the result archive after initialization and after every step
 Fields are read with `state.archive`, `state.n_evals`, `state.history`, and so
 on.
 """
-mutable struct QDState{P<:AbstractQDProblem,A<:AbstractArchive,E<:Tuple,R<:AbstractRNG,C}
+mutable struct QDState{P<:AbstractQDProblem,A<:AbstractArchive,E<:Tuple,R<:AbstractRNG,C,H<:NamedTuple}
     const problem::P
     const archive::A
     const emitters::E
@@ -20,7 +32,7 @@ mutable struct QDState{P<:AbstractQDProblem,A<:AbstractArchive,E<:Tuple,R<:Abstr
     const budget::Int
     const callback::C
     n_evals::Int
-    const history::Vector{MetricsRecord}
+    const history::Vector{H}
 end
 
 """
@@ -30,9 +42,9 @@ Outcome of [`solve`](@ref): the `archive` of the best solutions found, which is
 [`result_archive`](@ref QualityDiversity.result_archive) of the algorithm's
 archive, the metrics `history`, and the number of evaluations `n_evals`.
 """
-struct QDResult{A<:AbstractArchive}
+struct QDResult{A<:AbstractArchive,H<:NamedTuple}
     archive::A
-    history::Vector{MetricsRecord}
+    history::Vector{H}
     n_evals::Int
 end
 
@@ -60,8 +72,9 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
     budget >= initial_evals ||
         throw(ArgumentError("budget ($budget) is smaller than the initial population ($initial_evals)"))
     check_compatible(prob, alg.archive)
-    state = QDState(prob, deepcopy(alg.archive), deepcopy(alg.emitters), rng,
-                    Int(budget), callback, 0, MetricsRecord[])
+    archive = deepcopy(alg.archive)
+    history = metrics_record_type(typeof(result_archive(archive)))[]
+    state = QDState(prob, archive, deepcopy(alg.emitters), rng, Int(budget), callback, 0, history)
     xs = initial_solutions(rng, prob, state.archive, init_size)
     evaluate_and_add!(state, xs)
     record_metrics!(state)
@@ -104,12 +117,7 @@ end
 
 function record_metrics!(state::QDState)
     archive = result_archive(state.archive)
-    offset = fitness_offset(state.problem)
-    push!(state.history, (n_evals=state.n_evals,
-                          qd_score=Float64(qd_score(archive; offset)),
-                          coverage=Float64(coverage(archive)),
-                          max_fitness=Float64(max_fitness(archive)),
-                          mean_fitness=Float64(mean_fitness(archive))))
+    push!(state.history, metrics_record(archive, state.n_evals, fitness_offset(state.problem)))
     return nothing
 end
 

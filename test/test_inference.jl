@@ -227,3 +227,25 @@ end
         @inferred solve!(state)
     end
 end
+
+@testset "inference with MOME" begin
+    prob = BiSphere(4)
+    alg = MOME(prob; dims=(5, 5), batch_size=8)
+    state = @inferred init(prob, alg; budget=400, rng=Xoshiro(1))
+    @inferred step!(state)
+    @inferred solve!(state)
+    archive = state.archive
+    d = SVector(0.2, 0.3)
+    @inferred QD.cell_index(archive, d)
+    @inferred QD.sample_elites(Xoshiro(1), archive, 4)
+    @inferred QD.add!(archive, [0.0, 0.0, 0.0, 0.0], QD.evaluate(prob, zeros(4)))
+    @inferred qd_score(archive)
+    @inferred QD.metrics_record(archive, 1, 0)
+    # a rejected solution and a cell lookup do not allocate with two objectives
+    x = zeros(4)
+    ev = QD.evaluate(prob, x)
+    QD.add!(archive, x, ev)
+    @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+    @test allocated(QD.add!, archive, x, ev) == 0
+    @test allocated(QD.add!, archive, x, Evaluation(ev.fitness .- 1, ev.descriptor)) == 0
+end

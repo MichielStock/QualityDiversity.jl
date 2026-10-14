@@ -164,7 +164,7 @@ evaluations one solution costs; the budget of a run counts them.
 Concrete archives: `GridArchive`, `CVTArchive`, `CategoricalArchive` (discrete
 descriptors, numbers or labels), `ThresholdArchive` (CMA-MAE thresholds around
 a cell archive, with a result archive of the best solutions), `UnstructuredArchive` (novelty-style,
-distance threshold), later `ParetoGridArchive` (MOME).
+distance threshold), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
 
 Storage layout for cell-based archives (`GridArchive`, `CVTArchive`,
 `CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
@@ -272,6 +272,7 @@ QualityDiversity.jl/
 │   ├── QualityDiversity.jl       # module, exports, `public` declarations, includes
 │   ├── interfaces.jl             # abstract types + documented function stubs
 │   ├── evaluation.jl             # Evaluation, AddStatus, AddResult
+│   ├── hypervolume.jl            # hypervolume of a set of points, any number of objectives
 │   ├── problems/
 │   │   ├── qdproblem.jl          # QDProblem wrapper
 │   │   ├── stochastic.jl         # StochasticQDProblem, Sampled
@@ -283,6 +284,7 @@ QualityDiversity.jl/
 │   │   ├── cvt.jl
 │   │   ├── categorical.jl
 │   │   ├── threshold.jl
+│   │   ├── pareto.jl             # ParetoGridArchive
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -374,7 +376,7 @@ Julia LTS and the current release.
         `CMAME()` and `CMAMAE()`
   - [x] Random-direction rankers (CMA-ME-RD) and the two-stage objective ranker;
         further evolution strategies (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
-  - [ ] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
+  - [x] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
   - [ ] `SlidingBoundariesArchive` (pyribs), `BanditScheduler` for choosing
         among emitters (pyribs), `DensityArchive` and `DNSArchive` (pyribs)
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
@@ -445,6 +447,21 @@ Settled; change them only with the author's agreement.
   Results depend on the seed of the run and not on the number of threads. `Sampled`
   evaluates the wrapped problem `num_samples` times with the generator of the solution, and
   every evaluation counts against the budget.
+- **Multi-objective archives.** `ParetoGridArchive` has the cells of a `GridArchive` and a
+  front of at most `max_front` solutions (50 by default) in each. The fitness is a vector, all
+  objectives maximized, and the archive stores it as `SVector{M,Float64}`; it needs a
+  `reference_point`, below the values of interest, for hypervolume (a problem can supply it with
+  `reference_point(prob)`). `add!` rejects a solution that a stored one matches in every
+  objective, so equal fitness vectors are not kept twice (QDax keeps both); it removes the
+  stored solutions that the new one beats in every objective; a full front rejects a solution
+  that beats none of it, as QDax does. The result is `NewCell` for an empty cell and `Improved`
+  otherwise, with the hypervolume that the cell gains as its `improvement` (`AddResult{Float64}`,
+  zero when rejected). `length` is the number of occupied cells and `num_solutions` the
+  number of solutions. `sample_elites` draws an occupied cell, then a solution of its front,
+  both uniformly. `qd_score` is the MOQD score, the sum of the hypervolumes of the fronts, and
+  takes no offset; `max_fitness` and `mean_fitness` are not defined. The record of a run of such
+  an archive has the fields of `ParetoMetricsRecord`, chosen by `metrics_record_type`. `hypervolume`
+  is exact for any number of objectives.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.

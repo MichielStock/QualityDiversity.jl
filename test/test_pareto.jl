@@ -1,0 +1,256 @@
+include("reference/pareto.jl")
+
+pareto_archive(; dims=(3, 3), ref=[0.0, 0.0], kwargs...) =
+    ParetoGridArchive{Vector{Float64}}(dims, ((0, 1), (0, 1)), ref; kwargs...)
+
+ev2(a, b, d=(0.2, 0.2)) = Evaluation(SVector(Float64(a), Float64(b)), SVector(Float64(d[1]), Float64(d[2])))
+
+@testset "hypervolume" begin
+    @test hypervolume([[3.0, 1.0], [2.0, 2.0], [1.0, 3.0]], [0.0, 0.0]) == 6.0
+    @test hypervolume([[1.0, 1.0, 1.0], [2.0, 2.0, 0.5]], [0.0, 0.0, 0.0]) == 2.5
+    @test hypervolume(Vector{Float64}[], [0.0, 0.0]) == 0.0
+    @test hypervolume([[2.0]], [0.5]) == 1.5 && hypervolume([[2.0], [3.0]], [0.5]) == 2.5
+    # a dominated point adds nothing, and so does a point that is not above the reference point
+    front = [[3.0, 1.0], [1.0, 3.0]]
+    @test hypervolume(vcat(front, [[0.5, 0.5], [1.0, 1.0]]), [0.0, 0.0]) == hypervolume(front, [0.0, 0.0])
+    @test hypervolume(vcat(front, [[5.0, -1.0], [0.0, 9.0]]), [0.0, 0.0]) == hypervolume(front, [0.0, 0.0])
+    # points that are not above the reference point in every objective add nothing
+    @test hypervolume(front, [1.0, 1.0]) == 0.0
+    # the order of the points does not matter, and vectors of any kind work
+    shuffled = [[1.0, 1.0, 3.0], [3.0, 1.0, 1.0], [1.0, 3.0, 1.0], [2.0, 2.0, 2.0]]
+    @test hypervolume(shuffled, [0.0, 0.0, 0.0]) == hypervolume(reverse(shuffled), [0.0, 0.0, 0.0])
+    @test hypervolume([SVector(3.0, 1.0), SVector(1.0, 3.0)], SVector(0.0, 0.0)) == 5.0
+    # against the hypervolume indicator of pymoo
+    for c in hv_cases
+        points = [c.points[(i-1)*c.m+1:i*c.m] for i in 1:length(c.points)÷c.m]
+        @test hypervolume(points, zeros(c.m)) ≈ c.volume rtol = 1e-12
+    end
+    @test_throws "a point has 3 objectives but the reference point has 2" hypervolume([[1.0, 1.0, 1.0]], [0.0, 0.0])
+    @test_throws "a point has a NaN objective" hypervolume([[1.0, NaN]], [0.0, 0.0])
+    @test_throws "the reference point needs at least one objective" hypervolume([Float64[]], Float64[])
+end
+
+@testset "ParetoGridArchive construction" begin
+    a = ParetoGridArchive((4, 5), ((0, 1), (-1, 1)), [0.0, 0.0, 0.0]; max_front=7)
+    @test a isa ParetoGridArchive{Vector{Float64},3,2} && a isa QD.AbstractArchive{Vector{Float64},SVector{3,Float64},SVector{2,Float64}}
+    @test QD.capacity(a) == 20 && length(a) == 0 && QD.num_solutions(a) == 0 && a.max_front == 7
+    @test QD.descriptor_bounds(a) == ((0.0, 1.0), (-1.0, 1.0)) && QD.reference_point(a) == SVector(0.0, 0.0, 0.0)
+    prob = BiSphere(4)
+    b = ParetoGridArchive(prob; dims=(5, 5), reference_point=QD.reference_point(prob), genotype=SVector{4,Float64})
+    @test b isa ParetoGridArchive{SVector{4,Float64},2} && b.max_front == 50 && QD.capacity(b) == 25
+    @test_throws "dims[2] is 0 but every dimension needs at least one cell" pareto_archive(dims=(3, 0))
+    @test_throws "bounds[1] is (1.0, 0.0) but lo must be finite and less than hi" ParetoGridArchive{Vector{Float64}}((2,), ((1, 0),), [0.0, 0.0])
+    @test_throws "dims has 2 entries but bounds has 1" ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1),), [0.0, 0.0])
+    @test_throws "the reference point has 1 entries but several objectives need at least 2" ParetoGridArchive{Vector{Float64}}((2,), ((0, 1),), [0.0])
+    @test_throws "the reference point must be finite" pareto_archive(ref=[0.0, -Inf])
+    @test_throws "max_front must be at least 1, got 0" pareto_archive(max_front=0)
+end
+
+@testset "ParetoGridArchive add!" begin
+    a = pareto_archive()
+    r = QD.add!(a, [1.0], ev2(1, 3))
+    @test r.status == QD.NewCell && r.improvement == 3.0 && r isa QD.AddResult{Float64}
+    r = QD.add!(a, [2.0], ev2(3, 1))
+    @test r.status == QD.Improved && r.improvement == 2.0
+    @test length(a) == 1 && QD.num_solutions(a) == 2 && QD.qd_score(a) == 5.0
+    # equal or beaten in every objective: rejected, and the archive is unchanged
+    for (f1, f2) in ((1, 3), (3, 1), (0.5, 0.5), (1, 1), (2.9, 1))
+        r = QD.add!(a, [9.0], ev2(f1, f2))
+        @test r.status == QD.Rejected && r.improvement == 0.0
+    end
+    @test QD.num_solutions(a) == 2 && QD.qd_score(a) == 5.0
+    # a solution on the front that adds area
+    r = QD.add!(a, [3.0], ev2(2, 2))
+    @test r.status == QD.Improved && r.improvement == 1.0 && QD.qd_score(a) == 6.0 && QD.num_solutions(a) == 3
+    # a solution that beats some of the front removes those and keeps the others
+    r = QD.add!(a, [4.0], ev2(2.5, 2.5))
+    @test r.status == QD.Improved && QD.num_solutions(a) == 3
+    @test sort([g[1] for (g, _) in QD.elites(a)]) == [1.0, 2.0, 4.0]
+    @test QD.qd_score(a) ≈ hypervolume([[1, 3], [3, 1], [2.5, 2.5]], [0, 0])
+    # a solution that beats the whole front
+    r = QD.add!(a, [5.0], ev2(4, 4))
+    @test QD.num_solutions(a) == 1 && r.improvement ≈ 16 - 7.25
+    @test QD.qd_score(a) == 16.0
+
+    # other cells are independent
+    QD.add!(a, [6.0], ev2(1, 1, (0.9, 0.9)))
+    @test length(a) == 2 && QD.num_solutions(a) == 2 && QD.qd_score(a) == 17.0
+    @test QD.coverage(a) == 2 / 9
+    @test QD.max_hypervolume(a) == 16.0 && QD.global_hypervolume(a) == 16.0
+
+    # objectives below the reference point count as solutions with no volume
+    b = pareto_archive()
+    r = QD.add!(b, [1.0], ev2(-1, 5))
+    @test r.status == QD.NewCell && r.improvement == 0.0 && QD.num_solutions(b) == 1 && QD.qd_score(b) == 0.0
+
+    @test_throws "the fitness of a solution must be a vector of 2 objectives for a ParetoGridArchive, got a Float64" QD.add!(a, [1.0], Evaluation(1.0, SVector(0.2, 0.2)))
+    @test_throws "fitness has 3 objectives but the archive has 2" QD.add!(a, [1.0], Evaluation(SVector(1.0, 2.0, 3.0), SVector(0.2, 0.2)))
+    @test_throws "fitness has a NaN objective" QD.add!(a, [1.0], ev2(NaN, 1))
+    @test_throws "descriptor has 3 dimensions but the archive has 2" QD.add!(a, [1.0], Evaluation(SVector(1.0, 2.0), SVector(0.1, 0.1, 0.1)))
+    @test_throws "outside the archive bounds" QD.add!(a, [1.0], ev2(1, 1, (2.0, 0.5)))
+    rejecting = pareto_archive(outside=RejectOutside())
+    @test QD.add!(rejecting, [1.0], ev2(1, 1, (2.0, 0.5))) == QD.AddResult(QD.Rejected, 0.0)
+end
+
+@testset "a full front rejects what beats none of it" begin
+    a = pareto_archive(max_front=3)
+    for (k, t) in enumerate((0.1, 0.5, 0.9))
+        @test QD.add!(a, [Float64(k)], ev2(t, 1 - t)).status in (QD.NewCell, QD.Improved)
+    end
+    before = collect(QD.elites(a))
+    r = QD.add!(a, [9.0], ev2(0.3, 0.7))                  # on the front, but there is no room
+    @test r.status == QD.Rejected && r.improvement == 0.0 && collect(QD.elites(a)) == before
+    # a solution that beats one of the three still enters
+    r = QD.add!(a, [8.0], ev2(0.6, 0.6))
+    @test r.status == QD.Improved && QD.num_solutions(a) == 3 && 8.0 in [g[1] for (g, _) in QD.elites(a)]
+end
+
+@testset "fronts kept as by QDax" begin
+    for c in front_cases
+        m = c.objectives
+        a = ParetoGridArchive{Int}((1,), ((0.0, 1.0),), fill(-10.0, m); max_front=c.max_front)
+        for i in 1:length(c.fitness)÷m
+            QD.add!(a, i - 1, Evaluation(SVector{m,Float64}(c.fitness[(i-1)*m+1:i*m]), SVector(0.5)))
+        end
+        @test sort([g for (g, _) in QD.elites(a)]) == c.kept
+    end
+end
+
+@testset "front invariants under random insertions" begin
+    rng = Xoshiro(4)
+    a = pareto_archive(dims=(2, 2), max_front=6)
+    for _ in 1:600
+        f = rand(rng, 2)
+        QD.add!(a, [f[1]], Evaluation(SVector(f...), SVector(rand(rng, 2)...)))
+    end
+    fronts = Dict{Int,Vector{SVector{2,Float64}}}()
+    for (_, ev) in QD.elites(a)
+        push!(get!(fronts, QD.cell_index(a, ev.descriptor), SVector{2,Float64}[]), ev.fitness)
+    end
+    @test length(fronts) == length(a) == 4
+    for front in values(fronts)
+        @test 1 <= length(front) <= 6
+        @test all(f -> !any(g -> g != f && all(g .>= f), front), front)
+        @test allunique(front)
+    end
+    @test QD.num_solutions(a) == sum(length, values(fronts))
+    @test QD.qd_score(a) ≈ sum(hypervolume(front, [0.0, 0.0]) for front in values(fronts))
+    @test QD.qd_score(a) ≈ sum(a.volumes) && a.volume_sum + a.volume_sum_error ≈ sum(a.volumes)
+    @test QD.global_hypervolume(a) ≈ hypervolume(reduce(vcat, values(fronts)), [0.0, 0.0])
+    @test QD.global_hypervolume(a) <= QD.qd_score(a) + 1e-12
+end
+
+@testset "ParetoGridArchive add_batch!" begin
+    rng = Xoshiro(2)
+    prob = BiSphere(4)
+    xs = [QD.random_solution(rng, prob) for _ in 1:120]
+    evs = QD.evaluate_batch(prob, xs)
+    make() = ParetoGridArchive(prob; dims=(4, 4), reference_point=QD.reference_point(prob), max_front=5)
+    a, b = make(), make()
+    QD.add_batch!(a, xs[1:60], evs[1:60])
+    QD.add_batch!(b, xs[1:60], evs[1:60])
+    batch = QD.add_batch!(a, xs[61:120], evs[61:120])
+    # every result is that of the solution alone, against the archive before the batch
+    @test all(k -> batch[k] == QD.add!(deepcopy(b), xs[60+k], evs[60+k]), 1:60)
+    # and the archive afterwards has what adding one at a time leaves, up to the order within a front
+    for (x, ev) in zip(xs[61:120], evs[61:120])
+        QD.add!(b, x, ev)
+    end
+    fronts(arch) = sort([(QD.cell_index(arch, ev.descriptor), Tuple(ev.fitness)) for (_, ev) in QD.elites(arch)])
+    @test length(a) == length(b) && QD.num_solutions(a) == QD.num_solutions(b)
+    @test QD.qd_score(a) ≈ QD.qd_score(b)
+    # two solutions of one batch that beat each other: only the better one stays
+    c = pareto_archive()
+    rs = QD.add_batch!(c, [[1.0], [2.0]], [ev2(1, 1), ev2(2, 2)])
+    @test [r.status for r in rs] == [QD.NewCell, QD.NewCell] && QD.num_solutions(c) == 1
+    @test only(QD.elites(c))[1] == [2.0]
+    @test_throws "got 2 solutions but 1 evaluations" QD.add_batch!(c, [[1.0], [2.0]], [ev2(1, 1)])
+end
+
+@testset "ParetoGridArchive sampling" begin
+    a = pareto_archive()
+    QD.add!(a, [0.0], ev2(1, 1, (0.1, 0.1)))                      # a cell with one solution
+    for (k, t) in enumerate((1.0, 2.0, 3.0))                      # a cell with three
+        QD.add!(a, [10.0k], ev2(t, 4 - t, (0.9, 0.9)))
+    end
+    draws = QD.sample_elites(Xoshiro(1), a, 60_000)
+    share(v) = count(==([v]), draws) / length(draws)
+    # a cell is drawn uniformly and then a solution of its front
+    @test share(0.0) ≈ 1 / 2 atol = 0.01
+    @test all(v -> abs(share(v) - 1 / 6) < 0.01, (10.0, 20.0, 30.0))
+    @test QD.sample_elites(Xoshiro(2), a, 5) == QD.sample_elites(Xoshiro(2), a, 5)
+    @test_throws "cannot sample elites from an empty archive" QD.sample_elites(Xoshiro(1), pareto_archive(), 1)
+end
+
+@testset "ParetoGridArchive metrics and empty!" begin
+    a = pareto_archive()
+    @test QD.qd_score(a) == 0 && QD.coverage(a) == 0 && QD.global_hypervolume(a) == 0
+    @test_throws "max_hypervolume is undefined for an archive with no elites" QD.max_hypervolume(a)
+    @test_throws "max_scores is undefined for an archive with no elites" QD.max_scores(a)
+    QD.add!(a, [1.0], ev2(1, 3)); QD.add!(a, [2.0], ev2(3, 1)); QD.add!(a, [3.0], ev2(2, 2, (0.9, 0.1)))
+    @test QD.max_scores(a) == SVector(3.0, 3.0)
+    @test_throws "max_fitness is not defined for a ParetoGridArchive" QD.max_fitness(a)
+    @test_throws "mean_fitness is not defined for a ParetoGridArchive" QD.mean_fitness(a)
+    @test_throws "the MOQD score of a ParetoGridArchive takes no offset" QD.qd_score(a; offset=1.0)
+    @test QD.qd_score(a; offset=0) == 9.0
+    record = QD.metrics_record(a, 17, 0)
+    @test record == (n_evals=17, qd_score=9.0, coverage=2 / 9, max_hypervolume=5.0, num_solutions=3)
+    @test QD.metrics_record_type(typeof(a)) == typeof(record)
+    empty!(a)
+    @test length(a) == 0 && QD.num_solutions(a) == 0 && QD.qd_score(a) == 0 && isempty(collect(QD.elites(a)))
+    @test QD.metrics_record(a, 0, 0).max_hypervolume == 0.0
+    @test QD.add!(a, [1.0], ev2(1, 3)).status == QD.NewCell
+end
+
+@testset "BiSphere" begin
+    prob = BiSphere(4)
+    ev = QD.evaluate(prob, [1.0, 1.0, 1.0, 1.0])
+    @test ev.fitness == SVector(0.0, -16.0) && ev.descriptor == SVector(1.0, 1.0)
+    @test QD.evaluate(prob, [-1.0, -1.0, -1.0, -1.0]).fitness == SVector(-16.0, 0.0)
+    @test QD.evaluate(prob, [0.0, 0.0, 0.0, 0.0]).fitness == SVector(-4.0, -4.0)
+    @test QD.evaluate(prob, fill(9.0, 4)).fitness == SVector(-4 * 4.12^2, -4 * 6.12^2)        # clipped to 5.12
+    @test all(all(QD.evaluate(prob, QD.random_solution(Xoshiro(s), prob)).fitness .>= QD.reference_point(prob)) for s in 1:200)
+    @test_throws "BiSphere needs at least 2 dimensions for its 2-D descriptor, got 1" BiSphere(1)
+    @test_throws "solution has 3 entries but BiSphere has dimension 4" QD.evaluate(prob, [1.0, 2.0, 3.0])
+    @test_throws "Rastrigin does not define reference_point" QD.reference_point(Rastrigin(3))
+end
+
+@testset "MOME" begin
+    prob = BiSphere(6)
+    alg = MOME(prob; dims=(8, 8), batch_size=32)
+    @test alg isa QDAlgorithm && alg.archive isa ParetoGridArchive{Vector{Float64},2} && alg.archive.max_front == 50
+    @test length(alg.emitters) == 1 && QD.batch_size(alg.emitters[1]) == 32
+    @test alg.archive.reference_point == QD.reference_point(prob)
+    @test MOME(prob; dims=(8, 8), max_front=7, reference_point=[-1.0, -2.0]).archive.max_front == 7
+    @test MOME(prob; dims=(8, 8), reference_point=[-1.0, -2.0]).archive.reference_point == SVector(-1.0, -2.0)
+    own = pareto_archive()
+    @test MOME(own; batch_size=5).archive === own
+    @test_throws "dims" MOME(prob)
+    @test_throws "Rastrigin does not define reference_point" MOME(Rastrigin(4); dims=(4, 4))
+    @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MOME(ParetoGridArchive{Vector{Float64}}((3,), ((0, 1),), [-1e3, -1e3])); budget=100)
+
+    result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
+    @test result.archive isa ParetoGridArchive && result.n_evals >= 6_000
+    history = result.history
+    @test eltype(history) == QD.ParetoMetricsRecord && history[1].n_evals == 32 && history[end].n_evals == result.n_evals
+    @test issorted([h.qd_score for h in history])                       # fronts only gain volume
+    @test history[end].qd_score == QD.qd_score(result.archive) && history[end].num_solutions == QD.num_solutions(result.archive)
+    @test history[end].coverage == QD.coverage(result.archive) && history[end].max_hypervolume == QD.max_hypervolume(result.archive)
+    @test QD.num_solutions(result.archive) > length(result.archive)            # fronts hold several solutions
+    @test QD.max_scores(result.archive)[1] > -2 && QD.max_scores(result.archive)[2] > -2
+    # a run is reproducible from its seed
+    again = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
+    @test again.history == history && collect(QD.elites(again.archive)) == collect(QD.elites(result.archive))
+    @test length(alg.archive) == 0                                               # the algorithm is not modified
+    # a larger front keeps more of the trade-offs
+    wide = solve(prob, MOME(prob; dims=(8, 8), batch_size=32, max_front=100); budget=6_000, rng=Xoshiro(1))
+    narrow = solve(prob, MOME(prob; dims=(8, 8), batch_size=32, max_front=2); budget=6_000, rng=Xoshiro(1))
+    @test QD.num_solutions(narrow.archive) <= 2 * length(narrow.archive)
+    @test QD.qd_score(wide.archive) > QD.qd_score(narrow.archive)
+    # MOME fills more volume than MAP-Elites with the sum of the objectives as its only objective
+    summed = QDProblem(x -> (sum(QD.evaluate(prob, x).fitness), Tuple(QD.evaluate(prob, x).descriptor));
+                       init=rng -> QD.random_solution(rng, prob), bounds=QD.descriptor_bounds(prob))
+    scalar = solve(summed, MAPElites(summed; dims=(8, 8), batch_size=32); budget=6_000, rng=Xoshiro(1))
+    scalar_volume = sum(QD.hypervolume([QD.evaluate(prob, g).fitness], QD.reference_point(prob)) for (g, _) in QD.elites(scalar.archive))
+    @test result.history[end].qd_score > scalar_volume
+end
