@@ -21,6 +21,8 @@ failures(f) = (@testset CountFailures "detect" begin f() end).failures
 @testset "problems" begin
     test_problem(Rastrigin(2))
     test_problem(Rastrigin(7))
+    test_problem(Sphere(2))
+    test_problem(Sphere(9))
     test_problem(QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                            init=rng -> 2 .* rand(rng, 3) .- 1, bounds=((-3, 3), (-3, 3))))
 end
@@ -121,6 +123,20 @@ end
     filled() = (a = GridArchive(prob; dims=(8, 8)); QD.add_batch!(a, xs, evs); a)
     for op in (GaussianMutation(0.2), IsoLineVariation(0.05, 0.3), PolynomialMutation(-5.12, 5.12), UniformCrossover())
         test_emitter(VariationEmitter(op; batch_size=16), filled(), prob)
+    end
+    for (ranker, selection, restart) in ((TwoStageImprovementRanker(), FilterSelection(), NoImprovementRestart()),
+                                         (ImprovementRanker(), MuSelection(), ConvergenceRestart()),
+                                         (ObjectiveRanker(), MuSelection(), PeriodicRestart(2)))
+        test_emitter(CMAEmitter(4; sigma0=1.0, ranker, selection, restart), filled(), prob)
+        test_emitter(CMAEmitter(4; sigma0=1.0, ranker, selection, restart, x0=zeros(4), batch_size=9), filled(), prob)
+    end
+    test_emitter(CMAEmitter(4; sigma0=1.0, lower=-5.12, upper=5.12), filled(), prob)
+    # genotypes other than Vector{Float64}
+    for G in (Vector{Float32}, SVector{4,Float64})
+        archive = GridArchive{G}((8, 8), ((-5.12, 5.12), (-5.12, 5.12)))
+        QD.add!(archive, convert(G, fill(0.5, 4)), Evaluation(-1.0, SVector(0.5, 0.5)))
+        test_emitter(CMAEmitter(4; sigma0=1.0), archive, QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> convert(G, randn(rng, 4)), bounds=((-5.12, 5.12), (-5.12, 5.12))))
     end
 end
 

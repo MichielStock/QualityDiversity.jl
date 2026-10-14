@@ -281,7 +281,8 @@ function ask end
 Report the candidates `xs` returned by [`ask`](@ref QualityDiversity.ask),
 their evaluations `evs`, and the [`AddResult`](@ref)s from the archive, so the
 emitter can update its internal state. Optional: the default does nothing, so
-an emitter without state needs no method.
+an emitter without state needs no method. An emitter that keeps state about the
+batch it asked for may require that `tell!` follows that `ask`.
 """
 function tell! end
 
