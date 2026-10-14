@@ -73,8 +73,7 @@ with zero `improvement`. An empty cell takes any solution
 only if the fitness is strictly higher (`Improved`, otherwise `Rejected`).
 For an occupied cell, `improvement` is the fitness minus the occupant's.
 """
-function add!(archive::CellArchive{G,F}, x,
-              ev::Evaluation{<:Real,<:AbstractVector{<:Real}}) where {G,F}
+function add!(archive::CellArchive{G,F}, x, ev::Evaluation{<:Real}) where {G,F}
     i = cell_index(archive, ev.descriptor)
     fitness = convert(F, ev.fitness)
     i == 0 && return AddResult(Rejected, zero(F))
@@ -127,9 +126,13 @@ end
 function _store!(archive::CellArchive, i, x, fitness, descriptor)
     archive.genotypes[i] = x
     archive.fitness[i] = fitness
-    archive.descriptors[i] = descriptor
+    archive.descriptors[i] = stored_descriptor(archive, descriptor)
     return nothing
 end
+
+# The descriptor as the archive keeps it; a subtype whose descriptor type differs
+# from what its callers pass converts here.
+stored_descriptor(::CellArchive, descriptor) = descriptor
 
 """
     sample_elites(rng, archive::CellArchive, n) -> Vector{G}

@@ -130,10 +130,11 @@ Fitness is **maximized**. Users who minimize return the negated value.
 |---|---|---|
 | `evaluate(prob, x) -> Evaluation` | required | fitness and descriptor of one solution |
 | `random_solution(rng, prob)` | required | one random genotype, for initialization |
-| `descriptor_bounds(prob)` | required | per-dimension `(lo, hi)` tuples |
+| `descriptor_bounds(prob)` | required, unless categories | per-dimension `(lo, hi)` tuples |
+| `descriptor_categories(prob)` | alternative to bounds | per-dimension collections of discrete descriptor values; descriptors are then tuples such as `(3, :ring)` |
 | `evaluate_batch(prob, xs) -> Vector{Evaluation}` | optional | default: threaded loop over `evaluate` |
 
-`QDProblem(f; init, bounds)` wraps a plain function `f(x) -> (fitness,
+`QDProblem(f; init, bounds)` (or `categories` instead of `bounds`) wraps a plain function `f(x) -> (fitness,
 descriptor)` so most users never subtype.
 
 **`AbstractArchive{G,F,D}`**
@@ -149,11 +150,12 @@ descriptor)` so most users never subtype.
 | `add_batch!(archive, xs, evs)` | optional | default: loop over `add!` |
 | `Base.empty!(archive)` | optional | |
 
-Concrete archives: `GridArchive`, `CVTArchive`, `UnstructuredArchive`
-(novelty-style, distance threshold), later `ParetoGridArchive` (MOME).
+Concrete archives: `GridArchive`, `CVTArchive`, `CategoricalArchive` (discrete
+descriptors, numbers or labels), `UnstructuredArchive` (novelty-style,
+distance threshold), later `ParetoGridArchive` (MOME).
 
-Storage layout for cell-based archives (`GridArchive`, `CVTArchive`, both
-subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
+Storage layout for cell-based archives (`GridArchive`, `CVTArchive`,
+`CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
 `occupied::BitVector`, `fitness::Vector{F}`, `descriptors::Vector{D}`,
 `genotypes::Vector{G}` (unassigned slots left `#undef` and guarded by
 `occupied`), plus `occupied_idx::Vector{Int}` so a uniform parent draw is O(1).
@@ -233,7 +235,9 @@ These hold for code in `src/`. Tests in `test/` check them.
 - `cell_index` and `add!` do not allocate for `isbits` genotypes. Check with
   `@allocated` after warm-up.
 - Emitters are stored in a `Tuple`, not a `Vector{AbstractEmitter}`.
-- Descriptors are `SVector`s from StaticArrays.jl.
+- Real-valued descriptors are `SVector`s from StaticArrays.jl. Discrete
+  descriptors are tuples whose element types are those of the categories, so
+  they are concretely typed too.
 - Batch outputs are preallocated with types computed from the archive's type
   parameters, not grown with `push!` into an untyped container.
 - No `@inbounds` without profiling evidence; see
@@ -261,6 +265,7 @@ QualityDiversity.jl/
 │   │   ├── grid.jl
 │   │   ├── nearest_centroid.jl   # k-d tree and k-means for CVTArchive
 │   │   ├── cvt.jl
+│   │   ├── categorical.jl
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -382,6 +387,12 @@ Settled; change them only with the author's agreement.
 - **Algorithm and problem.** `MAPElites(prob; dims)` takes the problem for its
   descriptor bounds. `init` checks that archive and problem agree on the
   number of descriptor dimensions.
+- **Discrete descriptors.** `CategoricalArchive(categories)` takes one
+  collection of allowed values per dimension, numbers or labels such as
+  `Symbol`s. Its descriptor type is the tuple of their element types, e.g.
+  `Tuple{Int,Symbol}`, so labels need no encoding. A problem declares
+  `descriptor_categories` (or `QDProblem(...; categories)`) instead of
+  `descriptor_bounds`. Archives that need geometry keep `SVector` descriptors.
 - **Benchmark clipping.** `Rastrigin` clips the solution to `[-5.12, 5.12]`
   inside `evaluate`. Solution-space bounds for mutations are not part of the
   problem contract.

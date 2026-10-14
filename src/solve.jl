@@ -71,7 +71,15 @@ end
 check_compatible(prob, archive) = nothing
 
 function check_compatible(prob::AbstractQDProblem, ::AbstractArchive{G,F,SVector{N,Float64}}) where {G,F,N}
-    n = length(descriptor_bounds(prob))
+    return check_ndims(prob, N)
+end
+
+function check_compatible(prob::AbstractQDProblem, ::AbstractArchive{G,F,D}) where {G,F,D<:Tuple}
+    return check_ndims(prob, fieldcount(D))
+end
+
+function check_ndims(prob, N)
+    n = descriptor_ndims(prob)
     n == N || throw(ArgumentError("the problem has $n descriptor dimensions but the archive has $N"))
     return nothing
 end

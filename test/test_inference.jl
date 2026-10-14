@@ -142,11 +142,14 @@ end
 end
 
 @testset "CategoricalArchive inference and allocations" begin
-    prob = QDProblem(x -> (-sum(abs2, x), (round(x[1]), round(x[2])));
-                     init=rng -> SVector{3,Float64}(6 .* rand(rng, 3) .- 3),
-                     bounds=((-3, 3), (-3, 3)))
-    for outside in (ThrowOutside(), RejectOutside())
-        archive = CategoricalArchive{SVector{3,Float64}}((-3:3, -3:3); outside)
+    labelled = QDProblem(x -> (-sum(abs2, x), (round(Int, clamp(x[1], -3, 3)), x[2] > 0 ? :pos : :neg));
+                         init=rng -> SVector{3,Float64}(6 .* rand(rng, 3) .- 3), categories=(-3:3, [:neg, :pos]))
+    numeric = QDProblem(x -> (-sum(abs2, x), (round(x[1]), round(x[2])));
+                        init=rng -> SVector{3,Float64}(6 .* rand(rng, 3) .- 3), bounds=((-3, 3), (-3, 3)))
+    for (prob, make, other) in ((labelled, outside -> CategoricalArchive{SVector{3,Float64}}(QD.descriptor_categories(labelled); outside), (3, :neg)),
+                                (numeric, outside -> CategoricalArchive{SVector{3,Float64}}((-3:3, -3:3); outside), SVector(3.0, -3.0))),
+        outside in (ThrowOutside(), RejectOutside())
+        archive = make(outside)
         x = QD.random_solution(Xoshiro(1), prob)
         ev = QD.evaluate(prob, x)
         @inferred QD.cell_index(archive, ev.descriptor)
@@ -154,8 +157,8 @@ end
         @test allocated(QD.cell_index, archive, ev.descriptor) == 0
         @test allocated(QD.add!, archive, x, ev) == 0                                         # rejected
         @test allocated(QD.add!, archive, x, Evaluation(ev.fitness + 1, ev.descriptor)) == 0   # improvement
-        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness, SVector(3.0, -3.0))) == 0  # another cell
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness, other)) == 0               # another cell
     end
     archive = CategoricalArchive((-3:3, -3:3))
-    @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, SVector(0.0, 0.0))); archive), 4)
+    @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, (0, 0))); archive), 4)
 end

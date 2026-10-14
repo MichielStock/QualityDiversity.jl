@@ -48,12 +48,21 @@ end
 end
 
 @testset "categorical archives" begin
+    # numeric categories, with a problem that has bounds
     prob = QDProblem(x -> (-sum(abs2, x), (round(x[1]), round(x[2])));
                      init=rng -> 6 .* rand(rng, 3) .- 3, bounds=((-3, 3), (-3, 3)))
     test_archive(() -> CategoricalArchive((-3:3, -3:3)), prob)
     test_archive(() -> CategoricalArchive((-3:3, -3:3); outside=RejectOutside()), prob)
     test_archive(() -> CategoricalArchive(([3, -3, 0, 1, -1, 2, -2], -3:3)), prob)
     test_archive(() -> CategoricalArchive{Vector{Float32},Float32}((-3:3, -3:3)), prob)
+
+    # labels, with a problem that has categories
+    labelled = QDProblem(x -> (-sum(abs2, x), (round(Int, clamp(x[1], -3, 3)), x[2] > 0 ? :pos : x[2] < -1 ? :neg : :zero));
+                         init=rng -> 6 .* rand(rng, 3) .- 3, categories=(-3:3, [:neg, :zero, :pos]))
+    test_problem(labelled)
+    test_archive(() -> CategoricalArchive(labelled), labelled)
+    test_archive(() -> CategoricalArchive(labelled; outside=RejectOutside()), labelled)
+    test_archive(() -> CategoricalArchive(labelled; genotype=Vector{Float32}, fitness=Float32), labelled)
 end
 
 @testset "unstructured archives" begin
