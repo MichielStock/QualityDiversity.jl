@@ -385,7 +385,8 @@ Settled; change them only with the author's agreement.
 - **Grid limits.** `GridArchive` and `MAPElites` take an optional `bounds`
   that overrides `descriptor_bounds(prob)`.
 - **Algorithm and problem.** `MAPElites(prob; dims)` takes the problem for its
-  descriptor bounds. `init` checks that archive and problem agree on the
+  descriptor bounds; for a problem with `descriptor_categories`,
+  `MAPElites(prob)` builds a `CategoricalArchive` and `dims` is an error. `init` checks that archive and problem agree on the
   number of descriptor dimensions.
 - **Discrete descriptors.** `CategoricalArchive(categories)` takes one
   collection of allowed values per dimension, numbers or labels such as

@@ -131,6 +131,19 @@ end
     @test solve(prob, alg; budget=2_000, rng=Xoshiro(1)).history == result.history
     @test max_fitness(result.archive) > -0.1
 
+    # MAPElites(prob) builds the archive from the categories
+    shortcut = MAPElites(prob; batch_size=20, outside=RejectOutside())
+    @test shortcut.archive isa CategoricalArchive{Vector{Float64},Float64,Tuple{Int,Symbol}}
+    @test shortcut.archive.outside isa RejectOutside && QD.capacity(shortcut.archive) == 14
+    @test MAPElites(prob; genotype=Vector{Float32}, fitness=Float32).archive isa
+          CategoricalArchive{Vector{Float32},Float32}
+    @test solve(prob, MAPElites(prob; batch_size=20, variation=GaussianMutation(1.0)); budget=2_000,
+                rng=Xoshiro(1)).history == result.history
+    @test_throws "dims and bounds do not apply to a problem with descriptor_categories" MAPElites(prob; dims=(7, 2))
+    @test_throws "dims and bounds do not apply to a problem with descriptor_categories" MAPElites(prob; bounds=((0, 1), (0, 1)))
+    @test_throws "dims is required for a problem with descriptor_bounds" MAPElites(Rastrigin(4))
+    @test MAPElites(Rastrigin(4); dims=(5, 5), bounds=((-1, 1), (-1, 1))).archive.upper == SVector(1.0, 1.0)
+
     # the archive and the problem must agree on the number of descriptor dimensions
     wrong = CategoricalArchive((1:3,))
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)
