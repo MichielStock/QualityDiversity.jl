@@ -1,9 +1,16 @@
 """
     QDProblem(f; init, bounds)
+    QDProblem(f; init, categories)
 
 Wrap a plain function as a problem. `f(x)` returns a `(fitness, descriptor)`
-tuple for the solution `x`. `init(rng)` returns one random solution. `bounds`
-is a tuple with one `(lo, hi)` pair per descriptor dimension.
+tuple for the solution `x`. `init(rng)` returns one random solution.
+
+With `bounds`, a tuple with one `(lo, hi)` pair per descriptor dimension, the
+descriptor is real-valued and `evaluate` returns it as an `SVector{N,Float64}`.
+With `categories`, a tuple with one collection of allowed values per dimension,
+for example `(0:5, [:alkane, :aromatic, :ring])`, the descriptor is discrete and
+`evaluate` returns it as a tuple, which a [`CategoricalArchive`](@ref) takes as
+it is.
 
 `f` is called from several threads at once by the default
 [`evaluate_batch`](@ref QualityDiversity.evaluate_batch), so it must be
@@ -21,15 +28,29 @@ julia> ev = QualityDiversity.evaluate(prob, [1.0, 2.0]);
 
 julia> ev.fitness, ev.descriptor
 (-5.0, [1.0, 2.0])
+
+julia> labelled = QDProblem(x -> (-sum(abs2, x), (length(x), :ring));
+                            init = rng -> randn(rng, 2), categories = (1:3, [:chain, :ring]));
+
+julia> QualityDiversity.evaluate(labelled, [1.0, 2.0]).descriptor
+(2, :ring)
 ```
 """
-struct QDProblem{F,I,B<:Tuple} <: AbstractQDProblem
+struct QDProblem{F,I,S} <: AbstractQDProblem
     f::F
     init::I
-    bounds::B
+    # A tuple of `(lo, hi)` pairs, or a `DescriptorCategories`.
+    space::S
 end
 
-function QDProblem(f; init, bounds)
+struct DescriptorCategories{T<:Tuple}
+    values::T
+end
+
+function QDProblem(f; init, bounds=nothing, categories=nothing)
+    (bounds === nothing) == (categories === nothing) &&
+        throw(ArgumentError("give exactly one of bounds and categories"))
+    bounds === nothing && return QDProblem(f, init, DescriptorCategories(Tuple(categories)))
     isempty(bounds) && throw(ArgumentError("bounds must have one (lo, hi) pair per descriptor dimension"))
     normalized = map(bounds) do b
         length(b) == 2 ||
@@ -39,7 +60,7 @@ function QDProblem(f; init, bounds)
     return QDProblem(f, init, Tuple(normalized))
 end
 
-function evaluate(prob::QDProblem{F,I,B}, x) where {F,I,B}
+function evaluate(prob::QDProblem{F,I,B}, x) where {F,I,B<:Tuple}
     fitness, descriptor = prob.f(x)
     N = fieldcount(B)
     length(descriptor) == N ||
@@ -47,6 +68,16 @@ function evaluate(prob::QDProblem{F,I,B}, x) where {F,I,B}
     return Evaluation(fitness, SVector{N,Float64}(descriptor))
 end
 
+function evaluate(prob::QDProblem{F,I,<:DescriptorCategories}, x) where {F,I}
+    fitness, descriptor = prob.f(x)
+    N = length(prob.space.values)
+    length(descriptor) == N ||
+        throw(ArgumentError("descriptor has $(length(descriptor)) dimensions but the problem categories have $N"))
+    return Evaluation(fitness, Tuple(descriptor))
+end
+
 random_solution(rng::AbstractRNG, prob::QDProblem) = prob.init(rng)
 
-descriptor_bounds(prob::QDProblem) = prob.bounds
+descriptor_bounds(prob::QDProblem{F,I,<:Tuple}) where {F,I} = prob.space
+
+descriptor_categories(prob::QDProblem{F,I,<:DescriptorCategories}) where {F,I} = prob.space.values

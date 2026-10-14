@@ -115,3 +115,50 @@ end
     @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, SVector(0.0, 0.0))); archive), 4)
     @inferred max_fitness(archive)
 end
+
+@testset "UnstructuredArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
+                     bounds=((-1, 1), (-1, 1)))
+    # full and not full, so that both the free-slot and the eviction path run
+    for capacity in (200, 5)
+        archive = UnstructuredArchive{SVector{3,Float64}}(2; capacity, threshold=0.1)
+        for i in 1:20
+            QD.add!(archive, QD.random_solution(Xoshiro(i), prob), Evaluation(-i, rand(Xoshiro(i), SVector{2,Float64})))
+        end
+        x = QD.random_solution(Xoshiro(1), prob)
+        ev = QD.evaluate(prob, x)
+        @inferred QD.cell_index(archive, ev.descriptor)
+        @inferred QD.add!(archive, x, ev)
+        @inferred QD.sample_elites(Xoshiro(1), archive, 4)
+        @inferred max_fitness(archive)
+        @inferred qd_score(archive)
+        far = SVector(50.0, 50.0)
+        @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+        @test allocated(QD.add!, archive, x, Evaluation(-100.0, far)) == 0           # rejected, or a new slot
+        @test allocated(QD.add!, archive, x, Evaluation(1000.0, far)) == 0           # improvement
+        @test allocated(QD.add!, archive, x, Evaluation(2000.0, SVector(60.0, 60.0))) == 0   # new slot, or eviction
+    end
+end
+
+@testset "CategoricalArchive inference and allocations" begin
+    labelled = QDProblem(x -> (-sum(abs2, x), (round(Int, clamp(x[1], -3, 3)), x[2] > 0 ? :pos : :neg));
+                         init=rng -> SVector{3,Float64}(6 .* rand(rng, 3) .- 3), categories=(-3:3, [:neg, :pos]))
+    numeric = QDProblem(x -> (-sum(abs2, x), (round(x[1]), round(x[2])));
+                        init=rng -> SVector{3,Float64}(6 .* rand(rng, 3) .- 3), bounds=((-3, 3), (-3, 3)))
+    for (prob, make, other) in ((labelled, outside -> CategoricalArchive{SVector{3,Float64}}(QD.descriptor_categories(labelled); outside), (3, :neg)),
+                                (numeric, outside -> CategoricalArchive{SVector{3,Float64}}((-3:3, -3:3); outside), SVector(3.0, -3.0))),
+        outside in (ThrowOutside(), RejectOutside())
+        archive = make(outside)
+        x = QD.random_solution(Xoshiro(1), prob)
+        ev = QD.evaluate(prob, x)
+        @inferred QD.cell_index(archive, ev.descriptor)
+        @inferred QD.add!(archive, x, ev)
+        @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+        @test allocated(QD.add!, archive, x, ev) == 0                                         # rejected
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness + 1, ev.descriptor)) == 0   # improvement
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness, other)) == 0               # another cell
+    end
+    archive = CategoricalArchive((-3:3, -3:3))
+    @inferred QD.sample_elites(Xoshiro(1), (QD.add!(archive, [0.0], Evaluation(1.0, (0, 0))); archive), 4)
+end

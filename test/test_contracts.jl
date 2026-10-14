@@ -16,7 +16,7 @@ end
 end
 
 const INTERFACE_FUNCTIONS = (:evaluate, :evaluate_batch, :random_solution,
-                             :descriptor_bounds, :fitness_offset, :add!, :add_batch!,
+                             :descriptor_bounds, :descriptor_categories, :fitness_offset, :add!, :add_batch!,
                              :cell_index, :sample_elites, :elites, :capacity, :vary,
                              :ask, :tell!, :batch_size)
 

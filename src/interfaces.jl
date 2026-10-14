@@ -12,7 +12,9 @@ Fitness is maximized. A problem that minimizes returns the negated value.
 
 - [`evaluate(prob, x)`](@ref QualityDiversity.evaluate) → [`Evaluation`](@ref)
 - [`random_solution(rng, prob)`](@ref QualityDiversity.random_solution)
-- [`descriptor_bounds(prob)`](@ref QualityDiversity.descriptor_bounds)
+- [`descriptor_bounds(prob)`](@ref QualityDiversity.descriptor_bounds), or
+  [`descriptor_categories(prob)`](@ref QualityDiversity.descriptor_categories)
+  for a problem whose descriptors take discrete values
 
 # Optional methods
 
@@ -66,9 +68,29 @@ function random_solution end
     descriptor_bounds(prob::AbstractQDProblem)
 
 Per-dimension `(lo, hi)` bounds of the descriptor space, as a tuple of
-tuples. Archives use them to lay out their cells. Required.
+tuples. Archives use them to lay out their cells. Required, unless the problem
+defines [`descriptor_categories`](@ref QualityDiversity.descriptor_categories).
 """
 function descriptor_bounds end
+
+"""
+    descriptor_categories(prob::AbstractQDProblem)
+
+Per-dimension collections of the values a discrete descriptor can take, as a
+tuple, for example `(0:5, [:alkane, :aromatic, :ring])`. A problem that defines
+it returns descriptors as tuples with one entry from each collection, such as
+`(3, :ring)`, and is used with a [`CategoricalArchive`](@ref). Optional: a
+problem with real-valued descriptors defines
+[`descriptor_bounds`](@ref QualityDiversity.descriptor_bounds) instead.
+"""
+function descriptor_categories end
+
+# Number of descriptor dimensions, from the categories if the problem has them
+# and from the bounds otherwise.
+function descriptor_ndims(prob::AbstractQDProblem)
+    hasmethod(descriptor_categories, Tuple{typeof(prob)}) && return length(descriptor_categories(prob))
+    return length(descriptor_bounds(prob))
+end
 
 """
     fitness_offset(prob::AbstractQDProblem)
@@ -143,6 +165,10 @@ end
 
 The cell of `archive` that contains descriptor `d`. Required. Does not
 allocate.
+
+An archive returns `0`, which is not a cell, for a descriptor it has no cell
+for: one that a `RejectOutside()` policy discards, or any descriptor while an
+[`UnstructuredArchive`](@ref) is empty.
 """
 function cell_index end
 

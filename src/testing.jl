@@ -43,8 +43,10 @@ Check that `prob` meets the contract of [`AbstractQDProblem`](@ref).
 
 `random_solution` is called `n` times. Every solution must evaluate to an
 [`Evaluation`](@ref) with a real or vector fitness and a descriptor that lies
-inside `descriptor_bounds(prob)` and has one entry per bound. `evaluate` must
-be inferrable, deterministic, and agree with `evaluate_batch`.
+inside `descriptor_bounds(prob)` and has one entry per bound. For a problem
+that defines `descriptor_categories(prob)` instead, the descriptor must be a
+tuple with one entry equal to a category of each dimension. `evaluate` must be
+inferrable, deterministic, and agree with `evaluate_batch`.
 
 `evaluate_batch` must give exactly the results of `evaluate` unless `rtol` is
 positive. A problem that evaluates batches on a GPU, in lower precision, agrees
@@ -55,11 +57,21 @@ for values near zero.
 function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n::Integer=5,
                       rtol::Real=0)
     @testset "test_problem($(nameof(typeof(prob))))" begin
-        bounds = QD.descriptor_bounds(prob)
-        @testset "descriptor_bounds" begin
-            @test bounds isa Tuple
-            @test !isempty(bounds)
-            @test all(b -> length(b) == 2 && b[1] < b[2], bounds)
+        categories = hasmethod(QD.descriptor_categories, Tuple{typeof(prob)}) ?
+                     QD.descriptor_categories(prob) : nothing
+        bounds = categories === nothing ? QD.descriptor_bounds(prob) : nothing
+        if categories === nothing
+            @testset "descriptor_bounds" begin
+                @test bounds isa Tuple
+                @test !isempty(bounds)
+                @test all(b -> length(b) == 2 && b[1] < b[2], bounds)
+            end
+        else
+            @testset "descriptor_categories" begin
+                @test categories isa Tuple
+                @test !isempty(categories)
+                @test all(c -> !isempty(c), categories)
+            end
         end
 
         xs = [QD.random_solution(rng, prob) for _ in 1:n]
@@ -73,10 +85,17 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
                 ev = @inferred QD.evaluate(prob, x)
                 @test ev isa QD.Evaluation
                 @test ev.fitness isa Union{Real,AbstractVector{<:Real}}
-                @test ev.descriptor isa AbstractVector{<:Real}
-                @test length(ev.descriptor) == length(bounds)
-                @test all(i -> bounds[i][1] <= ev.descriptor[i] <= bounds[i][2],
-                          eachindex(bounds))
+                if categories === nothing
+                    @test ev.descriptor isa AbstractVector{<:Real}
+                    @test length(ev.descriptor) == length(bounds)
+                    @test all(i -> bounds[i][1] <= ev.descriptor[i] <= bounds[i][2],
+                              eachindex(bounds))
+                else
+                    @test ev.descriptor isa Tuple
+                    @test length(ev.descriptor) == length(categories)
+                    @test all(i -> any(isequal(ev.descriptor[i]), categories[i]),
+                              eachindex(categories))
+                end
                 @test QD.evaluate(prob, x) == ev
             end
         end
@@ -91,7 +110,8 @@ function test_problem(prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1), n
             else
                 @test all(zip(evs, reference)) do (a, b)
                     isapprox(a.fitness, b.fitness; rtol, atol=rtol) &&
-                        isapprox(a.descriptor, b.descriptor; rtol, atol=rtol)
+                        (a.descriptor isa Tuple ? a.descriptor == b.descriptor :
+                         isapprox(a.descriptor, b.descriptor; rtol, atol=rtol))
                 end
             end
         end
@@ -112,7 +132,8 @@ return a new, empty archive each time. `prob` supplies solutions and
 evaluations; its descriptors must lie inside the archive's bounds.
 
 The checks cover an empty archive, the status and `improvement` of each kind
-of insertion, `length`, `capacity`, `cell_index`, `sample_elites`, `elites`,
+of insertion, `length`, `capacity`, `cell_index` (on an archive holding all `n`
+solutions), `sample_elites`, `elites`,
 `add_batch!`, and `empty!` when the archive defines it. With
 `check_allocations`, `cell_index` must not allocate, and neither must `add!`
 when the genotype type is `isbits`.
@@ -140,14 +161,18 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
         evs = QD.evaluate_batch(prob, xs)
 
         @testset "cell_index" begin
+            # on a filled archive: one without a fixed partition has no cell to
+            # point to while it is empty
+            a = make_archive()
+            QD.add_batch!(a, xs, evs)
             for ev in evs
-                i = @inferred QD.cell_index(archive, ev.descriptor)
+                i = @inferred QD.cell_index(a, ev.descriptor)
                 @test i isa Integer
-                @test 1 <= i <= QD.capacity(archive)
-                @test QD.cell_index(archive, ev.descriptor) == i
+                @test 1 <= i <= QD.capacity(a)
+                @test QD.cell_index(a, ev.descriptor) == i
             end
             if check_allocations
-                @test allocations(QD.cell_index, archive, evs[1].descriptor) == 0
+                @test allocations(QD.cell_index, a, evs[1].descriptor) == 0
             end
         end
 
@@ -190,7 +215,9 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             @test rs == [QD.add!(b, x, ev) for (x, ev) in zip(xs, evs)]
             @test length(a) == length(b)
             @test 1 <= length(a) <= QD.capacity(a)
-            @test count(r -> r.status == QD.NewCell, rs) == length(a)
+            # every solution that fills a cell stays, unless a full archive evicts one
+            new_cells = count(r -> r.status == QD.NewCell, rs)
+            @test length(a) < QD.capacity(a) ? new_cells == length(a) : new_cells >= length(a)
         end
 
         @testset "elites and sample_elites" begin
