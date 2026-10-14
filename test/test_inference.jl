@@ -71,7 +71,13 @@ end
     prob = Rastrigin(6)
     for alg in (CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2),
                 CMAMAE(prob; dims=(8, 8), sigma0=1.0, threshold_min=-500.0, learning_rate=0.1, num_emitters=2),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=ObjectiveRanker(), selection=MuSelection()))
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=ObjectiveRanker(), selection=MuSelection()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=TwoStageRandomDirectionRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=RandomDirectionRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=TwoStageObjectiveRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=SepCMAES),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=OpenAIES),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=LMMAES, batch_size=5))
         state = @inferred init(prob, alg; budget=600, rng=Xoshiro(1))
         emitter = state.emitters[1]
         xs = @inferred QD.ask(Xoshiro(1), emitter, state.archive)

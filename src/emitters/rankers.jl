@@ -7,13 +7,17 @@ moves toward the best ones, so the ranker decides what the emitter looks for.
 
 A ranker defines `rank_key(ranker, ev, result)`, which gives a key for one candidate
 from its [`Evaluation`](@ref) and its [`AddResult`](@ref). Candidates are ordered by
-descending key; ties keep their order in the batch. A key is a `Float64` or a tuple
-that compares lexicographically, and
-[`ranking_value`](@ref QualityDiversity.ranking_value) of it is the number that
-measures the candidate, which the emitter uses to notice that a batch is flat.
+descending key; ties keep their order in the batch. A key is a `Float64` or a tuple of
+numbers that compares lexicographically. A batch is flat, and the search restarts,
+when the best and the worst key are the same.
 
-The rankers are [`TwoStageImprovementRanker`](@ref), [`ImprovementRanker`](@ref) and
-[`ObjectiveRanker`](@ref).
+A ranker with state, such as a random direction, defines
+[`reset_ranker!`](@ref QualityDiversity.reset_ranker!), which an emitter calls
+whenever a search starts. An emitter keeps its own copy of its ranker.
+
+The rankers are [`TwoStageImprovementRanker`](@ref), [`ImprovementRanker`](@ref),
+[`ObjectiveRanker`](@ref), [`TwoStageObjectiveRanker`](@ref),
+[`RandomDirectionRanker`](@ref) and [`TwoStageRandomDirectionRanker`](@ref).
 """
 abstract type AbstractRanker end
 
@@ -49,6 +53,53 @@ improvement emitter of CMA-ME (Fontaine et al., 2020).
 struct TwoStageImprovementRanker <: AbstractRanker end
 
 """
+    TwoStageObjectiveRanker()
+
+Ranks candidates first by what the archive did with them, as
+[`TwoStageImprovementRanker`](@ref) does, and then by fitness. A new cell ranks above an
+improved cell, whatever the fitness.
+"""
+struct TwoStageObjectiveRanker <: AbstractRanker end
+
+"""
+    DirectionRanker
+
+Supertype of the rankers that order candidates by their descriptor projected on a
+random direction: [`RandomDirectionRanker`](@ref) and
+[`TwoStageRandomDirectionRanker`](@ref). The direction is drawn when a search starts, from
+a standard normal vector scaled by the extent of the archive along each descriptor
+dimension, so a search that follows it moves toward one part of descriptor space. The
+archive must report its extent with
+[`descriptor_bounds`](@ref QualityDiversity.descriptor_bounds), and its descriptors must
+be real vectors.
+"""
+abstract type DirectionRanker <: AbstractRanker end
+
+"""
+    RandomDirectionRanker()
+
+Ranks candidates by the projection of their descriptor on a random direction, the
+random direction emitter of CMA-ME (Fontaine et al., 2020). See [`DirectionRanker`](@ref).
+The ranker has the property `direction`, empty until a search starts.
+"""
+struct RandomDirectionRanker <: DirectionRanker
+    direction::Vector{Float64}
+end
+RandomDirectionRanker() = RandomDirectionRanker(Float64[])
+
+"""
+    TwoStageRandomDirectionRanker()
+
+Ranks candidates first by what the archive did with them, as
+[`TwoStageImprovementRanker`](@ref) does, and then by the projection of their descriptor
+on a random direction. See [`DirectionRanker`](@ref).
+"""
+struct TwoStageRandomDirectionRanker <: DirectionRanker
+    direction::Vector{Float64}
+end
+TwoStageRandomDirectionRanker() = TwoStageRandomDirectionRanker(Float64[])
+
+"""
     rank_key(ranker::AbstractRanker, ev::Evaluation, result::AddResult)
 
 The key that orders one candidate: a `Float64`, or a tuple that compares
@@ -57,29 +108,54 @@ candidate and `result` what the archive made of it. A new ranker defines this me
 """
 function rank_key end
 
+"""
+    reset_ranker!(rng, ranker::AbstractRanker, archive)
+
+Prepare `ranker` for a new search. An emitter calls it when its first search starts and
+after every restart. The default does nothing; [`DirectionRanker`](@ref)s draw a new
+direction.
+"""
+reset_ranker!(rng, ranker::AbstractRanker, archive) = nothing
+
+function reset_ranker!(rng, ranker::DirectionRanker, archive)
+    bounds = descriptor_bounds(archive)
+    resize!(ranker.direction, length(bounds))
+    for (i, (lo, hi)) in enumerate(bounds)
+        ranker.direction[i] = randn(rng) * (hi - lo)
+    end
+    return nothing
+end
+
 rank_key(::ObjectiveRanker, ev, result) = Float64(ev.fitness)
 
 rank_key(::ImprovementRanker, ev, result) = Float64(result.improvement)
 
+status_stage(result) = result.status == NewCell ? 2 : result.status == Improved ? 1 : 0
+
 function rank_key(::TwoStageImprovementRanker, ev, result)
-    stage = result.status == NewCell ? 2 : result.status == Improved ? 1 : 0
-    return (stage, Float64(result.improvement))
+    return (status_stage(result), Float64(result.improvement))
 end
 
-"""
-    ranking_value(key)
+rank_key(::TwoStageObjectiveRanker, ev, result) = (status_stage(result), Float64(ev.fitness))
 
-The number in a ranking key that measures the candidate: the key itself, or the last
-entry of a tuple. An emitter treats a batch whose ranking values are all equal as
-flat and restarts.
-"""
-ranking_value(key::Float64) = key
-ranking_value(key::Tuple) = Float64(last(key))
+function projection(ranker::DirectionRanker, ev)
+    direction = ranker.direction
+    isempty(direction) &&
+        throw(ArgumentError("the direction of the ranker is not set; reset_ranker! draws it when a search starts"))
+    length(ev.descriptor) == length(direction) ||
+        throw(ArgumentError("the descriptor has $(length(ev.descriptor)) dimensions but the direction has $(length(direction))"))
+    return sum(i -> direction[i] * Float64(ev.descriptor[i]), eachindex(direction))
+end
 
-# Order of the candidates from best to worst, and their ranking values in that order.
+rank_key(ranker::RandomDirectionRanker, ev, result) = projection(ranker, ev)
+
+function rank_key(ranker::TwoStageRandomDirectionRanker, ev, result)
+    return (status_stage(result), projection(ranker, ev))
+end
+
+# Order of the candidates from best to worst, and their keys in that order.
 function rank(ranker::AbstractRanker, evs, results)
     keys = [rank_key(ranker, ev, result) for (ev, result) in zip(evs, results)]
     order = sortperm(keys; rev=true, alg=MergeSort)
-    values = Float64[ranking_value(keys[i]) for i in order]
-    return order, values
+    return order, keys[order]
 end

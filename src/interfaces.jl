@@ -70,6 +70,12 @@ function random_solution end
 Per-dimension `(lo, hi)` bounds of the descriptor space, as a tuple of
 tuples. Archives use them to lay out their cells. Required, unless the problem
 defines [`descriptor_categories`](@ref QualityDiversity.descriptor_categories).
+
+    descriptor_bounds(archive::AbstractArchive)
+
+The same for an archive that covers a box of descriptor space, as [`GridArchive`](@ref),
+[`CVTArchive`](@ref) and [`ThresholdArchive`](@ref) do. Optional; the
+[`DirectionRanker`](@ref)s need it.
 """
 function descriptor_bounds end
 
@@ -314,4 +320,8 @@ state, `step!` performs one round, `solve!` runs to the budget, and
 struct QDAlgorithm{A<:AbstractArchive,E<:Tuple}
     archive::A
     emitters::E
+end
+
+function descriptor_bounds(archive::AbstractArchive)
+    throw(ArgumentError("$(nameof(typeof(archive))) does not report the bounds of its descriptor space"))
 end

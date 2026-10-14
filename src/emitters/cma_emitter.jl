@@ -70,23 +70,31 @@ restart_due(::ConvergenceRestart, iterations, added) = false
 restart_due(rule::PeriodicRestart, iterations, added) = iterations % rule.iterations == 0
 
 """
-    CMAEmitter(dim; sigma0, batch_size, ranker, selection, restart, x0, lower, upper)
+    CMAEmitter(dim; sigma0, batch_size, strategy, ranker, selection, restart, x0, lower, upper)
     CMAEmitter(x0::AbstractVector; sigma0, ...)
 
 Emitter that searches for solutions with CMA-ES, the covariance matrix adaptation
 evolution strategy, in the sense of CMA-ME (Fontaine et al., 2020): it keeps a
 Gaussian distribution of solutions, and after every batch it moves the distribution
-toward the candidates that its `ranker` places first. Solutions are real vectors of
+toward the candidates that its `ranker` places first. The optimizer can be another
+evolution strategy. Solutions are real vectors of
 length `dim`; the genotype type of the archive can be any `AbstractVector` type that
 a vector of `Float64` converts to.
 
 - `sigma0`: the initial step size, the standard deviation of the distribution. It has
   no default, because it depends on the scale of the solutions.
 - `batch_size`: the number of candidates per batch, `4 + floor(3 log(dim))` by
-  default.
+  default (rounded up to an even number for [`OpenAIES`](@ref)).
+- `strategy`: the optimizer, a subtype of [`AbstractEvolutionStrategy`](@ref) or a
+  function with the same arguments as its constructors. It is [`CMAES`](@ref) by
+  default; [`SepCMAES`](@ref) and [`LMMAES`](@ref) scale to a high dimension, and
+  [`OpenAIES`](@ref) follows a gradient estimate. For an option of a strategy pass
+  a function, such as `(dim; kwargs...) -> LMMAES(dim; kwargs..., n_vectors=8)`.
 - `ranker`: how the candidates are ordered, [`TwoStageImprovementRanker`](@ref) by
-  default. Use [`ImprovementRanker`](@ref) with a [`ThresholdArchive`](@ref), and
-  [`ObjectiveRanker`](@ref) for an emitter that only maximizes the fitness.
+  default. Use [`ImprovementRanker`](@ref) with a [`ThresholdArchive`](@ref),
+  [`ObjectiveRanker`](@ref) for an emitter that only maximizes the fitness, and
+  [`TwoStageRandomDirectionRanker`](@ref) for one that explores a direction of descriptor
+  space. The emitter keeps its own copy of the ranker.
 - `selection`: how many of the ranked candidates are recombined,
   [`FilterSelection`](@ref) by default or [`MuSelection`](@ref).
 - `restart`: when to start again, [`NoImprovementRestart`](@ref) by default.
@@ -117,8 +125,8 @@ julia> coverage(result.archive) > 0.1
 true
 ```
 """
-mutable struct CMAEmitter{R<:AbstractRanker,S<:SelectionRule,T<:RestartRule} <: AbstractEmitter
-    const es::CMAES
+mutable struct CMAEmitter{R<:AbstractRanker,S<:SelectionRule,T<:RestartRule,E<:AbstractEvolutionStrategy} <: AbstractEmitter
+    const es::E
     const ranker::R
     const selection::S
     const restart_rule::T
@@ -133,21 +141,21 @@ mutable struct CMAEmitter{R<:AbstractRanker,S<:SelectionRule,T<:RestartRule} <: 
     asked::Bool
 end
 
-function CMAEmitter(dim::Integer; sigma0::Real, batch_size::Integer=default_batch_size(dim),
-                    ranker::AbstractRanker=TwoStageImprovementRanker(),
+function CMAEmitter(dim::Integer; sigma0::Real, batch_size::Union{Nothing,Integer}=nothing,
+                    strategy=CMAES, ranker::AbstractRanker=TwoStageImprovementRanker(),
                     selection::SelectionRule=FilterSelection(),
                     restart::RestartRule=NoImprovementRestart(),
                     x0::Union{Nothing,AbstractVector{<:Real}}=nothing,
                     lower=-Inf, upper=Inf)
-    es = CMAES(dim; sigma0, batch_size, lower, upper)
-    if x0 !== nothing
-        length(x0) == dim ||
-            throw(ArgumentError("x0 has $(length(x0)) entries but the dimension is $dim"))
-        all(isfinite, x0) || throw(ArgumentError("x0 must be finite"))
-    end
+    sizing = batch_size === nothing ? (;) : (; batch_size)
+    es = strategy(dim; sigma0, sizing..., lower, upper)
+    es isa AbstractEvolutionStrategy ||
+        throw(ArgumentError("strategy must construct an AbstractEvolutionStrategy, got a $(typeof(es))"))
+    x0 === nothing || check_start(x0, dim)
     start = x0 === nothing ? nothing : collect(Float64, x0)
-    return CMAEmitter{typeof(ranker),typeof(selection),typeof(restart)}(
-        es, ranker, selection, restart, start, 0, 0, false, false, false)
+    own_ranker = deepcopy(ranker)
+    return CMAEmitter{typeof(own_ranker),typeof(selection),typeof(restart),typeof(es)}(
+        es, own_ranker, selection, restart, start, 0, 0, false, false, false)
 end
 
 CMAEmitter(x0::AbstractVector{<:Real}; kwargs...) = CMAEmitter(length(x0); x0, kwargs...)
@@ -182,6 +190,7 @@ function ask(rng::AbstractRNG, emitter::CMAEmitter, archive::AbstractArchive{G})
     es = emitter.es
     if !emitter.started || emitter.restart_pending
         reset!(es, start_mean(rng, emitter, archive))
+        reset_ranker!(rng, emitter.ranker, archive)
         emitter.started = true
         emitter.restart_pending = false
     end
@@ -210,9 +219,9 @@ function tell!(emitter::CMAEmitter, xs, evs, results)
     emitter.asked = false
     emitter.iterations += 1
     added = count(r -> r.status != Rejected, results)
-    order, values = rank(emitter.ranker, evs, results)
+    order, keys = rank(emitter.ranker, evs, results)
     update!(es, order, parent_count(emitter.selection, added, es.batch_size))
-    if should_stop(es, values) || restart_due(emitter.restart_rule, emitter.iterations, added)
+    if should_stop(es, keys) || restart_due(emitter.restart_rule, emitter.iterations, added)
         emitter.restart_pending = true
         emitter.restarts += 1
     end

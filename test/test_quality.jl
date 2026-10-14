@@ -41,6 +41,12 @@ end
     cma_state = init(prob, cma; budget=200, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(cma_state)
     JET.@test_opt target_modules = (QualityDiversity,) QD.ask(Xoshiro(1), cma_state.emitters[1], cma_state.archive)
+    for kwargs in ((; ranker=TwoStageRandomDirectionRanker()), (; strategy=SepCMAES), (; strategy=OpenAIES),
+                   (; strategy=LMMAES, batch_size=3))
+        other = CMAME(prob; dims=(5, 5), sigma0=1.0, num_emitters=2, kwargs...)
+        other_state = init(prob, other; budget=200, rng=Xoshiro(1))
+        JET.@test_opt target_modules = (QualityDiversity,) step!(other_state)
+    end
     mae = CMAMAE(prob; dims=(5, 5), sigma0=1.0, threshold_min=-500.0, learning_rate=0.1, num_emitters=2)
     mae_state = init(prob, mae; budget=200, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(mae_state)

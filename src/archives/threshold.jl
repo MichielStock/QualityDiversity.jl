@@ -294,3 +294,5 @@ function max_fitness(archive::ThresholdArchive)
     end
     return inner.fitness_max
 end
+
+descriptor_bounds(archive::ThresholdArchive) = descriptor_bounds(archive.inner)

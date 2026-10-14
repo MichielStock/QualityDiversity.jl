@@ -131,6 +131,13 @@ end
         test_emitter(CMAEmitter(4; sigma0=1.0, ranker, selection, restart, x0=zeros(4), batch_size=9), filled(), prob)
     end
     test_emitter(CMAEmitter(4; sigma0=1.0, lower=-5.12, upper=5.12), filled(), prob)
+    for ranker in (TwoStageObjectiveRanker(), RandomDirectionRanker(), TwoStageRandomDirectionRanker())
+        test_emitter(CMAEmitter(4; sigma0=1.0, ranker), filled(), prob)
+    end
+    for strategy in (SepCMAES, OpenAIES, LMMAES)
+        # LMMAES needs a batch smaller than the dimension
+        test_emitter(CMAEmitter(4; sigma0=1.0, strategy, batch_size=3 + 3 * (strategy === OpenAIES)), filled(), prob)
+    end
     # genotypes other than Vector{Float64}
     for G in (Vector{Float32}, SVector{4,Float64})
         archive = GridArchive{G}((8, 8), ((-5.12, 5.12), (-5.12, 5.12)))

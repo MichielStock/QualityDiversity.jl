@@ -143,3 +143,5 @@ function cell_index(archive::GridArchive{G,F,N}, d::AbstractVector{<:Real}) wher
     end
     return index + 1
 end
+
+descriptor_bounds(archive::GridArchive) = Tuple(zip(archive.lower, archive.upper))

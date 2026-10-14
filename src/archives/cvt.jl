@@ -168,3 +168,5 @@ function inside_component(archive::CVTArchive, d, i)
     lo <= x <= hi && return x
     return resolve_outside(archive.outside, i, x, lo, hi)
 end
+
+descriptor_bounds(archive::CVTArchive) = Tuple(zip(archive.lower, archive.upper))
