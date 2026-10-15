@@ -290,6 +290,7 @@ QualityDiversity.jl/
 │   │   ├── threshold.jl
 │   │   ├── spread.jl             # SpreadArchive for MELS
 │   │   ├── pareto.jl             # ParetoGridArchive
+│   │   ├── device_grid.jl        # DeviceGridArchive: grid cells in device arrays
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -304,13 +305,15 @@ QualityDiversity.jl/
 │   │   ├── lm_ma_es.jl
 │   │   ├── openai_es.jl
 │   │   ├── rankers.jl
-│   │   └── cma_emitter.jl
+│   │   ├── cma_emitter.jl
+│   │   └── device_emitter.jl     # DeviceVariationEmitter
 │   ├── solve.jl                  # QDAlgorithm, QDState, QDResult, init/step!/solve!
 │   ├── algorithms.jl             # MAPElites(), CMAME(), ... constructors
 │   ├── metrics.jl
 │   └── testing.jl                # QualityDiversity.Testing: interface conformance checks
 ├── ext/
 │   ├── QualityDiversityMakieExt.jl        # archive heatmaps, metric curves
+│   ├── QualityDiversityKernelAbstractionsExt.jl  # kernels of the device archive and emitter
 │   ├── QualityDiversityForwardDiffExt.jl  # differentiable QD
 │   └── QualityDiversityPythonCallExt.jl   # batched evaluation through Python
 ├── test/
@@ -321,12 +324,14 @@ QualityDiversity.jl/
 │   ├── test_solve.jl
 │   ├── test_conformance.jl       # runs Testing checks on every built-in type
 │   ├── test_inference.jl         # @inferred and allocation checks
+│   ├── test_device.jl            # device archive and emitter on the CPU backend and JLArrays
 │   └── test_quality.jl           # Aqua, ExplicitImports, JET
 ├── benchmark/
 │   ├── Project.toml              # BenchmarkTools lives here, not in the package
 │   ├── benchmarks.jl             # BenchmarkTools SUITE
 │   ├── run.jl                    # runs the suite and prints a table
 │   └── compare/                  # same problem in pyribs and QDax, for the comparison table
+│       └── gpu/                  # MAP-Elites on a CUDA GPU; CUDA lives in its own Project.toml
 ├── docs/                         # Documenter.jl
 └── examples/
     ├── Project.toml              # Graphs.jl and JLArrays for the examples
@@ -390,14 +395,16 @@ Julia LTS and the current release.
         for every cell, with `SampledSpread` problems
 - [ ] **Phase 7 — Extensions and docs.**
   - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain
+  - [x] Device MAP-Elites: `DeviceGridArchive` and `DeviceVariationEmitter` with
+        KernelAbstractions kernels, and a GPU row in the comparison with QDax
   - [ ] ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
         emitter; Documenter site with tutorials
 
 GPU support is optional and never a dependency of the package. Scoring a batch
 on a device works through `evaluate_batch` (`examples/gpu_evaluation.jl`,
-tested with JLArrays on the CPU). A device-resident archive with batched
-variation and insertion would be a separate archive type in an extension; it
-waits until CMA-ME exists and there is a need for batches of 10⁴ or more.
+tested with JLArrays on the CPU). MAP-Elites with the archive, the variation and
+the insertion on a device is `DeviceGridArchive` with `DeviceVariationEmitter`,
+whose kernels are in the KernelAbstractions extension; see Decisions.
 
 Out of scope, as in the introduction: reinforcement-learning and
 neural-policy methods in QDax (PGA-ME, QD-PG, DCRL, ME-ES on policies, DIAYN,
@@ -496,6 +503,37 @@ Settled; change them only with the author's agreement.
   `ParetoGridArchive` shows the hypervolume of each front, and a `ThresholdArchive` its result
   archive. Empty cells are `NaN`, which Makie leaves transparent. `CategoricalArchive` and
   archives with more dimensions are not drawn yet.
+- **Device MAP-Elites.** The CPU is the default and nothing moves to a device unless the
+  user asks: `MAPElites(prob; dims, device=CuArray)` (any array type: `ROCArray`,
+  `MtlArray`, `oneArray`, or `Array` for the same kernels on the CPU) builds a
+  `DeviceGridArchive` and a `DeviceVariationEmitter`; without `device` nothing changes,
+  and the MAP-Elites benchmarks must not slow down. The kernels are written with
+  KernelAbstractions.jl, a weak dependency (with Atomix.jl, which it loads) that CUDA.jl,
+  AMDGPU.jl, Metal.jl and oneAPI.jl load, in `QualityDiversityKernelAbstractionsExt`; the types and the host-side methods are
+  in the package. The archive holds a grid as struct-of-arrays in device arrays: genotypes
+  of a fixed length `dim` as a `dim × cells` matrix of a real type `T`, fitness of a real
+  type `F`, descriptors as an `N × cells` matrix of `T`, and no phenotypes. It meets the
+  archive contract (descriptors `SVector{N,Float64}`, genotypes `Vector{T}` on the host);
+  `GridArchive(archive)` copies it to the host. A batch of candidates is `eachcol(X)` of a
+  device matrix, so the generic loop runs unchanged; evaluations come back as an
+  `EvaluationBatch` and add results as an `AddResultBatch`, both device arrays. The default
+  `evaluate_batch` on a device runs `evaluate(prob, x)` (for a `QDProblem`, its function)
+  in a kernel, one solution per thread, so it must compile for the device: no allocation,
+  no string building, and `Float32` on a device without `Float64`. A problem may instead
+  define `evaluate_batch` for the batch and return an `EvaluationBatch` or a vector of
+  `Evaluation`s. `add_batch!` follows the batch rule of the cell archives; the cell of each
+  solution is chosen with atomic maximum and minimum operations on the fitness and the
+  position in the batch, and a descriptor that `ThrowOutside()` refuses throws on the host
+  before the archive changes. The initial population is drawn on the host with
+  `random_solution`, copied to the device once, and scored there. Every `ask` draws one
+  `UInt64` from the run's generator and the kernels derive their random numbers from it with
+  a counter-based generator (Philox4x32-10) keyed on the child and the entry, so a run is
+  reproducible from its seed on a given backend whatever the scheduling of the threads,
+  and its random numbers differ from those of the CPU path. Parents are uniform over the
+  occupied cells, listed in cell order. The device emitter supports `GaussianMutation` and
+  `IsoLineVariation`; stochastic problems and the other archives stay on the CPU. Defaults
+  are those of the CPU path (`Float64`); the documentation recommends `Float32` for
+  consumer GPUs, which compute `Float64` slowly.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.
