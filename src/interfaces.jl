@@ -78,6 +78,14 @@ descriptor values back. `examples/gpu_evaluation.jl` does this for any array
 type of the GPU packages (CUDA.jl, Metal.jl, AMDGPU.jl, oneAPI.jl). The
 package itself does not depend on any of them.
 
+The candidates of a [`DeviceGridArchive`](@ref) are a [`DeviceBatch`](@ref), whose
+solutions are the columns of a device matrix. For them the default runs
+`evaluate(prob, x)` in a kernel, one solution per thread (for a [`QDProblem`](@ref),
+its function), and returns an [`EvaluationBatch`](@ref) on the device. That code must
+then compile for the device: no allocation, no error message built from values, and no
+`Float64` on a device that lacks it. A problem can instead define
+`evaluate_batch(prob::MyProblem, xs::DeviceBatch)` and work on `parent(xs)`.
+
 The method with a generator is the one that [`step!`](@ref) calls, with the generator
 of the run. For a deterministic problem it calls `evaluate_batch(prob, xs)` and leaves
 the generator untouched. For an [`AbstractStochasticQDProblem`](@ref) it draws one seed
@@ -88,7 +96,11 @@ example to evaluate a batch on a device.
 """
 function evaluate_batch end
 
-function evaluate_batch(prob::AbstractQDProblem, xs::AbstractVector)
+evaluate_batch(prob::AbstractQDProblem, xs::AbstractVector) = default_evaluate_batch(prob, xs)
+
+# The default of `evaluate_batch`, chosen by the type of the batch: a problem that
+# defines `evaluate_batch(prob::MyProblem, xs::AbstractVector)` takes every batch.
+function default_evaluate_batch(prob::AbstractQDProblem, xs::AbstractVector)
     T = Base.promote_op(evaluate, typeof(prob), eltype(xs))
     evs = Vector{T}(undef, length(xs))
     Threads.@threads for i in eachindex(xs)
@@ -126,6 +138,11 @@ run counts these evaluations.
 function evaluations_per_solution end
 
 evaluations_per_solution(::AbstractQDProblem) = 1
+
+# The evaluation of `x` inside a device kernel, for the default `evaluate_batch` of a
+# `DeviceBatch`. A problem whose `evaluate` checks its input with a message built
+# from values defines it without the check.
+device_evaluate(prob::AbstractQDProblem, x) = evaluate(prob, x)
 
 """
     random_solution(rng::AbstractRNG, prob::AbstractQDProblem)

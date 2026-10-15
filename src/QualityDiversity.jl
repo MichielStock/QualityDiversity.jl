@@ -41,6 +41,7 @@ include("archives/unstructured.jl")
 include("archives/threshold.jl")
 include("archives/spread.jl")
 include("archives/pareto.jl")
+include("archives/device_grid.jl")
 include("variation/gaussian.jl")
 include("variation/isoline.jl")
 include("variation/polynomial.jl")
@@ -53,6 +54,7 @@ include("emitters/lm_ma_es.jl")
 include("emitters/openai_es.jl")
 include("emitters/rankers.jl")
 include("emitters/cma_emitter.jl")
+include("emitters/device_emitter.jl")
 include("solve.jl")
 include("algorithms.jl")
 include("testing.jl")
@@ -62,10 +64,10 @@ export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, Abstract
 export QDAlgorithm, QDState, QDResult
 export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, Rastrigin, Sphere, BiSphere
 export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive,
-    SpreadArchive, ParetoGridArchive
+    SpreadArchive, ParetoGridArchive, DeviceGridArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
-export VariationEmitter, CMAEmitter
+export VariationEmitter, CMAEmitter, DeviceVariationEmitter
 export AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES
 export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker,
     TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker,
@@ -83,6 +85,7 @@ export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scor
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
 @compat public CellArchive, centroids, thresholds, spreads, DescriptorSamples
+@compat public DeviceBatch, EvaluationBatch, AddResultBatch
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop
 @compat public RankOneRule, TextbookRankOne, PyribsRankOne

@@ -91,6 +91,13 @@ end
 
 evaluate(prob::QDProblem, x) = evaluation_of(prob.space, prob.f(x))
 
+# In a device kernel the descriptor stays as the function returned it; the kernel
+# writes its components into the descriptor matrix of the batch.
+function device_evaluate(prob::QDProblem, x)
+    result = prob.f(x)
+    return Evaluation(result[1], result[2])
+end
+
 random_solution(rng::AbstractRNG, prob::QDProblem) = prob.init(rng)
 
 descriptor_bounds(prob::QDProblem{F,I,<:Tuple}) where {F,I} = prob.space

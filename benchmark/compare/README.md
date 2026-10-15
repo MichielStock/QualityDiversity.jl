@@ -2,7 +2,7 @@
 
 MAP-Elites on the 20-dimensional Rastrigin function, run with the same
 settings in three libraries. Later sections do the same for CMA-ME and CMA-MAE,
-and for MOME against QDax.
+for MOME against QDax, and for MAP-Elites on a GPU.
 
 | setting | value |
 |---|---|
@@ -167,10 +167,9 @@ the spread between seeds. At batch size 10 000 every library fills fewer cells
 
 ## What the numbers do not say
 
-- **No GPU.** QDax is built for accelerators, where the work per step is
-  parallel across thousands of solutions. These runs use one CPU core and say
-  nothing about QDax on a GPU or TPU, where it would be much faster than any of
-  these numbers.
+- **One CPU core.** QDax is built for accelerators, where the work per step is
+  parallel across thousands of solutions. These runs use one CPU core; the
+  [GPU section](#map-elites-on-a-gpu) runs QDax and QualityDiversity.jl on a GPU.
 - **Cheap objective.** Rastrigin takes about 200 ns per solution. A slower
   objective shrinks the ratios for every library, and an objective that cannot
   be written as jittable array code cannot be used in QDax at all.
@@ -359,4 +358,107 @@ taskset -c 1 julia --threads=1 benchmark/compare/compare_mome.jl
 # QDax
 export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 REPEATS=3 taskset -c 1 venv/bin/python benchmark/compare/compare_mome_qdax.py   # about 45 minutes
+```
+
+## MAP-Elites on a GPU
+
+The MAP-Elites comparison of the first section, with the archive, the variation and the
+evaluation on a GPU. `gpu/compare_gpu.jl` runs `MAPElites(prob; device=CuArray)`, which
+stores a `DeviceGridArchive` in CUDA arrays and draws children with a
+`DeviceVariationEmitter`; the Rastrigin function is a `QDProblem` that a kernel evaluates
+one solution per thread. QDax runs `compare_qdax.py` unchanged, with the CUDA build of jax.
+pyribs 0.12 keeps its grid archive and Gaussian emitter in numpy, so it cannot run this
+on a GPU; it is run on one core of the same machine for reference.
+
+| setting | value |
+|---|---|
+| problem, archive, mutation, budget, batch sizes | as in the first section |
+| repeats | 21 timed runs per batch size, one seed each, after a warm-up run |
+| hardware | NVIDIA GeForce RTX 5090 (driver 580.178), AMD Ryzen Threadripper PRO 5955WX; the host side of every run pinned to one core with `taskset` |
+| software | Julia 1.13.1, CUDA.jl 6.4.2, KernelAbstractions 0.9.45; Python 3.13, jax 0.11.2 with `jax-cuda12-plugin`, QDax 0.5.0, pyribs 0.12.0 |
+
+### Results
+
+Median time in seconds for the whole budget. QualityDiversity.jl on the CPU is the
+`compare.jl` run on this machine, with one thread and with eight.
+
+| batch size | QualityDiversity.jl, GPU, float32 | QDax, GPU, float32 | QDax, GPU, grid index, float32 | QualityDiversity.jl, GPU, float64 | QDax, GPU, float64 | QDax, GPU, grid index, float64 | QualityDiversity.jl, CPU, float32, 1 thread | QualityDiversity.jl, CPU, float32, 8 threads | pyribs, CPU, 1 core |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 1.178 | 1.340 | 1.374 | 1.397 | 1.556 | 1.453 | 0.173 | 0.109 | 2.335 |
+| 100 | 0.495 | 0.478 | 0.481 | 0.562 | 0.590 | 0.523 | 0.166 | 0.096 | 1.024 |
+| 1000 | 0.049 | 0.048 | 0.048 | 0.080 | 0.096 | 0.052 | 0.158 | 0.074 | 0.330 |
+| 10 000 | 0.0059 | 0.006 | 0.005 | 0.0097 | 0.048 | 0.006 | 0.156 | 0.073 | 0.385 |
+
+On the GPU the two libraries are level in `float32` at every batch size. Each step costs
+both about 0.1 ms whatever the batch size, so up to a batch of 100 the GPU is slower than
+one CPU core, and at 1000 and above it is faster: at 10 000 the whole budget of 360 000
+evaluations takes 6 ms, 26 times less than one core and 12 times less than eight. In
+`float64` QDax with its own cell lookup slows down at large batches, because it compares
+every descriptor with every centroid and this card computes `float64` slowly; QDax with the
+grid index is faster than QualityDiversity.jl at 1000 and 10 000 in `float64`. Coverage and
+QD score agree with the CPU runs within the spread between seeds.
+
+**QualityDiversity.jl, GPU, float32**
+
+| batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 1.0341 | 1.1781 | 1.1348–1.1942 | 305 580 | 0.986 | -132.6 | 4 771 348 |
+| 100 | 0.4513 | 0.4951 | 0.4838–0.5073 | 727 104 | 0.987 | -131.4 | 4 786 044 |
+| 1000 | 0.0476 | 0.0493 | 0.0488–0.0575 | 7 296 366 | 0.985 | -130.8 | 4 794 318 |
+| 10 000 | 0.0057 | 0.0059 | 0.0059–0.0060 | 61 009 918 | 0.938 | -131.9 | 4 606 737 |
+
+**QualityDiversity.jl, GPU, float64**
+
+| batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 1.1398 | 1.3971 | 1.3401–1.4902 | 257 676 | 0.986 | -137.9 | 4 784 610 |
+| 100 | 0.5305 | 0.5622 | 0.5468–0.5839 | 640 315 | 0.987 | -131.6 | 4 783 858 |
+| 1000 | 0.0775 | 0.0802 | 0.0787–0.0864 | 4 488 786 | 0.986 | -137.5 | 4 793 983 |
+| 10 000 | 0.0094 | 0.0097 | 0.0096–0.0114 | 36 961 210 | 0.944 | -129.6 | 4 622 994 |
+
+**QDax, GPU, float32, centroid search**
+
+| batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 1.332 | 1.340 | 1.335–1.341 | 268 606 | 0.987 | -133.9 | 4 780 142 |
+| 100 | 0.474 | 0.478 | 0.478–0.479 | 752 430 | 0.987 | -133.7 | 4 789 104 |
+| 1000 | 0.048 | 0.048 | 0.048–0.048 | 7 531 673 | 0.985 | -131.8 | 4 788 820 |
+| 10 000 | 0.006 | 0.006 | 0.006–0.006 | 64 507 412 | 0.944 | -127.8 | 4 627 217 |
+
+**QDax, GPU, float64, centroid search**
+
+| batch size | min s | median s | middle half s | evals/s | coverage | max fitness | QD score |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 36 | 1.556 | 1.556 | 1.556–1.556 | 231 376 | 0.986 | -133.5 | 4 780 745 |
+| 100 | 0.590 | 0.590 | 0.590–0.590 | 610 558 | 0.985 | -133.4 | 4 771 358 |
+| 1000 | 0.096 | 0.096 | 0.096–0.096 | 3 756 051 | 0.986 | -131.9 | 4 795 016 |
+| 10 000 | 0.048 | 0.048 | 0.048–0.048 | 7 541 751 | 0.942 | -131.1 | 4 613 920 |
+
+### Not measured
+
+- **Other GPUs.** The kernels are written with KernelAbstractions and run on AMD, Apple and
+  Intel GPUs as well, but only CUDA has been timed, and the tests run them on the CPU.
+- **CMA-ME and MOME.** The device archive serves MAP-Elites only. For reference, QDax on this
+  GPU takes 0.95 s for CMA-ME with improvement emitters, where QualityDiversity.jl on one
+  core takes 0.31 s (a batch of 12 is too small for a GPU), and 3.5 s for MOME, where
+  QualityDiversity.jl takes 0.017 s (QDax inserts a batch one solution at a time).
+
+### Reproducing
+
+```
+# On a machine with several GPUs, choose one by its nvidia-smi index; without
+# CUDA_DEVICE_ORDER the CUDA runtime numbers the devices fastest first.
+export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1
+
+# Julia
+taskset -c 2 julia benchmark/compare/gpu/compare_gpu.jl
+
+# QDax and pyribs, with the CUDA build of jax
+python -m venv venv && venv/bin/pip install -r benchmark/compare/requirements.txt "jax[cuda12]"
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+taskset -c 4 venv/bin/python benchmark/compare/compare_qdax.py
+JAX_ENABLE_X64=1 taskset -c 4 venv/bin/python benchmark/compare/compare_qdax.py
+QDAX_GRID_LOOKUP=1 taskset -c 4 venv/bin/python benchmark/compare/compare_qdax.py
+JAX_ENABLE_X64=1 QDAX_GRID_LOOKUP=1 taskset -c 4 venv/bin/python benchmark/compare/compare_qdax.py
+OMP_NUM_THREADS=1 NUMBA_NUM_THREADS=1 taskset -c 2 venv/bin/python benchmark/compare/compare.py
 ```
