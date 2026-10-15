@@ -552,9 +552,15 @@ must be an archive for `prob` that already holds at least one solution. The
 check modifies both `emitter` and `archive`.
 
 `batch_size` must be a positive integer, and `ask` must return that many
-genotypes of the archive's genotype type, inferrably. The batch must then pass
+genotypes of the archive's genotype type, inferrably, as a `Vector`, or as a
+[`DeviceBatch`](@ref QualityDiversity.DeviceBatch) for a
+[`DeviceGridArchive`](@ref QualityDiversity.DeviceGridArchive). The batch must then pass
 through `evaluate_batch`, `add_batch!` and `tell!`.
 """
+# The type of the batches that the emitters of `archive` return.
+batch_type(::QD.AbstractArchive{G}) where {G} = Vector{G}
+batch_type(::QD.DeviceGridArchive) = QD.DeviceBatch
+
 function test_emitter(emitter::QD.AbstractEmitter, archive::QD.AbstractArchive{G},
                       prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1)) where {G}
     @testset "test_emitter($(nameof(typeof(emitter))))" begin
@@ -563,7 +569,7 @@ function test_emitter(emitter::QD.AbstractEmitter, archive::QD.AbstractArchive{G
         @test QD.batch_size(emitter) >= 1
 
         xs = @inferred QD.ask(Xoshiro(5), emitter, archive)
-        @test xs isa Vector{G}
+        @test xs isa batch_type(archive)
         @test length(xs) == QD.batch_size(emitter)
 
         @testset "tell!" begin

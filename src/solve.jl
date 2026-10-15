@@ -73,10 +73,11 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
         throw(ArgumentError("budget ($budget) is smaller than the initial population ($initial_evals)"))
     check_compatible(prob, alg.archive)
     check_spread_pairing(prob, alg.archive)
+    check_device_pairing(prob, alg.archive)
     archive = deepcopy(alg.archive)
     history = metrics_record_type(typeof(result_archive(archive)))[]
     state = QDState(prob, archive, deepcopy(alg.emitters), rng, Int(budget), callback, 0, history)
-    xs = initial_solutions(rng, prob, state.archive, init_size)
+    xs = initial_batch(state.archive, initial_solutions(rng, prob, state.archive, init_size))
     evaluate_and_add!(state, xs)
     record_metrics!(state)
     notify!(state.callback, state)
@@ -111,6 +112,20 @@ function check_spread_pairing(prob::AbstractQDProblem, ::SpreadArchive)
     throw(ArgumentError("a SpreadArchive needs a stochastic problem, but $(nameof(typeof(prob))) is deterministic: every evaluation of a solution is the same and its spread zero"))
 end
 
+# A `DeviceGridArchive` evaluates its batches on the device, which takes a deterministic
+# problem with descriptor bounds.
+check_device_pairing(prob, archive) = nothing
+
+function check_device_pairing(prob::AbstractQDProblem, ::DeviceGridArchive)
+    hasmethod(descriptor_categories, Tuple{typeof(prob)}) &&
+        throw(ArgumentError("a DeviceGridArchive needs a problem with descriptor_bounds; one with descriptor_categories runs on the host"))
+    return nothing
+end
+
+function check_device_pairing(prob::AbstractStochasticQDProblem, ::DeviceGridArchive)
+    throw(ArgumentError("a DeviceGridArchive takes deterministic problems; run $(nameof(typeof(prob))) on the host"))
+end
+
 function check_ndims(prob, N)
     n = descriptor_ndims(prob)
     n == N || throw(ArgumentError("the problem has $n descriptor dimensions but the archive has $N"))
@@ -124,6 +139,10 @@ function initial_solutions(rng, prob, ::AbstractArchive{G}, n) where {G}
     end
     return xs
 end
+
+# The initial solutions as the archive's emitters hand them over, so that they are
+# evaluated where later batches are.
+initial_batch(archive, xs) = xs
 
 function evaluate_and_add!(state::QDState, xs)
     evs = evaluate_batch(state.rng, state.problem, xs)

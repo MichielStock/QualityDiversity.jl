@@ -23,9 +23,15 @@ struct Rastrigin <: AbstractQDProblem
 end
 
 function evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
+    length(x) == prob.dim ||
+        throw(ArgumentError("solution has $(length(x)) entries but Rastrigin has dimension $(prob.dim)"))
+    return device_evaluate(prob, x)
+end
+
+# Without the length check, whose message a device kernel cannot build; the archive
+# checks the length of the solutions of a device batch.
+function device_evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
     n = prob.dim
-    length(x) == n ||
-        throw(ArgumentError("solution has $(length(x)) entries but Rastrigin has dimension $n"))
     h = n ÷ 2
     total = 0.0
     first_half = 0.0
@@ -89,9 +95,13 @@ end
 sphere_clip(x) = -SPHERE_LIMIT <= x <= SPHERE_LIMIT ? x : SPHERE_LIMIT / x
 
 function evaluate(prob::Sphere, x::AbstractVector{<:Real})
+    length(x) == prob.dim ||
+        throw(ArgumentError("solution has $(length(x)) entries but Sphere has dimension $(prob.dim)"))
+    return device_evaluate(prob, x)
+end
+
+function device_evaluate(prob::Sphere, x::AbstractVector{<:Real})
     n = prob.dim
-    length(x) == n ||
-        throw(ArgumentError("solution has $(length(x)) entries but Sphere has dimension $n"))
     h = n ÷ 2
     distance = 0.0
     first_half = 0.0

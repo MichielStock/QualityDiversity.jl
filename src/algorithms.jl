@@ -1,7 +1,8 @@
 """
     MAPElites(prob; dims, bounds=descriptor_bounds(prob), batch_size=64,
               variation=GaussianMutation(0.1), genotype=Vector{Float64},
-              fitness=Float64, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
+              fitness=Float64, outside=ThrowOutside(), phenotype=Nothing,
+              device=nothing) -> QDAlgorithm
 
 MAP-Elites: an archive laid out by the problem's descriptor space, and one
 [`VariationEmitter`](@ref) that applies the `variation` operator to
@@ -18,6 +19,12 @@ is required. For a problem with
 passed to the archive; see [`GridArchive`](@ref) and [`CategoricalArchive`](@ref).
 A problem that returns a phenotype needs `phenotype` set to its type.
 
+Everything runs on the host unless `device` names an array type, such as `CuArray`:
+then the archive is a [`DeviceGridArchive`](@ref) in arrays of that type and the
+emitter a [`DeviceVariationEmitter`](@ref), so the variation, the evaluation and the
+insertion of a batch stay on the device. That needs a problem with `descriptor_bounds`,
+real-vector genotypes, no phenotype, and a `variation` that the device emitter supports.
+
 # Example
 
 ```julia
@@ -33,10 +40,27 @@ function MAPElites(prob::AbstractQDProblem; dims::Union{Tuple,Nothing}=nothing,
                    genotype::Type=Vector{Float64},
                    fitness::Type{<:Real}=Float64,
                    outside::OutsidePolicy=ThrowOutside(),
-                   phenotype::Type=Nothing)
+                   phenotype::Type=Nothing,
+                   device::Union{Type,Nothing}=nothing)
+    return map_elites(device, prob, dims, bounds, batch_size, variation, genotype, fitness, outside, phenotype)
+end
+
+function map_elites(::Nothing, prob, dims, bounds, batch_size, variation, genotype, fitness, outside, phenotype)
     archive = default_archive(Val(hasmethod(descriptor_categories, Tuple{typeof(prob)})),
                               prob, dims, bounds, genotype, fitness, outside, phenotype)
     return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+end
+
+function map_elites(device::Type, prob, dims, bounds, batch_size, variation, genotype, fitness, outside, phenotype)
+    hasmethod(descriptor_categories, Tuple{typeof(prob)}) &&
+        throw(ArgumentError("a DeviceGridArchive needs a problem with descriptor_bounds; one with descriptor_categories runs on the host"))
+    dims === nothing &&
+        throw(ArgumentError("dims is required for a problem with descriptor_bounds: pass the number of cells along each dimension, e.g. dims=(20, 20)"))
+    phenotype === Nothing ||
+        throw(ArgumentError("a DeviceGridArchive stores no phenotypes; build it without phenotype"))
+    archive = DeviceGridArchive(prob; dims, device, bounds=something(bounds, descriptor_bounds(prob)),
+                                genotype, fitness, outside)
+    return QDAlgorithm(archive, (DeviceVariationEmitter(variation; batch_size),))
 end
 
 function default_archive(::Val{false}, prob, dims, bounds, genotype, fitness, outside, phenotype)
@@ -57,7 +81,8 @@ end
         -> QDAlgorithm
 
 MAP-Elites over any archive: `archive` with one [`VariationEmitter`](@ref) that
-applies `variation` to `batch_size` children per round. Use it to run MAP-Elites
+applies `variation` to `batch_size` children per round, or a
+[`DeviceVariationEmitter`](@ref) for a [`DeviceGridArchive`](@ref). Use it to run MAP-Elites
 with an archive other than the grid, such as a [`CVTArchive`](@ref).
 
 # Example
@@ -71,6 +96,11 @@ result = solve(prob, MAPElites(archive); budget=100_000, rng=Xoshiro(2))
 function MAPElites(archive::AbstractArchive; batch_size::Integer=64,
                    variation::AbstractVariation=GaussianMutation(0.1))
     return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+end
+
+function MAPElites(archive::DeviceGridArchive; batch_size::Integer=64,
+                   variation::AbstractVariation=GaussianMutation(0.1))
+    return QDAlgorithm(archive, (DeviceVariationEmitter(variation; batch_size),))
 end
 
 """

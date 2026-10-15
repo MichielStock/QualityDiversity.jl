@@ -12,10 +12,15 @@ end
 # is declared public from Julia 1.11 on; `plottype` is how an extension tells Makie which
 # plot `plot(x)` draws for its own type). `CellArchive`, `cell_index` and `result_archive`
 # are declared public with `@compat public`, which ExplicitImports only sees from Julia 1.11 on;
-# the Makie extension uses them.
+# the Makie extension uses them. The KernelAbstractions extension implements the device
+# kernels behind internal functions of the package (`device_add_batch!` to
+# `solution_length`), which are not part of its interface, and uses `@atomic` of Atomix,
+# the documented atomic operations of KernelAbstractions kernels.
 const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail,
                                :require_one_based_indexing, :plottype,
-                               :CellArchive, :cell_index, :result_archive)
+                               :CellArchive, :cell_index, :result_archive,
+                               :device_add_batch!, :device_evaluate, :device_evaluate!, :device_vary!,
+                               :refresh_occupied!, :solution_length, Symbol("@atomic"))
 
 @testset "ExplicitImports" begin
     @test ExplicitImports.check_no_implicit_imports(QualityDiversity) === nothing

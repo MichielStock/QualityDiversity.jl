@@ -33,6 +33,11 @@
 # A GPU pays off when the batch is large and the objective costly. For the
 # cheap Rastrigin function the CPU is faster at small batches, because every
 # round has to cross to the device and back.
+#
+# To keep the archive and the variation on the device as well, so that nothing
+# crosses per round, pass `device=CuArray` (or another array type) to
+# `MAPElites`; see `DeviceGridArchive`. A problem then scores the columns of a
+# device matrix, and `GPURastrigin` below works with it unchanged.
 
 module GPUExample
 
