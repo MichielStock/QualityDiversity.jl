@@ -397,6 +397,15 @@ Julia LTS and the current release.
   - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain
   - [x] Device MAP-Elites: `DeviceGridArchive` and `DeviceVariationEmitter` with
         KernelAbstractions kernels, and a GPU row in the comparison with QDax
+  - [ ] Device CVT archive: `CVTArchive` cells in device arrays, the nearest centroid
+        found by brute force in a kernel, reusing the insertion and variation kernels
+  - [ ] Device CMA-ME and CMA-MAE: many emitters that ask together, their batches
+        added to the archive at once and their search distributions updated as one
+        batched operation, over a device grid or threshold archive. Needs a decision:
+        the emitters of a round all see the archive as it was before the round, as in
+        pyribs, where the host loop steps them one after another
+  - [ ] Device MOME: `ParetoGridArchive` fronts in device arrays, a batch inserted in
+        parallel over the cells, with the dominance checks of a cell in parallel too
   - [ ] ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
         emitter; Documenter site with tutorials
 
