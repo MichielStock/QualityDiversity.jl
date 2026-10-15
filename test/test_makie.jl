@@ -67,6 +67,15 @@ end
     @test size(convert_heatmap(cvt; pixels=8)[3]) == (8, 8)
 end
 
+@testset "SpreadArchive shows the archive it wraps" begin
+    archive = SpreadArchive(GridArchive((2, 2), ((0, 1), (0, 1))))
+    QD.add!(archive, [0.0], Evaluation(2.0, QD.DescriptorSamples([SVector(0.1, 0.1), SVector(0.2, 0.1)])))
+    @test isequal(convert_heatmap(archive)[3], convert_heatmap(archive.inner)[3])
+    @test convert_heatmap(archive)[3][1, 1] == 2.0
+    cvt = SpreadArchive(CVTArchive([SVector(0.25, 0.5), SVector(0.75, 0.5)], ((0, 1), (0, 1))))
+    @test size(convert_heatmap(cvt; pixels=8)[3]) == (8, 8)
+end
+
 @testset "other dimensions throw" begin
     @test_throws "a heatmap needs an archive with 2 descriptor dimensions but this GridArchive has 3" convert_heatmap(
         GridArchive((2, 2, 2), ((0, 1), (0, 1), (0, 1))))

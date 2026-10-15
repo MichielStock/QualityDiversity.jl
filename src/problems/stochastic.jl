@@ -147,11 +147,21 @@ function Sampled(problem::AbstractQDProblem; kwargs...)
 end
 
 function evaluate(rng::AbstractRNG, prob::Sampled, x)
+    fitness, descriptors, phenotypes = sample_evaluations(rng, prob, x)
+    return Evaluation(expectation(prob.expectation, fitness),
+                      expected_descriptor(prob.expectation, descriptors),
+                      most_frequent(phenotypes))
+end
+
+# The fitness values, descriptors and phenotypes of `prob.num_samples` evaluations of `x`
+# by `prob.problem`, one after the other with `rng`.
+function sample_evaluations(rng::AbstractRNG, prob, x)
     first = evaluate(rng, prob.problem, x)
+    name = nameof(typeof(prob))
     first.fitness isa Real ||
-        throw(ArgumentError("Sampled needs a real fitness, got a $(typeof(first.fitness))"))
+        throw(ArgumentError("$name needs a real fitness, got a $(typeof(first.fitness))"))
     first.descriptor isa SVector{<:Any,<:Real} ||
-        throw(ArgumentError("Sampled needs a descriptor that is an SVector of real numbers, got a $(typeof(first.descriptor))"))
+        throw(ArgumentError("$name needs a descriptor that is an SVector of real numbers, got a $(typeof(first.descriptor))"))
     n = prob.num_samples
     fitness = Vector{typeof(first.fitness)}(undef, n)
     descriptors = Vector{typeof(first.descriptor)}(undef, n)
@@ -164,9 +174,7 @@ function evaluate(rng::AbstractRNG, prob::Sampled, x)
         descriptors[i] = ev.descriptor
         record_phenotype!(phenotypes, i, ev.phenotype)
     end
-    return Evaluation(expectation(prob.expectation, fitness),
-                      expected_descriptor(prob.expectation, descriptors),
-                      most_frequent(phenotypes))
+    return fitness, descriptors, phenotypes
 end
 
 # The phenotypes of the evaluations of one solution; `nothing` when the problem returns
@@ -214,4 +222,89 @@ descriptor_bounds(prob::Sampled) = descriptor_bounds(prob.problem)
 fitness_offset(prob::Sampled) = fitness_offset(prob.problem)
 
 evaluations_per_solution(prob::Sampled) =
+    prob.num_samples * evaluations_per_solution(prob.problem)
+
+"""
+    DescriptorSamples{N}(samples::Vector{SVector{N,Float64}})
+
+The descriptors of the evaluations of one solution, in the order of the evaluations: the
+descriptor of an [`Evaluation`](@ref) of a [`SampledSpread`](@ref) problem. It is an
+`AbstractVector` whose entries are the descriptors. A [`SpreadArchive`](@ref) finds the cell
+and the spread of the solution from them.
+"""
+struct DescriptorSamples{N} <: AbstractVector{SVector{N,Float64}}
+    samples::Vector{SVector{N,Float64}}
+end
+
+Base.size(d::DescriptorSamples) = size(d.samples)
+Base.getindex(d::DescriptorSamples, i::Int) = d.samples[i]
+Base.IndexStyle(::Type{<:DescriptorSamples}) = IndexLinear()
+
+"""
+    SampledSpread(prob; num_samples, expectation=Average())
+
+Score every solution of the stochastic problem `prob` with `num_samples` evaluations, as
+[`Sampled`](@ref) does, but keep every descriptor: the evaluation has the
+[`Expectation`](@ref) of the fitness, the descriptors of all the evaluations as a
+[`DescriptorSamples`](@ref), and the phenotype that occurs most often. A
+[`SpreadArchive`](@ref), the archive of [`MELS`](@ref), takes these evaluations, and only
+it: the cell of a solution and its spread depend on the cells of the archive.
+
+The evaluations of one solution run one after the other with the generator of that
+solution, and each counts against the budget of a run. The fitness must be a real number
+and the descriptor a vector of real numbers. The descriptor bounds and the fitness offset
+are those of `prob`.
+
+# Example
+
+```jldoctest
+julia> using QualityDiversity, Random
+
+julia> noisy = StochasticQDProblem((rng, x) -> (-x[1]^2 + randn(rng), (x[1], x[2] + 0.1 * randn(rng)));
+                                   init = rng -> randn(rng, 2), bounds = ((-3, 3), (-3, 3)));
+
+julia> ev = QualityDiversity.evaluate(Xoshiro(1), SampledSpread(noisy; num_samples=5), [1.0, 0.5]);
+
+julia> length(ev.descriptor), ev.descriptor[1][1]
+(5, 1.0)
+```
+"""
+struct SampledSpread{P<:AbstractStochasticQDProblem,E<:Expectation} <: AbstractStochasticQDProblem
+    problem::P
+    num_samples::Int
+    expectation::E
+
+    function SampledSpread{P,E}(problem::P, num_samples::Integer, expectation::E) where {P,E}
+        num_samples >= 1 ||
+            throw(ArgumentError("num_samples must be at least 1, got $num_samples"))
+        return new{P,E}(problem, num_samples, expectation)
+    end
+end
+
+function SampledSpread(problem::AbstractStochasticQDProblem; num_samples::Integer,
+                       expectation::Expectation=Average())
+    return SampledSpread{typeof(problem),typeof(expectation)}(problem, num_samples, expectation)
+end
+
+function SampledSpread(problem::AbstractQDProblem; kwargs...)
+    throw(ArgumentError("SampledSpread needs a stochastic problem, but $(nameof(typeof(problem))) is deterministic: its evaluations would all be the same and its spread zero"))
+end
+
+function evaluate(rng::AbstractRNG, prob::SampledSpread, x)
+    fitness, descriptors, phenotypes = sample_evaluations(rng, prob, x)
+    return Evaluation(expectation(prob.expectation, fitness), descriptor_samples(descriptors),
+                      most_frequent(phenotypes))
+end
+
+descriptor_samples(descriptors::Vector{SVector{N,Float64}}) where {N} = DescriptorSamples{N}(descriptors)
+descriptor_samples(descriptors::Vector{<:SVector{N}}) where {N} =
+    DescriptorSamples{N}(map(SVector{N,Float64}, descriptors))
+
+random_solution(rng::AbstractRNG, prob::SampledSpread) = random_solution(rng, prob.problem)
+
+descriptor_bounds(prob::SampledSpread) = descriptor_bounds(prob.problem)
+
+fitness_offset(prob::SampledSpread) = fitness_offset(prob.problem)
+
+evaluations_per_solution(prob::SampledSpread) =
     prob.num_samples * evaluations_per_solution(prob.problem)

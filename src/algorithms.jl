@@ -203,3 +203,52 @@ function MOME(archive::ParetoGridArchive; batch_size::Integer=64,
               variation::AbstractVariation=GaussianMutation(0.1))
     return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
 end
+
+"""
+    MELS(prob::SampledSpread; dims, batch_size=64, variation=GaussianMutation(0.1),
+         bounds=descriptor_bounds(prob), genotype=Vector{Float64}, fitness=Float64,
+         outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
+
+MAP-Elites with low spread (Mace et al., 2023): MAP-Elites for a noisy problem in which an
+elite is replaced only by a solution with higher fitness and no larger spread, the mean
+distance between the descriptors of its evaluations. The archive is a
+[`SpreadArchive`](@ref) around a [`GridArchive`](@ref) with `dims` cells along each
+descriptor dimension, and one [`VariationEmitter`](@ref) applies `variation` to
+`batch_size` children per round.
+
+`prob` is a [`SampledSpread`](@ref) problem, which evaluates every solution `num_samples`
+times; pass the same problem to `solve`. The other arguments are those of
+[`MAPElites`](@ref).
+
+# Example
+
+```julia
+noisy = StochasticQDProblem((rng, x) -> (-sum(abs2, x), (x[1], x[2]) .+ 0.05 .* randn(rng, 2));
+                            init=rng -> randn(rng, 5), bounds=((-3, 3), (-3, 3)))
+prob = SampledSpread(noisy; num_samples=10)
+result = solve(prob, MELS(prob; dims=(20, 20)); budget=200_000, rng=Xoshiro(1))
+```
+"""
+function MELS(prob::SampledSpread; dims::Tuple, batch_size::Integer=64,
+              variation::AbstractVariation=GaussianMutation(0.1),
+              bounds::Tuple=descriptor_bounds(prob), genotype::Type=Vector{Float64},
+              fitness::Type{<:Real}=Float64, outside::OutsidePolicy=ThrowOutside(),
+              phenotype::Type=Nothing)
+    archive = SpreadArchive(GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype))
+    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+end
+
+function MELS(prob::AbstractQDProblem; kwargs...)
+    throw(ArgumentError("MELS needs a SampledSpread problem, which evaluates every solution several times: wrap the stochastic problem as SampledSpread(prob; num_samples)"))
+end
+
+"""
+    MELS(archive::SpreadArchive; batch_size=64, variation=GaussianMutation(0.1)) -> QDAlgorithm
+
+MELS over a given archive, such as a [`SpreadArchive`](@ref) around a [`CVTArchive`](@ref):
+`archive` with one [`VariationEmitter`](@ref).
+"""
+function MELS(archive::SpreadArchive; batch_size::Integer=64,
+              variation::AbstractVariation=GaussianMutation(0.1))
+    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+end

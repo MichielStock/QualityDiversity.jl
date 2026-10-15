@@ -72,6 +72,7 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
     budget >= initial_evals ||
         throw(ArgumentError("budget ($budget) is smaller than the initial population ($initial_evals)"))
     check_compatible(prob, alg.archive)
+    check_spread_pairing(prob, alg.archive)
     archive = deepcopy(alg.archive)
     history = metrics_record_type(typeof(result_archive(archive)))[]
     state = QDState(prob, archive, deepcopy(alg.emitters), rng, Int(budget), callback, 0, history)
@@ -92,6 +93,22 @@ end
 
 function check_compatible(prob::AbstractQDProblem, ::AbstractArchive{G,F,D}) where {G,F,D<:Tuple}
     return check_ndims(prob, fieldcount(D))
+end
+
+# A `SpreadArchive` takes the evaluations of a `SampledSpread` problem, and only it does.
+check_spread_pairing(prob, archive) = nothing
+check_spread_pairing(::SampledSpread, ::SpreadArchive) = nothing
+
+function check_spread_pairing(::SampledSpread, archive::AbstractArchive)
+    throw(ArgumentError("SampledSpread keeps the descriptors of every evaluation, which only a SpreadArchive takes, not a $(nameof(typeof(archive))); use MELS, or Sampled for the mean descriptor"))
+end
+
+function check_spread_pairing(prob::AbstractStochasticQDProblem, ::SpreadArchive)
+    throw(ArgumentError("a SpreadArchive needs every evaluation of a solution: wrap the problem as SampledSpread(prob; num_samples)"))
+end
+
+function check_spread_pairing(prob::AbstractQDProblem, ::SpreadArchive)
+    throw(ArgumentError("a SpreadArchive needs a stochastic problem, but $(nameof(typeof(prob))) is deterministic: every evaluation of a solution is the same and its spread zero"))
 end
 
 function check_ndims(prob, N)

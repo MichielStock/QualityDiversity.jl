@@ -40,6 +40,13 @@ Evaluation(fitness, descriptor) = Evaluation(fitness, descriptor, nothing)
 
 Evaluation{F,D}(fitness, descriptor) where {F,D} = Evaluation{F,D,Nothing}(fitness, descriptor, nothing)
 
+# Field by field, so that evaluations holding equal vectors are equal.
+Base.:(==)(a::Evaluation, b::Evaluation) =
+    a.fitness == b.fitness && a.descriptor == b.descriptor && a.phenotype == b.phenotype
+Base.isequal(a::Evaluation, b::Evaluation) =
+    isequal(a.fitness, b.fitness) && isequal(a.descriptor, b.descriptor) && isequal(a.phenotype, b.phenotype)
+Base.hash(ev::Evaluation, h::UInt) = hash(ev.phenotype, hash(ev.descriptor, hash(ev.fitness, hash(:Evaluation, h))))
+
 """
     AddStatus
 

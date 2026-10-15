@@ -39,6 +39,7 @@ include("archives/cvt.jl")
 include("archives/categorical.jl")
 include("archives/unstructured.jl")
 include("archives/threshold.jl")
+include("archives/spread.jl")
 include("archives/pareto.jl")
 include("variation/gaussian.jl")
 include("variation/isoline.jl")
@@ -59,9 +60,9 @@ include("testing.jl")
 export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
-export QDProblem, StochasticQDProblem, Sampled, Average, Median, Rastrigin, Sphere, BiSphere
+export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, Rastrigin, Sphere, BiSphere
 export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive,
-    ParetoGridArchive
+    SpreadArchive, ParetoGridArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter, CMAEmitter
@@ -71,7 +72,7 @@ export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRa
     AcceptedRandomDirectionRanker
 export FilterSelection, MuSelection
 export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
-export MAPElites, CMAME, CMAMAE, MOME
+export MAPElites, CMAME, CMAMAE, MOME, MELS
 export init, step!, solve!, solve
 export qd_score, coverage, max_fitness, mean_fitness
 export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scores
@@ -81,7 +82,7 @@ export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scor
     descriptor_categories, fitness_offset, reference_point
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
-@compat public CellArchive, centroids, thresholds
+@compat public CellArchive, centroids, thresholds, spreads, DescriptorSamples
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop
 @compat public RankOneRule, TextbookRankOne, PyribsRankOne

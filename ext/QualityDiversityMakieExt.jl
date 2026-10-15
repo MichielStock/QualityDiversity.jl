@@ -13,6 +13,7 @@ cells left transparent.
   front of each cell.
 - [`ThresholdArchive`](@ref QualityDiversity.ThresholdArchive): the result archive, as
   `solve` returns it.
+- [`SpreadArchive`](@ref QualityDiversity.SpreadArchive): the archive it wraps.
 
 An archive with another number of descriptor dimensions throws an `ArgumentError`.
 """
@@ -20,7 +21,7 @@ module QualityDiversityMakieExt
 
 using Makie: Makie, Heatmap
 using QualityDiversity: QualityDiversity, CellArchive, GridArchive, CVTArchive,
-    ParetoGridArchive, ThresholdArchive
+    ParetoGridArchive, ThresholdArchive, SpreadArchive
 using StaticArrays: SVector
 
 const DEFAULT_PIXELS = 200
@@ -29,6 +30,7 @@ Makie.plottype(::GridArchive) = Heatmap
 Makie.plottype(::CVTArchive) = Heatmap
 Makie.plottype(::ParetoGridArchive) = Heatmap
 Makie.plottype(::ThresholdArchive) = Heatmap
+Makie.plottype(::SpreadArchive) = Heatmap
 
 function require_two_dimensions(archive, N)
     N == 2 || throw(ArgumentError(
@@ -84,6 +86,13 @@ Makie.used_attributes(::Type{P}, archive::ThresholdArchive) where {P<:Heatmap} =
 
 function Makie.convert_arguments(P::Type{<:Heatmap}, archive::ThresholdArchive; kwargs...)
     return Makie.convert_arguments(P, QualityDiversity.result_archive(archive); kwargs...)
+end
+
+Makie.used_attributes(::Type{P}, archive::SpreadArchive) where {P<:Heatmap} =
+    Makie.used_attributes(P, archive.inner)
+
+function Makie.convert_arguments(P::Type{<:Heatmap}, archive::SpreadArchive; kwargs...)
+    return Makie.convert_arguments(P, archive.inner; kwargs...)
 end
 
 end
