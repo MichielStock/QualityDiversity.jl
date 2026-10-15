@@ -11,16 +11,16 @@ end
 # others are stable, documented Base, Random and Makie functions (`require_one_based_indexing`
 # is declared public from Julia 1.11 on; `plottype` is how an extension tells Makie which
 # plot `plot(x)` draws for its own type). `CellArchive`, `cell_index`, `result_archive`,
-# `AddResultBatch` and the statuses `Rejected`, `Improved` and `NewCell` are declared public
-# with `@compat public`, which ExplicitImports only sees from Julia 1.11 on; the extensions
-# use them. The KernelAbstractions extension implements the device
+# `DeviceCellArchive`, `AddResultBatch` and the statuses `Rejected`, `Improved` and
+# `NewCell` are declared public with `@compat public`, which ExplicitImports only sees from
+# Julia 1.11 on; the extensions use them. The KernelAbstractions extension implements the device
 # kernels behind internal functions of the package (`device_add_batch!` to
 # `solution_length`), which are not part of its interface, and uses `@atomic` of Atomix,
 # the documented atomic operations of KernelAbstractions kernels.
 const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail,
                                :require_one_based_indexing, :plottype,
                                :CellArchive, :cell_index, :result_archive,
-                               :AddResultBatch, :Rejected, :Improved, :NewCell,
+                               :DeviceCellArchive, :AddResultBatch, :Rejected, :Improved, :NewCell,
                                :device_add_batch!, :device_evaluate, :device_evaluate!, :device_vary!,
                                :refresh_occupied!, :solution_length, Symbol("@atomic"))
 

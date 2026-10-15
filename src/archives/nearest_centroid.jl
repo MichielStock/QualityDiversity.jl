@@ -139,3 +139,90 @@ function kmeans_seeds(rng::AbstractRNG, samples::Vector{SVector{N,Float64}}, k::
     end
     return seeds
 end
+
+# Appends to `out` the indices of the points of `tree` within squared distance `radius2` of
+# `q`, in the order of the tree.
+function within!(out::Vector{Int}, tree::CentroidTree{N}, q::SVector{N,Float64}, radius2::Float64,
+                 lo::Int=1, hi::Int=length(tree.order)) where {N}
+    lo > hi && return out
+    mid = (lo + hi) >> 1
+    i = tree.order[mid]
+    c = tree.points[i]
+    sum(abs2, c - q) <= radius2 && push!(out, i)
+    lo == hi && return out
+    axis = tree.axis[mid]
+    offset = q[axis] - c[axis]
+    # the points left of `mid` are no further along `axis` than `c`, those right of it no less
+    (offset <= 0 || offset * offset <= radius2) && within!(out, tree, q, radius2, lo, mid - 1)
+    (offset >= 0 || offset * offset <= radius2) && within!(out, tree, q, radius2, mid + 1, hi)
+    return out
+end
+
+"""
+    CentroidBuckets(tree, lower, upper)
+
+A regular grid of buckets over the box from `lower` to `upper`, with the centroids of `tree`
+that can be nearest to a point of each bucket, so that a nearest-centroid search compares a
+point with the few centroids of its bucket instead of all of them. A device kernel uses it
+to find the cell of a descriptor of a `DeviceCVTArchive`.
+
+`members[offsets[b]:offsets[b+1]-1]` are the centroids of bucket `b`, in increasing order;
+the buckets are numbered as the cells of a [`GridArchive`](@ref) with `dims` cells along
+each dimension. A centroid is kept for a bucket when its distance to the bucket is at most
+the smallest distance within which some centroid covers the whole bucket: every centroid
+that is nearest to a point of the bucket, and every one tied with it, passes that test.
+The buckets are widened by a margin of `1e-9` of the box on every side before the test, so
+that a point that rounding places in the neighboring bucket is still covered.
+
+There are about as many buckets as centroids, laid out in proportion to the sides of the
+box. When the centroids of the buckets would number more than 32 per centroid, as in many
+descriptor dimensions, the grid is halved along every dimension until they do not; one
+bucket that holds every centroid is the last resort.
+"""
+struct CentroidBuckets{N}
+    dims::NTuple{N,Int}
+    offsets::Vector{Int32}
+    members::Vector{Int32}
+end
+
+function CentroidBuckets(tree::CentroidTree{N}, lower::SVector{N,Float64}, upper::SVector{N,Float64}) where {N}
+    ncells = length(tree.points)
+    widths = upper - lower
+    scale = prod(widths)^(1 / N)
+    dims = ntuple(r -> max(1, round(Int, ncells^(1 / N) * widths[r] / scale)), Val(N))
+    while true
+        buckets = bucket_members(tree, lower, upper, dims)
+        (all(==(1), dims) || length(buckets.members) <= 32 * ncells) && return buckets
+        dims = map(m -> max(1, m ÷ 2), dims)
+    end
+end
+
+function bucket_members(tree::CentroidTree{N}, lower::SVector{N,Float64}, upper::SVector{N,Float64},
+                        dims::NTuple{N,Int}) where {N}
+    widths = upper - lower
+    margin = 1e-9 * widths
+    offsets = Int32[1]
+    members = Int32[]
+    candidates = Int[]
+    for index in CartesianIndices(dims)
+        k = SVector{N,Int}(Tuple(index))
+        lo = lower + (k .- 1) .* widths ./ SVector(dims) - margin
+        hi = lower + k .* widths ./ SVector(dims) + margin
+        center = (lo + hi) / 2
+        half_diagonal = sqrt(sum(abs2, hi - lo)) / 2
+        nearest_distance = sqrt(sum(abs2, tree.points[nearest(tree, center)] - center))
+        # every centroid that can be nearest to a point of the box is within this of its center
+        empty!(candidates)
+        within!(candidates, tree, center, (nearest_distance + 2half_diagonal)^2 * (1 + 1e-12))
+        cover = minimum(i -> farthest_squared(tree.points[i], lo, hi), candidates)
+        for i in sort!(candidates)
+            closest_squared(tree.points[i], lo, hi) <= cover * (1 + 1e-12) && push!(members, i)
+        end
+        push!(offsets, length(members) + 1)
+    end
+    return CentroidBuckets{N}(dims, offsets, members)
+end
+
+# The squared distance from `c` to the nearest and to the farthest point of the box.
+closest_squared(c, lo, hi) = sum(abs2, c - clamp.(c, lo, hi))
+farthest_squared(c, lo, hi) = sum(abs2, max.(abs.(c - lo), abs.(c - hi)))

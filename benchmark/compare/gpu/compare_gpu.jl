@@ -1,5 +1,7 @@
 # MAP-Elites on 20-dimensional Rastrigin with QualityDiversity.jl on a CUDA GPU: the
-# archive, the variation and the evaluation of every batch run on the device.
+# archive, the variation and the evaluation of every batch run on the device, with a
+# DeviceGridArchive and with a DeviceCVTArchive whose centroids are the centers of the
+# grid cells, the centroids that compare_qdax.py gives QDax's centroid search.
 # Run:  julia benchmark/compare/gpu/compare_gpu.jl
 # On a machine with several GPUs, choose one with CUDA_DEVICE_ORDER=PCI_BUS_ID and
 # CUDA_VISIBLE_DEVICES=<index in nvidia-smi>; without CUDA_DEVICE_ORDER the CUDA runtime
@@ -45,14 +47,21 @@ end
 problem(::Type{T}) where {T} = QDProblem(rastrigin; init=rng -> (2 .* rand(rng, T, DIM) .- 1) .* T(LIMIT),
                                          bounds=((-LIMIT, LIMIT), (-LIMIT, LIMIT)))
 
-make_algorithm(T, batch_size) =
+# The centers of the cells of the grid, in the order of QDax's compute_euclidean_centroids.
+const CENTERS = vec([[-LIMIT + (i - 0.5) * 2LIMIT / DIMS[1], -LIMIT + (j - 0.5) * 2LIMIT / DIMS[2]]
+                     for i in 1:DIMS[1], j in 1:DIMS[2]])
+
+make_algorithm(::Val{:grid}, T, batch_size) =
     MAPElites(problem(T); dims=DIMS, batch_size, variation=GaussianMutation(T(SIGMA)), device=CuArray,
               genotype=Vector{T}, fitness=T)
+make_algorithm(::Val{:cvt}, T, batch_size) =
+    MAPElites(DeviceCVTArchive{T,T}(CuArray, CENTERS, ((-LIMIT, LIMIT), (-LIMIT, LIMIT)), DIM);
+              batch_size, variation=GaussianMutation(T(SIGMA)))
 
 const seed = Ref(0)
 const finals = []
 
-function benchmark_batch(T, batch_size)
+function benchmark_batch(archive, T, batch_size)
     empty!(finals)
     seed[] = 0
     p = problem(T)
@@ -63,17 +72,17 @@ function benchmark_batch(T, batch_size)
         push!(finals, (coverage=coverage(result.archive),
                        max_fitness=Float64(max_fitness(result.archive)),
                        qd_score=qd_score(result.archive; offset=OFFSET)))
-    end setup = (alg = make_algorithm($T, $batch_size); seed[] += 1) evals = 1 samples = REPEATS seconds = 900
+    end setup = (alg = make_algorithm($archive, $T, $batch_size); seed[] += 1) evals = 1 samples = REPEATS seconds = 900
     return trial, copy(finals)
 end
 
-for T in (Float32, Float64)
-    println("\nJulia $VERSION, CUDA ", CUDA.name(CUDA.device()), ", $T, $REPEATS runs per row")
+for (name, archive) in (("DeviceGridArchive", Val(:grid)), ("DeviceCVTArchive", Val(:cvt))), T in (Float32, Float64)
+    println("\nJulia $VERSION, CUDA ", CUDA.name(CUDA.device()), ", $name, $T, $REPEATS runs per row")
     println("| batch size | min s | median s | middle half s | evals/s (median) | coverage | max fitness | QD score |")
     println("|---:|---:|---:|---:|---:|---:|---:|---:|")
     for batch_size in BATCH_SIZES
-        benchmark_batch(T, batch_size)               # compile
-        trial, runs = benchmark_batch(T, batch_size)
+        benchmark_batch(archive, T, batch_size)               # compile
+        trial, runs = benchmark_batch(archive, T, batch_size)
         times = trial.times ./ 1e9
         lo, hi = quantile(times, (0.25, 0.75))
         println("| ", batch_size,

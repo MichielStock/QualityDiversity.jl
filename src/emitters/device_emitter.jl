@@ -1,7 +1,7 @@
 """
     DeviceVariationEmitter(op; batch_size)
 
-The emitter of MAP-Elites over a [`DeviceGridArchive`](@ref): it draws parents uniformly
+The emitter of MAP-Elites over a [`DeviceCellArchive`](@ref): it draws parents uniformly
 from the occupied cells and applies the variation operator `op`, giving `batch_size`
 children, all on the device. The children come back as a [`DeviceBatch`](@ref), which
 `evaluate_batch` and `add_batch!` take without copying it to the host. A later `ask`
@@ -36,7 +36,7 @@ end
 
 batch_size(emitter::DeviceVariationEmitter) = emitter.batch_size
 
-function ask(rng::AbstractRNG, emitter::DeviceVariationEmitter, archive::DeviceGridArchive{T}) where {T}
+function ask(rng::AbstractRNG, emitter::DeviceVariationEmitter, archive::DeviceCellArchive{T}) where {T}
     length(archive) == 0 && throw(ArgumentError("cannot sample elites from an empty archive"))
     seed = rand(rng, UInt64)
     X = similar(archive.genotypes, T, solution_length(archive), emitter.batch_size)
@@ -45,7 +45,7 @@ function ask(rng::AbstractRNG, emitter::DeviceVariationEmitter, archive::DeviceG
 end
 
 function ask(rng::AbstractRNG, emitter::DeviceVariationEmitter, archive::AbstractArchive)
-    throw(ArgumentError("a DeviceVariationEmitter draws its parents from a DeviceGridArchive, not a $(nameof(typeof(archive)))"))
+    throw(ArgumentError("a DeviceVariationEmitter draws its parents from a device archive such as a DeviceGridArchive, not a $(nameof(typeof(archive)))"))
 end
 
 # Fills the columns of `X` with children of parents drawn from `archive`; defined in the

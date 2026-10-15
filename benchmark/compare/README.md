@@ -434,11 +434,32 @@ QD score agree with the CPU runs within the spread between seeds.
 | 1000 | 0.096 | 0.096 | 0.096–0.096 | 3 756 051 | 0.986 | -131.9 | 4 795 016 |
 | 10 000 | 0.048 | 0.048 | 0.048–0.048 | 7 541 751 | 0.942 | -131.1 | 4 613 920 |
 
+### CVT archive
+
+`compare_gpu.jl` also runs a `DeviceCVTArchive` whose centroids are the centers of the
+100 × 100 grid cells, the centroids that `compare_qdax.py` gives QDax. This compares the
+nearest-centroid search of the two libraries directly: QDax compares every descriptor with
+every centroid, and QualityDiversity.jl with the centroids of its bucket in a grid of buckets
+built once on the host (about 9 here). Both find the same cells as the grid, and the
+`float32` runs of the two QualityDiversity.jl archives give identical QD scores.
+
+| batch size | QualityDiversity.jl, CVT, float32 | QDax, centroid search, float32 | QualityDiversity.jl, CVT, float64 | QDax, centroid search, float64 |
+|---:|---:|---:|---:|---:|
+| 36 | 1.572 | 1.340 | 1.637 | 1.556 |
+| 100 | 0.562 | 0.478 | 0.588 | 0.590 |
+| 1000 | 0.057 | 0.048 | 0.086 | 0.096 |
+| 10 000 | 0.0068 | 0.006 | 0.0102 | 0.048 |
+
+In `float32` QDax is up to 15% faster; the CVT archive pays for a second kernel per step.
+In `float64` the bucket search is five times faster than QDax's at a batch of 10 000,
+because it computes about 9 distances per descriptor instead of 10 000.
+
 ### Not measured
 
-- **Other GPUs.** The kernels are written with KernelAbstractions and run on AMD, Apple and
-  Intel GPUs as well, but only CUDA has been timed, and the tests run them on the CPU.
-- **CMA-ME and MOME.** The device archive serves MAP-Elites only. For reference, QDax on this
+- **Other GPUs.** The kernels are written with KernelAbstractions and should run on AMD and
+  Intel GPUs as well, but only CUDA has been timed, and the tests run them on the CPU. Apple
+  GPUs have no `Float64`, which the cell lookup needs.
+- **CMA-ME and MOME.** The device archives serve MAP-Elites only. For reference, QDax on this
   GPU takes 0.95 s for CMA-ME with improvement emitters, where QualityDiversity.jl on one
   core takes 0.31 s (a batch of 12 is too small for a GPU), and 3.5 s for MOME, where
   QualityDiversity.jl takes 0.017 s (QDax inserts a batch one solution at a time).

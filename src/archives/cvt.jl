@@ -69,20 +69,7 @@ mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy,P} <: CellArchive{G,F,SVe
 
     function CVTArchive{G,F,N,O,P}(centroids::Vector{SVector{N,Float64}}, lower, upper,
                                    outside) where {G,F<:Real,N,O<:OutsidePolicy,P}
-        for i in 1:N
-            (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
-                throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
-        end
-        isempty(centroids) && throw(ArgumentError("need at least one centroid"))
-        for (j, c) in enumerate(centroids)
-            all(i -> lower[i] <= c[i] <= upper[i], 1:N) ||
-                throw(ArgumentError("centroid $j is $(Tuple(c)), outside the bounds"))
-        end
-        sorted = sort!([Tuple(c) for c in centroids])
-        for j in 2:length(sorted)
-            sorted[j] == sorted[j-1] &&
-                throw(ArgumentError("two centroids are identical, at $(sorted[j]); one of their cells could never be reached"))
-        end
+        check_centroids(centroids, lower, upper)
         ncells = length(centroids)
         return new{G,F,N,O,P}(lower, upper, outside, centroids, CentroidTree(centroids),
                               falses(ncells),
@@ -93,6 +80,46 @@ mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy,P} <: CellArchive{G,F,SVe
                               Int[],
                             0.0, 0.0, zero(F))
     end
+end
+
+# Throws unless the box is valid and the centroids are distinct points inside it; the
+# CVT archives on the host and on a device share it.
+function check_centroids(centroids::Vector{SVector{N,Float64}}, lower, upper) where {N}
+    for i in 1:N
+        (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
+            throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
+    end
+    isempty(centroids) && throw(ArgumentError("need at least one centroid"))
+    for (j, c) in enumerate(centroids)
+        all(i -> lower[i] <= c[i] <= upper[i], 1:N) ||
+            throw(ArgumentError("centroid $j is $(Tuple(c)), outside the bounds"))
+    end
+    sorted = sort!([Tuple(c) for c in centroids])
+    for j in 2:length(sorted)
+        sorted[j] == sorted[j-1] &&
+            throw(ArgumentError("two centroids are identical, at $(sorted[j]); one of their cells could never be reached"))
+    end
+    return nothing
+end
+
+# The given centroids as points of the box `bounds`.
+function centroid_points(centroids, bounds::Tuple)
+    N = length(bounds)
+    for (j, c) in enumerate(centroids)
+        length(c) == N ||
+            throw(ArgumentError("centroid $j has $(length(c)) entries but bounds has $N"))
+    end
+    return SVector{N,Float64}[SVector{N,Float64}(c) for c in centroids]
+end
+
+# `cells` centroids chosen by k-means from `samples` uniform points of the box.
+function kmeans_centroids(rng::AbstractRNG, cells::Integer, lower::SVector{N,Float64}, upper::SVector{N,Float64};
+                          samples::Integer, max_iterations::Integer) where {N}
+    cells >= 1 || throw(ArgumentError("cells must be at least 1, got $cells"))
+    samples >= cells ||
+        throw(ArgumentError("samples ($samples) must be at least cells ($cells) to place that many centroids"))
+    points = [lower .+ (upper .- lower) .* rand(rng, SVector{N,Float64}) for _ in 1:samples]
+    return kmeans(rng, points, Int(cells); max_iterations=Int(max_iterations))
 end
 
 function box(bounds::Tuple)
@@ -106,26 +133,16 @@ end
 function CVTArchive{G,F}(centroids::AbstractVector{<:AbstractVector{<:Real}}, bounds::Tuple;
                          outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing) where {G,F<:Real}
     lower, upper = box(bounds)
-    N = length(bounds)
-    for (j, c) in enumerate(centroids)
-        length(c) == N ||
-            throw(ArgumentError("centroid $j has $(length(c)) entries but bounds has $N"))
-    end
-    points = SVector{N,Float64}[SVector{N,Float64}(c) for c in centroids]
-    return CVTArchive{G,F,N,typeof(outside),phenotype}(points, lower, upper, outside)
+    points = centroid_points(centroids, bounds)
+    return CVTArchive{G,F,length(bounds),typeof(outside),phenotype}(points, lower, upper, outside)
 end
 
 function CVTArchive{G,F}(rng::AbstractRNG, cells::Integer, bounds::Tuple;
                          samples::Integer=100_000, max_iterations::Integer=100,
                          outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing) where {G,F<:Real}
-    cells >= 1 || throw(ArgumentError("cells must be at least 1, got $cells"))
-    samples >= cells ||
-        throw(ArgumentError("samples ($samples) must be at least cells ($cells) to place that many centroids"))
     lower, upper = box(bounds)
-    N = length(bounds)
-    points = [lower .+ (upper .- lower) .* rand(rng, SVector{N,Float64}) for _ in 1:samples]
-    centers = kmeans(rng, points, Int(cells); max_iterations=Int(max_iterations))
-    return CVTArchive{G,F,N,typeof(outside),phenotype}(centers, lower, upper, outside)
+    centers = kmeans_centroids(rng, cells, lower, upper; samples, max_iterations)
+    return CVTArchive{G,F,length(bounds),typeof(outside),phenotype}(centers, lower, upper, outside)
 end
 
 CVTArchive{G}(args...; kwargs...) where {G} = CVTArchive{G,Float64}(args...; kwargs...)
@@ -165,8 +182,9 @@ function cell_index(archive::CVTArchive{G,F,N}, d::AbstractVector{<:Real}) where
     return nearest(archive.tree, point)
 end
 
-# The i-th component of `d` after the outside policy; NaN rejects the descriptor.
-function inside_component(archive::CVTArchive, d, i)
+# The i-th component of `d` after the outside policy of a CVT archive on the host or a
+# device; NaN rejects the descriptor.
+function inside_component(archive, d, i)
     lo = archive.lower[i]
     hi = archive.upper[i]
     x = Float64(d[i])

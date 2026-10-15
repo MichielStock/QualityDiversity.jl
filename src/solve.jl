@@ -112,18 +112,18 @@ function check_spread_pairing(prob::AbstractQDProblem, ::SpreadArchive)
     throw(ArgumentError("a SpreadArchive needs a stochastic problem, but $(nameof(typeof(prob))) is deterministic: every evaluation of a solution is the same and its spread zero"))
 end
 
-# A `DeviceGridArchive` evaluates its batches on the device, which takes a deterministic
+# A `DeviceCellArchive` evaluates its batches on the device, which takes a deterministic
 # problem with descriptor bounds.
 check_device_pairing(prob, archive) = nothing
 
-function check_device_pairing(prob::AbstractQDProblem, ::DeviceGridArchive)
+function check_device_pairing(prob::AbstractQDProblem, archive::DeviceCellArchive)
     hasmethod(descriptor_categories, Tuple{typeof(prob)}) &&
-        throw(ArgumentError("a DeviceGridArchive needs a problem with descriptor_bounds; one with descriptor_categories runs on the host"))
+        throw(ArgumentError("a $(nameof(typeof(archive))) needs a problem with descriptor_bounds; one with descriptor_categories runs on the host"))
     return nothing
 end
 
-function check_device_pairing(prob::AbstractStochasticQDProblem, ::DeviceGridArchive)
-    throw(ArgumentError("a DeviceGridArchive takes deterministic problems; run $(nameof(typeof(prob))) on the host"))
+function check_device_pairing(prob::AbstractStochasticQDProblem, archive::DeviceCellArchive)
+    throw(ArgumentError("a $(nameof(typeof(archive))) takes deterministic problems; run $(nameof(typeof(prob))) on the host"))
 end
 
 function check_ndims(prob, N)
