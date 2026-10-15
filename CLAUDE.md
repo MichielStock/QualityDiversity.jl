@@ -328,7 +328,8 @@ QualityDiversity.jl/
     ├── rastrigin.jl              # continuous genotype
     ├── rastrigin_tutorial.jl     # step-by-step walkthrough
     ├── gpu_evaluation.jl         # optional: evaluate_batch on a GPU array type
-    └── graphs.jl                 # structured genotype (proves the pitch)
+    ├── graphs.jl                 # structured genotype (proves the pitch)
+    └── heatmap.jl                # archive heatmaps with CairoMakie
 ```
 
 `QualityDiversity.Testing` is a public submodule. A user who defines a new
@@ -382,9 +383,10 @@ Julia LTS and the current release.
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [ ] MAP-Elites with low spread (QDax `MELS`): an archive that stores a spread
         for every cell, on top of the stochastic problems
-- [ ] **Phase 7 — Extensions and docs.** Makie (heatmaps, ECDF, CQD score),
-      ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
-      emitter; Documenter site with tutorials.
+- [ ] **Phase 7 — Extensions and docs.**
+  - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain
+  - [ ] ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
+        emitter; Documenter site with tutorials
 
 GPU support is optional and never a dependency of the package. Scoring a batch
 on a device works through `evaluate_batch` (`examples/gpu_evaluation.jl`,
@@ -462,6 +464,14 @@ Settled; change them only with the author's agreement.
   takes no offset; `max_fitness` and `mean_fitness` are not defined. The record of a run of such
   an archive has the fields of `ParetoMetricsRecord`, chosen by `metrics_record_type`. `hypervolume`
   is exact for any number of objectives.
+- **Archive heatmaps.** The Makie extension adds `Makie.convert_arguments` methods for
+  `Heatmap`, so `heatmap(archive)`, `heatmap!(ax, archive)` and `plot(archive)` work and the
+  package gains no plotting function of its own. It draws archives with two descriptor
+  dimensions and throws for any other number. A `GridArchive` shows one rectangle per cell and
+  a `CVTArchive` its Voronoi cells sampled on a `pixels` by `pixels` grid; a
+  `ParetoGridArchive` shows the hypervolume of each front, and a `ThresholdArchive` its result
+  archive. Empty cells are `NaN`, which Makie leaves transparent. `CategoricalArchive` and
+  archives with more dimensions are not drawn yet.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.

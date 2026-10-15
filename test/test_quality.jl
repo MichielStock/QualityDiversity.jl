@@ -8,10 +8,14 @@ end
 
 # These names are used on purpose although their owners do not declare them
 # public: the CommonSolve verbs are the interface this package extends, and the
-# others are stable, documented Base and Random functions (`require_one_based_indexing`
-# is declared public from Julia 1.11 on).
+# others are stable, documented Base, Random and Makie functions (`require_one_based_indexing`
+# is declared public from Julia 1.11 on; `plottype` is how an extension tells Makie which
+# plot `plot(x)` draws for its own type). `CellArchive`, `cell_index` and `result_archive`
+# are declared public with `@compat public`, which ExplicitImports only sees from Julia 1.11 on;
+# the Makie extension uses them.
 const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail,
-                               :require_one_based_indexing)
+                               :require_one_based_indexing, :plottype,
+                               :CellArchive, :cell_index, :result_archive)
 
 @testset "ExplicitImports" begin
     @test ExplicitImports.check_no_implicit_imports(QualityDiversity) === nothing
