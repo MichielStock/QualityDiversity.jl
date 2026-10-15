@@ -284,13 +284,15 @@ QualityDiversity.jl/
 │   ├── archives/
 │   │   ├── cell_archive.jl       # CellArchive: shared storage, add!, metrics
 │   │   ├── grid.jl
-│   │   ├── nearest_centroid.jl   # k-d tree and k-means for CVTArchive
+│   │   ├── nearest_centroid.jl   # k-d tree, k-means and centroid buckets for the CVT archives
 │   │   ├── cvt.jl
 │   │   ├── categorical.jl
 │   │   ├── threshold.jl
 │   │   ├── spread.jl             # SpreadArchive for MELS
 │   │   ├── pareto.jl             # ParetoGridArchive
-│   │   ├── device_grid.jl        # DeviceGridArchive: grid cells in device arrays
+│   │   ├── device_cell_archive.jl # DeviceCellArchive: storage and insertion in device arrays
+│   │   ├── device_grid.jl        # DeviceGridArchive
+│   │   ├── device_cvt.jl         # DeviceCVTArchive
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -397,8 +399,8 @@ Julia LTS and the current release.
   - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain
   - [x] Device MAP-Elites: `DeviceGridArchive` and `DeviceVariationEmitter` with
         KernelAbstractions kernels, and a GPU row in the comparison with QDax
-  - [ ] Device CVT archive: `CVTArchive` cells in device arrays, the nearest centroid
-        found by brute force in a kernel, reusing the insertion and variation kernels
+  - [x] Device CVT archive: `DeviceCVTArchive`, the nearest centroid found in a kernel
+        among the centroids of a bucket, reusing the insertion and variation kernels
   - [ ] Device CMA-ME and CMA-MAE: many emitters that ask together, their batches
         added to the archive at once and their search distributions updated as one
         batched operation, over a device grid or threshold archive. Needs a decision:
@@ -514,35 +516,46 @@ Settled; change them only with the author's agreement.
   archives with more dimensions are not drawn yet.
 - **Device MAP-Elites.** The CPU is the default and nothing moves to a device unless the
   user asks: `MAPElites(prob; dims, device=CuArray)` (any array type: `ROCArray`,
-  `MtlArray`, `oneArray`, or `Array` for the same kernels on the CPU) builds a
-  `DeviceGridArchive` and a `DeviceVariationEmitter`; without `device` nothing changes,
-  and the MAP-Elites benchmarks must not slow down. The kernels are written with
-  KernelAbstractions.jl, a weak dependency (with Atomix.jl, which it loads) that CUDA.jl,
-  AMDGPU.jl, Metal.jl and oneAPI.jl load, in `QualityDiversityKernelAbstractionsExt`; the types and the host-side methods are
-  in the package. The archive holds a grid as struct-of-arrays in device arrays: genotypes
-  of a fixed length `dim` as a `dim × cells` matrix of a real type `T`, fitness of a real
-  type `F`, descriptors as an `N × cells` matrix of `T`, and no phenotypes. It meets the
-  archive contract (descriptors `SVector{N,Float64}`, genotypes `Vector{T}` on the host);
-  `GridArchive(archive)` copies it to the host. A batch of candidates is `eachcol(X)` of a
-  device matrix, so the generic loop runs unchanged; evaluations come back as an
+  `oneArray`, or `Array` for the same kernels on the CPU) builds a `DeviceGridArchive` and
+  a `DeviceVariationEmitter`, and `MAPElites(archive)` takes a `DeviceCVTArchive`; without
+  them nothing changes, and the MAP-Elites benchmarks must not slow down. The kernels are
+  written with KernelAbstractions.jl, a weak dependency (with Atomix.jl, which it loads)
+  that CUDA.jl, AMDGPU.jl and oneAPI.jl load, in `QualityDiversityKernelAbstractionsExt`;
+  the types and the host-side methods are in the package. `DeviceGridArchive` and
+  `DeviceCVTArchive` are subtypes of `DeviceCellArchive`, which holds the shared storage,
+  insertion, metrics and emitter, as `CellArchive` does on the host; they differ only in
+  how a descriptor finds its cell. The storage is struct-of-arrays in device arrays:
+  genotypes of a fixed length `dim` as a `dim × cells` matrix of a floating-point type
+  `T`, fitness of a real type `F`, descriptors as an `N × cells` matrix of `T`, and no
+  phenotypes. The archives meet the archive contract (descriptors `SVector{N,Float64}`,
+  genotypes `Vector{T}` on the host); `GridArchive(archive)` and `CVTArchive(archive)` copy
+  them to the host. A batch of candidates is a `DeviceBatch`, the columns of a device
+  matrix, so the generic loop runs unchanged; evaluations come back as an
   `EvaluationBatch` and add results as an `AddResultBatch`, both device arrays. The default
   `evaluate_batch` on a device runs `evaluate(prob, x)` (for a `QDProblem`, its function)
-  in a kernel, one solution per thread, so it must compile for the device: no allocation,
-  no string building, and `Float32` on a device without `Float64`. A problem may instead
-  define `evaluate_batch` for the batch and return an `EvaluationBatch` or a vector of
-  `Evaluation`s. `add_batch!` follows the batch rule of the cell archives; the cell of each
-  solution is chosen with atomic maximum and minimum operations on the fitness and the
-  position in the batch, and a descriptor that `ThrowOutside()` refuses throws on the host
-  before the archive changes. The initial population is drawn on the host with
-  `random_solution`, copied to the device once, and scored there. Every `ask` draws one
-  `UInt64` from the run's generator and the kernels derive their random numbers from it with
-  a counter-based generator (Philox4x32-10) keyed on the child and the entry, so a run is
-  reproducible from its seed on a given backend whatever the scheduling of the threads,
-  and its random numbers differ from those of the CPU path. Parents are uniform over the
-  occupied cells, listed in cell order. The device emitter supports `GaussianMutation` and
-  `IsoLineVariation`; stochastic problems and the other archives stay on the CPU. Defaults
-  are those of the CPU path (`Float64`); the documentation recommends `Float32` for
-  consumer GPUs, which compute `Float64` slowly.
+  in a kernel, one solution per thread, so it must compile for the device: no allocation
+  and no string building. A problem may instead define `evaluate_batch` for the batch and
+  return an `EvaluationBatch` or a vector of `Evaluation`s. `add_batch!` follows the batch
+  rule of the cell archives; the cell of each solution is chosen with atomic maximum and
+  minimum operations on the fitness and the position in the batch, and a descriptor that
+  `ThrowOutside()` refuses throws on the host before the archive changes. The cell of a
+  descriptor is computed in `Float64`, exactly as on the host, so device and host archives
+  assign the same cells, ties included; a device without `Float64`, such as an Apple GPU,
+  cannot run it. `DeviceCVTArchive` takes its centroids, or the k-means of the host, as
+  `CVTArchive` does; on the host it builds a regular grid of about as many buckets as cells,
+  each listing the centroids that can be nearest to a point of it (a superset computed with
+  the k-d tree), and a kernel compares a descriptor only with the centroids of its bucket.
+  In many descriptor dimensions the buckets are coarsened until they hold at most 32
+  centroids per centroid in total, down to one bucket with all of them. The initial
+  population is drawn on the host with `random_solution`, copied to the device once, and
+  scored there. Every `ask` draws one `UInt64` from the run's generator and the kernels
+  derive their random numbers from it with a counter-based generator (Philox4x32-10) keyed
+  on the child and the entry, so a run is reproducible from its seed on a given backend
+  whatever the scheduling of the threads, and its random numbers differ from those of the
+  CPU path. Parents are uniform over the occupied cells, listed in cell order. The device
+  emitter supports `GaussianMutation` and `IsoLineVariation`; stochastic problems and the
+  other archives stay on the CPU. Defaults are those of the CPU path (`Float64`); the
+  documentation recommends `Float32` for consumer GPUs, which compute `Float64` slowly.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.
