@@ -50,7 +50,8 @@ abstract type AbstractStochasticQDProblem <: AbstractQDProblem end
     evaluate(prob::AbstractQDProblem, x) -> Evaluation
     evaluate(rng::AbstractRNG, prob::AbstractStochasticQDProblem, x) -> Evaluation
 
-Fitness and descriptor of one solution `x`. Required. A stochastic problem takes the
+Fitness and descriptor of one solution `x`, and its phenotype if the problem computes
+one; see [`Evaluation`](@ref). Required. A stochastic problem takes the
 generator that it draws its randomness from as the first argument; see
 [`AbstractStochasticQDProblem`](@ref).
 """
@@ -197,12 +198,15 @@ fitness_offset(::AbstractQDProblem) = 0
 # ── Archive ───────────────────────────────────────────────
 
 """
-    AbstractArchive{G,F,D}
+    AbstractArchive{G,F,D,P}
 
 Supertype of archives, which store the best solution found for each region of
-descriptor space. The type parameters are the genotype `G`, the fitness `F`
-and the descriptor `D`, so that code downstream of an archive is concretely
-typed.
+descriptor space. The type parameters are the genotype `G`, the fitness `F`,
+the descriptor `D` and the phenotype `P`, so that code downstream of an archive
+is concretely typed. `P` is `Nothing` for an archive that stores no phenotype;
+see [`Evaluation`](@ref). An archive with a phenotype type other than `Nothing`
+stores the phenotype of every solution it takes and throws for an evaluation
+without one.
 
 # Required methods
 
@@ -218,7 +222,7 @@ typed.
 - [`add_batch!(archive, xs, evs)`](@ref QualityDiversity.add_batch!)
 - `Base.empty!(archive)`
 """
-abstract type AbstractArchive{G,F,D} end
+abstract type AbstractArchive{G,F,D,P} end
 
 """
     add!(archive::AbstractArchive, x, ev::Evaluation) -> AddResult
@@ -244,9 +248,10 @@ the cell archives and [`ThresholdArchive`](@ref) do; it documents this.
 """
 function add_batch! end
 
-function add_batch!(archive::AbstractArchive{G,F}, xs::AbstractVector, evs::AbstractVector) where {G,F}
+function add_batch!(archive::AbstractArchive{G,F,D,P}, xs::AbstractVector, evs::AbstractVector) where {G,F,D,P}
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
+    foreach(ev -> stored_phenotype(P, ev.phenotype), evs)    # throws before the archive changes
     results = Vector{AddResult{F}}(undef, length(xs))
     for i in eachindex(xs, evs)
         results[i] = add!(archive, xs[i], evs[i])
@@ -278,6 +283,7 @@ function sample_elites end
     elites(archive::AbstractArchive)
 
 Iterator over `(genotype, evaluation)` pairs of the occupied cells. Required.
+The evaluation holds the stored phenotype, `nothing` for an archive without one.
 """
 function elites end
 

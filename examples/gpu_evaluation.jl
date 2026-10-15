@@ -93,7 +93,7 @@ end
 # A batch on the device. The genotypes form a `dim × n` matrix, one solution
 # per column, and everything below is a broadcast or a reduction over it.
 function QualityDiversity.evaluate_batch(prob::GPURastrigin{A}, xs::AbstractVector) where {A}
-    isempty(xs) && return Evaluation{Float32,SVector{2,Float64}}[]
+    isempty(xs) && return Evaluation{Float32,SVector{2,Float64},Nothing}[]
     dim = prob.dim
     half = dim ÷ 2
     limit = Float32(LIMIT)

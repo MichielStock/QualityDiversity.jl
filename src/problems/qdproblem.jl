@@ -3,7 +3,9 @@
     QDProblem(f; init, categories)
 
 Wrap a plain function as a problem. `f(x)` returns a `(fitness, descriptor)`
-tuple for the solution `x`. `init(rng)` returns one random solution.
+tuple for the solution `x`, or a `(fitness, descriptor, phenotype)` tuple for a
+problem whose phenotype an archive should store; see [`Evaluation`](@ref).
+`init(rng)` returns one random solution.
 
 With `bounds`, a tuple with one `(lo, hi)` pair per descriptor dimension, the
 descriptor is real-valued and `evaluate` returns it as an `SVector{N,Float64}`.
@@ -65,24 +67,29 @@ end
 QDProblem(f; init, bounds=nothing, categories=nothing) =
     QDProblem(f, init, descriptor_space(bounds, categories))
 
-function make_evaluation(space::Tuple, fitness, descriptor)
+function make_evaluation(space::Tuple, fitness, descriptor, phenotype=nothing)
     N = length(space)
     length(descriptor) == N ||
         throw(ArgumentError("descriptor has $(length(descriptor)) dimensions but the problem bounds have $N"))
-    return Evaluation(fitness, SVector{N,Float64}(descriptor))
+    return Evaluation(fitness, SVector{N,Float64}(descriptor), phenotype)
 end
 
-function make_evaluation(space::DescriptorCategories, fitness, descriptor)
+function make_evaluation(space::DescriptorCategories, fitness, descriptor, phenotype=nothing)
     N = length(space.values)
     length(descriptor) == N ||
         throw(ArgumentError("descriptor has $(length(descriptor)) dimensions but the problem categories have $N"))
-    return Evaluation(fitness, Tuple(descriptor))
+    return Evaluation(fitness, Tuple(descriptor), phenotype)
 end
 
-function evaluate(prob::QDProblem, x)
-    fitness, descriptor = prob.f(x)
-    return make_evaluation(prob.space, fitness, descriptor)
+# The evaluation of what the function of a `QDProblem` or `StochasticQDProblem` returned.
+evaluation_of(space, result::Tuple{Any,Any}) = make_evaluation(space, result...)
+evaluation_of(space, result::Tuple{Any,Any,Any}) = make_evaluation(space, result...)
+
+function evaluation_of(space, result)
+    throw(ArgumentError("the function of the problem must return a (fitness, descriptor) or (fitness, descriptor, phenotype) tuple, got a $(typeof(result))"))
 end
+
+evaluate(prob::QDProblem, x) = evaluation_of(prob.space, prob.f(x))
 
 random_solution(rng::AbstractRNG, prob::QDProblem) = prob.init(rng)
 

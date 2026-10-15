@@ -1,7 +1,7 @@
 """
     MAPElites(prob; dims, bounds=descriptor_bounds(prob), batch_size=64,
               variation=GaussianMutation(0.1), genotype=Vector{Float64},
-              fitness=Float64, outside=ThrowOutside()) -> QDAlgorithm
+              fitness=Float64, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
 
 MAP-Elites: an archive laid out by the problem's descriptor space, and one
 [`VariationEmitter`](@ref) that applies the `variation` operator to
@@ -14,8 +14,9 @@ with `dims` cells along each descriptor dimension, laid out over `bounds`; `dims
 is required. For a problem with
 [`descriptor_categories`](@ref QualityDiversity.descriptor_categories), it is a
 [`CategoricalArchive`](@ref) with one cell for each combination of categories;
-`dims` and `bounds` do not apply and are an error. `outside` is passed to the
-archive; see [`GridArchive`](@ref) and [`CategoricalArchive`](@ref).
+`dims` and `bounds` do not apply and are an error. `outside` and `phenotype` are
+passed to the archive; see [`GridArchive`](@ref) and [`CategoricalArchive`](@ref).
+A problem that returns a phenotype needs `phenotype` set to its type.
 
 # Example
 
@@ -31,23 +32,24 @@ function MAPElites(prob::AbstractQDProblem; dims::Union{Tuple,Nothing}=nothing,
                    variation::AbstractVariation=GaussianMutation(0.1),
                    genotype::Type=Vector{Float64},
                    fitness::Type{<:Real}=Float64,
-                   outside::OutsidePolicy=ThrowOutside())
+                   outside::OutsidePolicy=ThrowOutside(),
+                   phenotype::Type=Nothing)
     archive = default_archive(Val(hasmethod(descriptor_categories, Tuple{typeof(prob)})),
-                              prob, dims, bounds, genotype, fitness, outside)
+                              prob, dims, bounds, genotype, fitness, outside, phenotype)
     return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
 end
 
-function default_archive(::Val{false}, prob, dims, bounds, genotype, fitness, outside)
+function default_archive(::Val{false}, prob, dims, bounds, genotype, fitness, outside, phenotype)
     dims === nothing &&
         throw(ArgumentError("dims is required for a problem with descriptor_bounds: pass the number of cells along each dimension, e.g. dims=(20, 20)"))
     return GridArchive(prob; dims, bounds=something(bounds, descriptor_bounds(prob)),
-                       genotype, fitness, outside)
+                       genotype, fitness, outside, phenotype)
 end
 
-function default_archive(::Val{true}, prob, dims, bounds, genotype, fitness, outside)
+function default_archive(::Val{true}, prob, dims, bounds, genotype, fitness, outside, phenotype)
     (dims === nothing && bounds === nothing) ||
         throw(ArgumentError("dims and bounds do not apply to a problem with descriptor_categories; its cells are the combinations of categories"))
-    return CategoricalArchive(prob; genotype, fitness, outside)
+    return CategoricalArchive(prob; genotype, fitness, outside, phenotype)
 end
 
 """
@@ -76,7 +78,7 @@ end
           ranker=TwoStageImprovementRanker(), selection=FilterSelection(),
           restart=NoImprovementRestart(), x0=nothing, lower=-Inf, upper=Inf,
           bounds=descriptor_bounds(prob), genotype=Vector{Float64}, fitness=Float64,
-          outside=ThrowOutside()) -> QDAlgorithm
+          outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
 
 CMA-ME (Fontaine et al., 2020): a [`GridArchive`](@ref) with `dims` cells along each
 descriptor dimension, as for [`MAPElites`](@ref), and `num_emitters` independent
@@ -104,8 +106,8 @@ function CMAME(prob::AbstractQDProblem; dims::Tuple, sigma0::Real,
                bounds::Tuple=descriptor_bounds(prob),
                genotype::Type=Vector{Float64},
                fitness::Type{<:Real}=Float64,
-               outside::OutsidePolicy=ThrowOutside(), kwargs...)
-    archive = GridArchive(prob; dims, bounds, genotype, fitness, outside)
+               outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
+    archive = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
     return CMAME(archive; sigma0, dim=solution_dim(prob), kwargs...)
 end
 
@@ -127,8 +129,8 @@ end
            batch_size=<CMA-ES default>, ranker=ImprovementRanker(),
            selection=MuSelection(), restart=ConvergenceRestart(), x0=nothing,
            lower=-Inf, upper=Inf, bounds=descriptor_bounds(prob),
-           genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside())
-        -> QDAlgorithm
+           genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside(),
+           phenotype=Nothing) -> QDAlgorithm
 
 CMA-MAE (Fontaine and Nikolaidis, 2023): [`CMAEmitter`](@ref)s as for [`CMAME`](@ref)
 but ranking candidates by their improvement over the threshold of their cell,
@@ -146,8 +148,8 @@ function CMAMAE(prob::AbstractQDProblem; dims::Tuple, sigma0::Real, threshold_mi
                 bounds::Tuple=descriptor_bounds(prob),
                 genotype::Type=Vector{Float64},
                 fitness::Type{<:AbstractFloat}=Float64,
-                outside::OutsidePolicy=ThrowOutside(), kwargs...)
-    grid = GridArchive(prob; dims, bounds, genotype, fitness, outside)
+                outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
+    grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
     archive = ThresholdArchive(grid; learning_rate, threshold_min)
     return CMAME(archive; sigma0, dim=solution_dim(prob), num_emitters, ranker, selection, restart, kwargs...)
 end
@@ -158,7 +160,7 @@ solution_dim(prob::AbstractQDProblem) = length(random_solution(Random.Xoshiro(0)
 """
     MOME(prob; dims, reference_point=reference_point(prob), max_front=50, batch_size=64,
          variation=GaussianMutation(0.1), bounds=descriptor_bounds(prob),
-         genotype=Vector{Float64}, outside=ThrowOutside()) -> QDAlgorithm
+         genotype=Vector{Float64}, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
 
 Multi-objective MAP-Elites (Pierrot et al., 2022): a [`ParetoGridArchive`](@ref), which keeps a
 Pareto front of at most `max_front` solutions in each cell of a grid with `dims` cells along
@@ -187,8 +189,8 @@ function MOME(prob::AbstractQDProblem; dims::Tuple,
               max_front::Integer=50, batch_size::Integer=64,
               variation::AbstractVariation=GaussianMutation(0.1),
               bounds::Tuple=descriptor_bounds(prob), genotype::Type=Vector{Float64},
-              outside::OutsidePolicy=ThrowOutside())
-    archive = ParetoGridArchive(prob; dims, reference_point, max_front, bounds, genotype, outside)
+              outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing)
+    archive = ParetoGridArchive(prob; dims, reference_point, max_front, bounds, genotype, outside, phenotype)
     return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
 end
 

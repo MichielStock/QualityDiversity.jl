@@ -13,7 +13,7 @@ using .GPUExample: GPURastrigin, backend
     xs = [QD.random_solution(rng, prob) for _ in 1:200]
 
     evs = QD.evaluate_batch(prob, xs)
-    @test evs isa Vector{Evaluation{Float32,SVector{2,Float64}}}
+    @test evs isa Vector{Evaluation{Float32,SVector{2,Float64},Nothing}}
     @test length(evs) == 200
     # the Float64 CPU benchmark agrees up to Float32 rounding
     for (x, ev) in zip(xs, evs)
@@ -26,7 +26,7 @@ using .GPUExample: GPURastrigin, backend
 
     # sizes of the batch
     @test QD.evaluate_batch(prob, xs[1:1]) == evs[1:1]
-    @test QD.evaluate_batch(prob, empty(xs)) == Evaluation{Float32,SVector{2,Float64}}[]
+    @test QD.evaluate_batch(prob, empty(xs)) == Evaluation{Float32,SVector{2,Float64},Nothing}[]
     # Float64 genotypes are accepted
     @test QD.evaluate_batch(prob, [Float64.(x) for x in xs[1:5]]) == evs[1:5]
 

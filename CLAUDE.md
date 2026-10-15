@@ -64,8 +64,9 @@ Neither should be sacrificed for the other.
 3. **Dispatch, not flags.** Algorithm variants are chosen by passing a
    different type, never by a `Symbol` or `Bool` switch.
 4. **Type parameters carry the hot-path types.** Archives are parametrized by
-   genotype `G`, fitness `F` and descriptor `D`, so everything downstream is
-   concretely typed and batch outputs can be preallocated.
+   genotype `G`, fitness `F`, descriptor `D` and phenotype `P` (`Nothing` when
+   none is stored), so everything downstream is concretely typed and batch
+   outputs can be preallocated.
 5. **Batch-first.** Emitters produce batches; evaluation is batched. This is
    the hook for threading, GPU, and calls out to Python.
 6. **Explicit randomness.** Every function that draws random numbers takes an
@@ -88,10 +89,12 @@ implement them; the other concrete types in the layout follow the roadmap.
 
 ```julia
 # ── Results of one evaluation ─────────────────────────────
-struct Evaluation{F,D}
+struct Evaluation{F,D,P}
     fitness::F        # Real (single objective) or AbstractVector (multi-objective)
     descriptor::D     # usually SVector{N,Float64}
+    phenotype::P      # `nothing` unless the problem returns one
 end
+Evaluation(fitness, descriptor) = Evaluation(fitness, descriptor, nothing)
 
 @enum AddStatus Rejected Improved NewCell
 
@@ -105,7 +108,7 @@ end
 abstract type AbstractQDProblem end
 
 # ── Archive ───────────────────────────────────────────────
-abstract type AbstractArchive{G,F,D} end
+abstract type AbstractArchive{G,F,D,P} end
 
 # ── Variation ─────────────────────────────────────────────
 abstract type AbstractVariation end
@@ -135,7 +138,7 @@ Fitness is **maximized**. Users who minimize return the negated value.
 | `evaluate_batch(prob, xs) -> Vector{Evaluation}` | optional | default: threaded loop over `evaluate` |
 
 `QDProblem(f; init, bounds)` (or `categories` instead of `bounds`) wraps a plain function `f(x) -> (fitness,
-descriptor)` so most users never subtype.
+descriptor)`, or `(fitness, descriptor, phenotype)`, so most users never subtype.
 
 `AbstractStochasticQDProblem <: AbstractQDProblem` is for noisy evaluation. It defines
 `evaluate(rng, prob, x)` instead of `evaluate(prob, x)`, and `evaluate_batch(rng, prob, xs)`
@@ -169,8 +172,9 @@ distance threshold), `ParetoGridArchive` (MOME: a Pareto front of at most `max_f
 Storage layout for cell-based archives (`GridArchive`, `CVTArchive`,
 `CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
 `occupied::BitVector`, `fitness::Vector{F}`, `descriptors::Vector{D}`,
-`genotypes::Vector{G}` (unassigned slots left `#undef` and guarded by
-`occupied`), plus `occupied_idx::Vector{Int}` so a uniform parent draw is O(1).
+`genotypes::Vector{G}`, `phenotypes::Vector{P}` (unassigned slots left `#undef`
+and guarded by `occupied`), plus `occupied_idx::Vector{Int}` so a uniform parent
+draw is O(1).
 
 **`AbstractVariation`**
 
@@ -449,6 +453,18 @@ Settled; change them only with the author's agreement.
   Results depend on the seed of the run and not on the number of threads. `Sampled`
   evaluates the wrapped problem `num_samples` times with the generator of the solution, and
   every evaluation counts against the budget.
+- **Spread of noisy solutions.** MAP-Elites with low spread (QDax `MELS`) uses a separate
+  archive type that wraps a cell archive, as `ThresholdArchive` does; the other archives
+  store no spread and their `add!` does not change. The spread of a solution is the mean
+  pairwise distance between the descriptors of its `num_samples` evaluations, its fitness
+  is the mean fitness, and its cell is the one its evaluations land in most often (not the
+  cell of the mean descriptor). A solution replaces the elite of a cell if its fitness is
+  strictly higher and its spread is no larger, as in QDax. The archive therefore needs
+  every evaluation of a solution, not only the average that `Sampled` returns. Only
+  stochastic problems reach this code: the path is chosen by dispatch on
+  `AbstractStochasticQDProblem`, `evaluate_batch` of deterministic problems is unchanged,
+  and `init` throws if the spread archive is paired with a deterministic problem. The
+  MAP-Elites benchmarks must not slow down.
 - **Multi-objective archives.** `ParetoGridArchive` has the cells of a `GridArchive` and a
   front of at most `max_front` solutions (50 by default) in each. The fitness is a vector, all
   objectives maximized, and the archive stores it as `SVector{M,Float64}`; it needs a
@@ -490,21 +506,31 @@ Settled; change them only with the author's agreement.
 - **Benchmark clipping.** `Rastrigin` clips the solution to `[-5.12, 5.12]`
   inside `evaluate`. Solution-space bounds for mutations are not part of the
   problem contract.
+- **Phenotype storage.** The mutated object (the genotype, e.g. a reaction
+  sequence) can differ from the described object (the phenotype, e.g. the
+  product). The mapping between them belongs to the problem; archives store the
+  phenotype next to the genotype. `Evaluation{F,D,P}` has an optional
+  `phenotype::P`, and the two-argument `Evaluation(fitness, descriptor)` gives
+  `P = Nothing`. A `QDProblem` function may return `(fitness, descriptor)` or
+  `(fitness, descriptor, phenotype)`. Archives carry `P` as a fourth type
+  parameter, `AbstractArchive{G,F,D,P}`, store `phenotypes::Vector{P}`, and
+  return the phenotype through `elites(archive)`; variation sees genotypes only.
+  Archive and algorithm constructors take `phenotype=Nothing`, the type to store.
+  An evaluation whose phenotype does not fit the archive throws before the
+  archive changes, also inside a batch. `Sampled` keeps the phenotype that occurs
+  most often among its evaluations (`isequal`, the first on a tie); its
+  `expectation` applies to the fitness and the descriptor only.
+  The phenotype is opt-in and free when unused: a problem that returns no
+  phenotype needs no change, `nothing` occupies no memory, and the code for
+  `P = Nothing` must compile to what it would be without the field. The
+  allocation tests cover `P = Nothing`, and the MAP-Elites benchmarks must not
+  slow down.
 
 ## Open decisions
 
 Ask the author before resolving any of these.
 
-- **Stored values of noisy problems.** `Sampled` averages repeated evaluations before
-  they reach the archive, as QDax's MAP-Elites-sampling does. Open: whether archives
-  should also store a spread per cell, as QDax's `MELS` does, and what replaces an elite.
-- **Phenotype storage.** In chemistry the mutated object (e.g. a reaction
-  sequence) often differs from the described object (the product). The mapping
-  from genotype to phenotype belongs to the problem; the open question is
-  whether archives store the phenotype. Proposal: `Evaluation{F,D,P}` with an
-  optional `phenotype::P` (default `Nothing`), stored alongside the genotype,
-  with the two-argument `Evaluation(fitness, descriptor)` kept. Decide before
-  the first example that needs it.
+None at present.
 
 ## Minor things still to do
 

@@ -1,11 +1,12 @@
 """
-    CVTArchive{G,F}(centroids, bounds; outside=ThrowOutside())
-    CVTArchive{G,F}(rng, cells, bounds; samples=100_000, outside=ThrowOutside())
+    CVTArchive{G,F}(centroids, bounds; outside=ThrowOutside(), phenotype=Nothing)
+    CVTArchive{G,F}(rng, cells, bounds; samples=100_000, outside=ThrowOutside(),
+                    phenotype=Nothing)
     CVTArchive{G}(...)
     CVTArchive(...)
     CVTArchive(rng, prob::AbstractQDProblem; cells, bounds=descriptor_bounds(prob),
                samples=100_000, genotype=Vector{Float64}, fitness=Float64,
-               outside=ThrowOutside())
+               outside=ThrowOutside(), phenotype=Nothing)
 
 Archive that divides descriptor space into the Voronoi cells of a set of
 centroids and keeps the highest-fitness solution found in each cell. A
@@ -28,6 +29,7 @@ centroids must lie inside the box and be distinct. `G` is the genotype type,
 `Vector{Float64}` by default, and `F<:Real` the fitness type, `Float64` by
 default. `outside` says what happens to a descriptor outside the box, as for
 [`GridArchive`](@ref): `ThrowOutside()`, `ClampOutside()` or `RejectOutside()`.
+`phenotype` is the type of the phenotypes the archive stores, `Nothing` for none.
 
 The nearest centroid is found with a k-d tree, so a lookup takes a logarithmic
 number of distance evaluations in few dimensions and does not allocate. In many
@@ -48,7 +50,7 @@ julia> length(archive), QualityDiversity.capacity(archive)
 (0, 50)
 ```
 """
-mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy} <: CellArchive{G,F,SVector{N,Float64}}
+mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy,P} <: CellArchive{G,F,SVector{N,Float64},P}
     const lower::SVector{N,Float64}
     const upper::SVector{N,Float64}
     const outside::O
@@ -58,14 +60,15 @@ mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy} <: CellArchive{G,F,SVect
     const fitness::Vector{F}
     const descriptors::Vector{SVector{N,Float64}}
     const genotypes::Vector{G}
+    const phenotypes::Vector{P}
     const occupied_idx::Vector{Int}
     # Running totals, as in GridArchive.
     fitness_sum::Float64
     fitness_sum_error::Float64
     fitness_max::F
 
-    function CVTArchive{G,F,N}(centroids::Vector{SVector{N,Float64}}, lower, upper,
-                               outside::O) where {G,F<:Real,N,O<:OutsidePolicy}
+    function CVTArchive{G,F,N,O,P}(centroids::Vector{SVector{N,Float64}}, lower, upper,
+                                   outside) where {G,F<:Real,N,O<:OutsidePolicy,P}
         for i in 1:N
             (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
                 throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
@@ -81,12 +84,13 @@ mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy} <: CellArchive{G,F,SVect
                 throw(ArgumentError("two centroids are identical, at $(sorted[j]); one of their cells could never be reached"))
         end
         ncells = length(centroids)
-        return new{G,F,N,O}(lower, upper, outside, centroids, CentroidTree(centroids),
-                            falses(ncells),
-                            Vector{F}(undef, ncells),
-                            Vector{SVector{N,Float64}}(undef, ncells),
-                            Vector{G}(undef, ncells),
-                            Int[],
+        return new{G,F,N,O,P}(lower, upper, outside, centroids, CentroidTree(centroids),
+                              falses(ncells),
+                              Vector{F}(undef, ncells),
+                              Vector{SVector{N,Float64}}(undef, ncells),
+                              Vector{G}(undef, ncells),
+                              Vector{P}(undef, ncells),
+                              Int[],
                             0.0, 0.0, zero(F))
     end
 end
@@ -100,7 +104,7 @@ function box(bounds::Tuple)
 end
 
 function CVTArchive{G,F}(centroids::AbstractVector{<:AbstractVector{<:Real}}, bounds::Tuple;
-                         outside::OutsidePolicy=ThrowOutside()) where {G,F<:Real}
+                         outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing) where {G,F<:Real}
     lower, upper = box(bounds)
     N = length(bounds)
     for (j, c) in enumerate(centroids)
@@ -108,12 +112,12 @@ function CVTArchive{G,F}(centroids::AbstractVector{<:AbstractVector{<:Real}}, bo
             throw(ArgumentError("centroid $j has $(length(c)) entries but bounds has $N"))
     end
     points = SVector{N,Float64}[SVector{N,Float64}(c) for c in centroids]
-    return CVTArchive{G,F,N}(points, lower, upper, outside)
+    return CVTArchive{G,F,N,typeof(outside),phenotype}(points, lower, upper, outside)
 end
 
 function CVTArchive{G,F}(rng::AbstractRNG, cells::Integer, bounds::Tuple;
                          samples::Integer=100_000, max_iterations::Integer=100,
-                         outside::OutsidePolicy=ThrowOutside()) where {G,F<:Real}
+                         outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing) where {G,F<:Real}
     cells >= 1 || throw(ArgumentError("cells must be at least 1, got $cells"))
     samples >= cells ||
         throw(ArgumentError("samples ($samples) must be at least cells ($cells) to place that many centroids"))
@@ -121,7 +125,7 @@ function CVTArchive{G,F}(rng::AbstractRNG, cells::Integer, bounds::Tuple;
     N = length(bounds)
     points = [lower .+ (upper .- lower) .* rand(rng, SVector{N,Float64}) for _ in 1:samples]
     centers = kmeans(rng, points, Int(cells); max_iterations=Int(max_iterations))
-    return CVTArchive{G,F,N}(centers, lower, upper, outside)
+    return CVTArchive{G,F,N,typeof(outside),phenotype}(centers, lower, upper, outside)
 end
 
 CVTArchive{G}(args...; kwargs...) where {G} = CVTArchive{G,Float64}(args...; kwargs...)
@@ -131,8 +135,9 @@ CVTArchive(args...; kwargs...) = CVTArchive{Vector{Float64}}(args...; kwargs...)
 function CVTArchive(rng::AbstractRNG, prob::AbstractQDProblem; cells::Integer,
                     bounds::Tuple=descriptor_bounds(prob),
                     genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
-                    samples::Integer=100_000, outside::OutsidePolicy=ThrowOutside())
-    return CVTArchive{genotype,fitness}(rng, cells, bounds; samples, outside)
+                    samples::Integer=100_000, outside::OutsidePolicy=ThrowOutside(),
+                    phenotype::Type=Nothing)
+    return CVTArchive{genotype,fitness}(rng, cells, bounds; samples, outside, phenotype)
 end
 
 """

@@ -53,8 +53,8 @@ what [`add!`](@ref QualityDiversity.add!) applies.
 [`thresholds`](@ref QualityDiversity.thresholds) returns the thresholds, one per
 cell.
 
-Cells, sampling, `elites`, `length`, `capacity` and `cell_index` are those of the
-wrapped archive, and so are the metrics, which describe the elites of this archive
+Cells, sampling, `elites`, `length`, `capacity`, `cell_index` and the stored
+phenotypes are those of the wrapped archive, and so are the metrics, which describe the elites of this archive
 and not the result archive. `qd_score` and `mean_fitness` take constant time. `max_fitness`
 does too, except directly after the best elite was replaced by a worse solution,
 when the next call makes a pass over the elites.
@@ -71,7 +71,7 @@ julia> length(archive), QualityDiversity.capacity(archive)
 (0, 100)
 ```
 """
-mutable struct ThresholdArchive{G,F<:AbstractFloat,D,A<:CellArchive{G,F,D},R<:Union{Nothing,A}} <: AbstractArchive{G,F,D}
+mutable struct ThresholdArchive{G,F<:AbstractFloat,D,P,A<:CellArchive{G,F,D,P},R<:Union{Nothing,A}} <: AbstractArchive{G,F,D,P}
     const inner::A
     # The archive of the best solutions, or `nothing` if `inner` holds them.
     const result::R
@@ -82,7 +82,7 @@ mutable struct ThresholdArchive{G,F<:AbstractFloat,D,A<:CellArchive{G,F,D},R<:Un
     # that `inner.fitness_max` is only an upper bound.
     max_stale::Bool
 
-    function ThresholdArchive{G,F,D,A,R}(inner::A, result::R, learning_rate, threshold_min) where {G,F<:AbstractFloat,D,A<:CellArchive{G,F,D},R<:Union{Nothing,A}}
+    function ThresholdArchive{G,F,D,P,A,R}(inner::A, result::R, learning_rate, threshold_min) where {G,F<:AbstractFloat,D,P,A<:CellArchive{G,F,D,P},R<:Union{Nothing,A}}
         length(inner) == 0 ||
             throw(ArgumentError("the archive to wrap must be empty but holds $(length(inner)) solutions"))
         0 <= learning_rate <= 1 ||
@@ -96,17 +96,17 @@ mutable struct ThresholdArchive{G,F<:AbstractFloat,D,A<:CellArchive{G,F,D},R<:Un
             length(result) == 0 ||
                 throw(ArgumentError("result must be empty but holds $(length(result)) solutions"))
         end
-        return new{G,F,D,A,R}(inner, result, fill(convert(F, threshold_min), capacity(inner)),
+        return new{G,F,D,P,A,R}(inner, result, fill(convert(F, threshold_min), capacity(inner)),
                               convert(F, learning_rate), convert(F, threshold_min), false)
     end
 end
 
-function ThresholdArchive(inner::CellArchive{G,F,D}; learning_rate::Real=1.0,
+function ThresholdArchive(inner::CellArchive{G,F,D,P}; learning_rate::Real=1.0,
                           threshold_min::Real=-Inf,
-                          result::Union{Nothing,CellArchive}=default_result(inner, learning_rate, threshold_min)) where {G,F<:AbstractFloat,D}
+                          result::Union{Nothing,CellArchive}=default_result(inner, learning_rate, threshold_min)) where {G,F<:AbstractFloat,D,P}
     result === nothing || result isa typeof(inner) ||
         throw(ArgumentError("result must be a $(nameof(typeof(inner))) of the same type as the archive it belongs to, got a $(typeof(result))"))
-    return ThresholdArchive{G,F,D,typeof(inner),typeof(result)}(inner, result, learning_rate, threshold_min)
+    return ThresholdArchive{G,F,D,P,typeof(inner),typeof(result)}(inner, result, learning_rate, threshold_min)
 end
 
 # With the thresholds at the fitness of the elites the archive already keeps the
@@ -167,13 +167,13 @@ end
 
 # Stores `x` as the elite of cell `i` with the new threshold, keeping the
 # running totals of the wrapped archive up to date.
-function place_threshold!(archive::ThresholdArchive, i, x, descriptor, fitness, threshold)
+function place_threshold!(archive::ThresholdArchive, i, x, descriptor, fitness, phenotype, threshold)
     inner = archive.inner
     archive.thresholds[i] = threshold
     if !inner.occupied[i]
         inner.occupied[i] = true
         push!(inner.occupied_idx, i)
-        _store!(inner, i, x, fitness, descriptor)
+        _store!(inner, i, x, fitness, descriptor, phenotype)
         _add_to_sum!(inner, Float64(fitness))
         if length(inner.occupied_idx) == 1 || fitness >= inner.fitness_max
             inner.fitness_max = fitness
@@ -182,7 +182,7 @@ function place_threshold!(archive::ThresholdArchive, i, x, descriptor, fitness, 
         return nothing
     end
     previous = inner.fitness[i]
-    _store!(inner, i, x, fitness, descriptor)
+    _store!(inner, i, x, fitness, descriptor, phenotype)
     _add_to_sum!(inner, Float64(fitness) - Float64(previous))
     if fitness >= inner.fitness_max
         inner.fitness_max = fitness
@@ -202,7 +202,8 @@ is `NewCell` for an empty cell, `Improved` for an occupied one and `Rejected`
 otherwise. A descriptor that the wrapped archive discards gives `Rejected` with
 zero `improvement`.
 """
-function add!(archive::ThresholdArchive{G,F}, x, ev::Evaluation{<:Real}) where {G,F}
+function add!(archive::ThresholdArchive{G,F,D,P}, x, ev::Evaluation{<:Real}) where {G,F,D,P}
+    phenotype = stored_phenotype(P, ev.phenotype)
     offer!(archive.result, x, ev)
     i = cell_index(archive.inner, ev.descriptor)
     i == 0 && return AddResult(Rejected, zero(F))
@@ -210,7 +211,7 @@ function add!(archive::ThresholdArchive{G,F}, x, ev::Evaluation{<:Real}) where {
     result = classify(archive, i, fitness)
     result.status == Rejected && return result
     threshold = next_threshold(archive.learning_rate, archive.thresholds[i], fitness, 1)
-    place_threshold!(archive, i, x, ev.descriptor, fitness, threshold)
+    place_threshold!(archive, i, x, ev.descriptor, fitness, phenotype, threshold)
     return result
 end
 
@@ -230,9 +231,10 @@ Insert every solution in `xs` with its evaluation from `evs`. Each result is
 computed against the archive as it was before the batch, and the solutions that
 pass the threshold of a cell act on it together; see [`ThresholdArchive`](@ref).
 """
-function add_batch!(archive::ThresholdArchive{G,F}, xs::AbstractVector, evs::AbstractVector) where {G,F}
+function add_batch!(archive::ThresholdArchive{G,F,D,P}, xs::AbstractVector, evs::AbstractVector) where {G,F,D,P}
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
+    foreach(ev -> stored_phenotype(P, ev.phenotype), evs)    # throws before the archive changes
     offer_batch!(archive.result, xs, evs)
     n = length(xs)
     results = Vector{AddResult{F}}(undef, n)
@@ -276,7 +278,8 @@ function add_batch!(archive::ThresholdArchive{G,F}, xs::AbstractVector, evs::Abs
     # the order the elites are sampled in.
     for r in sortperm(first_in_batch)
         k = best[r]
-        place_threshold!(archive, cells[k], xs[k], evs[k].descriptor, convert(F, evs[k].fitness), new_threshold[r])
+        place_threshold!(archive, cells[k], xs[k], evs[k].descriptor, convert(F, evs[k].fitness),
+                         stored_phenotype(P, evs[k].phenotype), new_threshold[r])
     end
     return results
 end
