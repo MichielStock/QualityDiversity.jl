@@ -109,7 +109,7 @@ end
           ranker=TwoStageImprovementRanker(), selection=FilterSelection(),
           restart=NoImprovementRestart(), x0=nothing, lower=-Inf, upper=Inf,
           bounds=descriptor_bounds(prob), genotype=Vector{Float64}, fitness=Float64,
-          outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
+          outside=ThrowOutside(), phenotype=Nothing, device=nothing) -> QDAlgorithm
 
 CMA-ME (Fontaine et al., 2020): a [`GridArchive`](@ref) with `dims` cells along each
 descriptor dimension, as for [`MAPElites`](@ref), and `num_emitters` independent
@@ -125,6 +125,12 @@ solutions, and `x0` gives the mean of the first distribution of every emitter, b
 default a random elite. The other arguments are those of [`MAPElites`](@ref) and
 [`CMAEmitter`](@ref).
 
+With `device`, an array type such as `CuArray`, the archive is a [`DeviceGridArchive`](@ref)
+and the emitters are the searches of one [`DeviceCMAEmitter`](@ref): all searches ask
+together, and their candidates are evaluated and added on the device as one batch, so
+each search sees the archive as it was before the round. That pays off with many
+emitters, hundreds rather than five.
+
 # Example
 
 ```julia
@@ -137,9 +143,19 @@ function CMAME(prob::AbstractQDProblem; dims::Tuple, sigma0::Real,
                bounds::Tuple=descriptor_bounds(prob),
                genotype::Type=Vector{Float64},
                fitness::Type{<:Real}=Float64,
-               outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
-    archive = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+               outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing,
+               device::Union{Type,Nothing}=nothing, kwargs...)
+    archive = cma_me_archive(device, prob, dims, bounds, genotype, fitness, outside, phenotype)
     return CMAME(archive; sigma0, dim=solution_dim(prob), kwargs...)
+end
+
+cma_me_archive(::Nothing, prob, dims, bounds, genotype, fitness, outside, phenotype) =
+    GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+
+function cma_me_archive(device::Type, prob, dims, bounds, genotype, fitness, outside, phenotype)
+    phenotype === Nothing ||
+        throw(ArgumentError("a DeviceGridArchive stores no phenotypes; build it without phenotype"))
+    return DeviceGridArchive(prob; dims, device, bounds, genotype, fitness, outside)
 end
 
 """
@@ -147,12 +163,17 @@ end
 
 CMA-ME over any archive, such as a [`CVTArchive`](@ref): `archive` with `num_emitters`
 [`CMAEmitter`](@ref)s for solutions of length `dim`. The keyword arguments are those of
-[`CMAEmitter`](@ref).
+[`CMAEmitter`](@ref). For a [`DeviceCellArchive`](@ref) the emitters are the `num_emitters`
+searches of one [`DeviceCMAEmitter`](@ref).
 """
 function CMAME(archive::AbstractArchive; sigma0::Real, dim::Integer, num_emitters::Integer=5, kwargs...)
     num_emitters >= 1 || throw(ArgumentError("num_emitters must be at least 1, got $num_emitters"))
     emitters = Tuple(CMAEmitter(dim; sigma0, kwargs...) for _ in 1:num_emitters)
     return QDAlgorithm(archive, emitters)
+end
+
+function CMAME(archive::DeviceCellArchive; sigma0::Real, dim::Integer, num_emitters::Integer=5, kwargs...)
+    return QDAlgorithm(archive, (DeviceCMAEmitter(dim; num_searches=num_emitters, sigma0, kwargs...),))
 end
 
 """

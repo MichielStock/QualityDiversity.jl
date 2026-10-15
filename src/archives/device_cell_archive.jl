@@ -189,13 +189,12 @@ vectors. A [`DeviceVariationEmitter`](@ref) draws its parents on the device inst
 """
 function sample_elites(rng::AbstractRNG, archive::DeviceCellArchive{T}, n::Integer) where {T}
     archive.count == 0 && throw(ArgumentError("cannot sample elites from an empty archive"))
+    n == 0 && return Vector{T}[]
     cells = host_occupied(archive)
-    genotypes = Array(archive.genotypes)
-    parents = Vector{Vector{T}}(undef, n)
-    for k in 1:n
-        parents[k] = genotypes[:, rand(rng, cells)]
-    end
-    return parents
+    chosen = [rand(rng, cells) for _ in 1:n]
+    # The chosen columns are gathered on the device and copied in one transfer.
+    parents = Array(archive.genotypes[:, chosen])
+    return Vector{T}[parents[:, k] for k in axes(parents, 2)]
 end
 
 function add!(archive::DeviceCellArchive, x, ev::Evaluation{<:Real})
@@ -246,6 +245,20 @@ function upload_evaluations(archive::DeviceCellArchive{T,F,N}, evs::AbstractVect
     return EvaluationBatch{N}(copyto!(similar(archive.fitness, F, length(fitness)), fitness),
                               copyto!(similar(archive.genotypes, T, size(descriptors)), descriptors))
 end
+
+# The evaluations and the results of a batch on the host, for emitters that read them
+# there.
+function host_evaluations(evs::EvaluationBatch{N,F}) where {N,F}
+    fitness = Array(evs.fitness)
+    descriptors = Array(evs.descriptors)
+    return Evaluation{F,SVector{N,Float64},Nothing}[Evaluation(fitness[j], SVector{N,Float64}(view(descriptors, :, j)))
+                                                    for j in eachindex(fitness)]
+end
+
+host_evaluations(evs::AbstractVector{<:Evaluation}) = evs
+
+host_add_results(results::AddResultBatch) = collect(results)
+host_add_results(results::AbstractVector{<:AddResult}) = results
 
 # The default `evaluate_batch` of a device batch: `device_evaluate` in a kernel, one
 # solution per thread.
