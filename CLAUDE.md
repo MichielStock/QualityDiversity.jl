@@ -279,7 +279,7 @@ QualityDiversity.jl/
 │   ├── hypervolume.jl            # hypervolume of a set of points, any number of objectives
 │   ├── problems/
 │   │   ├── qdproblem.jl          # QDProblem wrapper
-│   │   ├── stochastic.jl         # StochasticQDProblem, Sampled
+│   │   ├── stochastic.jl         # StochasticQDProblem, Sampled, SampledSpread
 │   │   └── benchmarks.jl         # Sphere, Rastrigin, later PlanarArm
 │   ├── archives/
 │   │   ├── cell_archive.jl       # CellArchive: shared storage, add!, metrics
@@ -288,6 +288,7 @@ QualityDiversity.jl/
 │   │   ├── cvt.jl
 │   │   ├── categorical.jl
 │   │   ├── threshold.jl
+│   │   ├── spread.jl             # SpreadArchive for MELS
 │   │   ├── pareto.jl             # ParetoGridArchive
 │   │   └── unstructured.jl
 │   ├── variation/
@@ -385,8 +386,8 @@ Julia LTS and the current release.
   - [ ] `SlidingBoundariesArchive` (pyribs), `BanditScheduler` for choosing
         among emitters (pyribs), `DensityArchive` and `DNSArchive` (pyribs)
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
-  - [ ] MAP-Elites with low spread (QDax `MELS`): an archive that stores a spread
-        for every cell, on top of the stochastic problems
+  - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
+        for every cell, with `SampledSpread` problems
 - [ ] **Phase 7 — Extensions and docs.**
   - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain
   - [ ] ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
@@ -453,18 +454,25 @@ Settled; change them only with the author's agreement.
   Results depend on the seed of the run and not on the number of threads. `Sampled`
   evaluates the wrapped problem `num_samples` times with the generator of the solution, and
   every evaluation counts against the budget.
-- **Spread of noisy solutions.** MAP-Elites with low spread (QDax `MELS`) uses a separate
-  archive type that wraps a cell archive, as `ThresholdArchive` does; the other archives
-  store no spread and their `add!` does not change. The spread of a solution is the mean
-  pairwise distance between the descriptors of its `num_samples` evaluations, its fitness
-  is the mean fitness, and its cell is the one its evaluations land in most often (not the
-  cell of the mean descriptor). A solution replaces the elite of a cell if its fitness is
-  strictly higher and its spread is no larger, as in QDax. The archive therefore needs
-  every evaluation of a solution, not only the average that `Sampled` returns. Only
-  stochastic problems reach this code: the path is chosen by dispatch on
-  `AbstractStochasticQDProblem`, `evaluate_batch` of deterministic problems is unchanged,
-  and `init` throws if the spread archive is paired with a deterministic problem. The
-  MAP-Elites benchmarks must not slow down.
+- **Spread of noisy solutions.** MAP-Elites with low spread (QDax `MELS`) uses
+  `SpreadArchive`, which wraps a `GridArchive` or `CVTArchive`, as `ThresholdArchive` wraps
+  a cell archive; the other archives store no spread and their `add!` does not change. A
+  `CategoricalArchive` cannot be wrapped: its descriptors have no distance. The problem is
+  `SampledSpread(prob; num_samples)`, a sibling of `Sampled` whose evaluation has the mean
+  fitness, every descriptor of the `num_samples` evaluations as a `DescriptorSamples`, and
+  the most frequent phenotype. The archive computes the rest, since only it knows its
+  cells: the spread is the mean pairwise distance between the descriptors (zero for one
+  sample), the cell is the one the descriptors land in most often (the one visited first
+  on a tie; QDax takes the lowest cell index), and the stored descriptor is the mean of the
+  descriptors in that cell, which lies inside it (QDax stores the centroid). A solution
+  replaces the elite of a cell if its fitness is strictly higher and its spread is no
+  larger, as in QDax; one rejected for its spread reports zero `improvement`.
+  `add_batch!` follows the batch rule of the cell archives: every result is computed
+  against the archive before the batch, and the archive ends up as if the solutions had
+  been added one at a time (QDax keeps an arbitrary one of several that enter a cell).
+  `MELS(prob; dims)` takes a `SampledSpread` problem. `init` throws unless a
+  `SpreadArchive` meets a `SampledSpread` problem and the other way round, so a
+  deterministic problem never reaches it. The MAP-Elites benchmarks must not slow down.
 - **Multi-objective archives.** `ParetoGridArchive` has the cells of a `GridArchive` and a
   front of at most `max_front` solutions (50 by default) in each. The fitness is a vector, all
   objectives maximized, and the archive stores it as `SVector{M,Float64}`; it needs a
