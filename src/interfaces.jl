@@ -78,7 +78,7 @@ descriptor values back. `examples/gpu_evaluation.jl` does this for any array
 type of the GPU packages (CUDA.jl, Metal.jl, AMDGPU.jl, oneAPI.jl). The
 package itself does not depend on any of them.
 
-The candidates of a [`DeviceGridArchive`](@ref) are a [`DeviceBatch`](@ref), whose
+The candidates of a [`DeviceCellArchive`](@ref) are a [`DeviceBatch`](@ref), whose
 solutions are the columns of a device matrix. For them the default runs
 `evaluate(prob, x)` in a kernel, one solution per thread (for a [`QDProblem`](@ref),
 its function), and returns an [`EvaluationBatch`](@ref) on the device. That code must

@@ -1,16 +1,17 @@
 """
     QualityDiversityKernelAbstractionsExt
 
-The kernels of [`DeviceGridArchive`](@ref QualityDiversity.DeviceGridArchive) and
-[`DeviceVariationEmitter`](@ref QualityDiversity.DeviceVariationEmitter), written with
-KernelAbstractions.jl so that they run on any backend it supports: CUDA, ROCm, Metal,
-oneAPI, and the CPU for `Array`.
+The kernels of the device archives ([`DeviceCellArchive`](@ref QualityDiversity.DeviceCellArchive))
+and of [`DeviceVariationEmitter`](@ref QualityDiversity.DeviceVariationEmitter), written with
+KernelAbstractions.jl so that they run on its backends with `Float64`, which the cell
+lookup needs: CUDA, ROCm, oneAPI, and the CPU for `Array`.
 """
 module QualityDiversityKernelAbstractionsExt
 
 using Atomix: @atomic
 using KernelAbstractions: KernelAbstractions, @kernel, @index, get_backend
-using QualityDiversity: QualityDiversity, AbstractQDProblem, DeviceGridArchive, AddResultBatch, QDProblem,
+using QualityDiversity: QualityDiversity, AbstractQDProblem, DeviceCellArchive, DeviceGridArchive, DeviceCVTArchive,
+    AddResultBatch, QDProblem,
     GaussianMutation, IsoLineVariation, ThrowOutside, RejectOutside, Rejected, Improved, NewCell
 using StaticArrays: SVector
 
@@ -112,7 +113,7 @@ end
     X[i, j] = a + σ_iso * z + line * (genotypes[i, p2] - a)
 end
 
-function QD.device_vary!(X::AbstractMatrix{T}, op::GaussianMutation, archive::DeviceGridArchive,
+function QD.device_vary!(X::AbstractMatrix{T}, op::GaussianMutation, archive::DeviceCellArchive,
                          seed::UInt64) where {T}
     isempty(X) && return X
     backend = get_backend(X)
@@ -122,7 +123,7 @@ function QD.device_vary!(X::AbstractMatrix{T}, op::GaussianMutation, archive::De
     return X
 end
 
-function QD.device_vary!(X::AbstractMatrix{T}, op::IsoLineVariation, archive::DeviceGridArchive,
+function QD.device_vary!(X::AbstractMatrix{T}, op::IsoLineVariation, archive::DeviceCellArchive,
                          seed::UInt64) where {T}
     isempty(X) && return X
     backend = get_backend(X)
@@ -197,15 +198,76 @@ end
     return Int32(index + 1)
 end
 
-# Finds the cell of every solution, classifies it against the archive before the batch,
-# and raises the key of the cells it enters. `flags` collects the first solution with
-# a refused descriptor, the first with a NaN fitness, and whether a cell is new.
-@kernel function classify_kernel!(cells, status, improvement, best_key, flags, @Const(occupied),
-                                  @Const(stored), @Const(batch_fitness), @Const(D), dims, lower, upper, outside)
+# Whether column `k` of `D` is inside the box (`1`), rejected (`0`) or refused (`-1`) by the
+# archive's `outside` policy, as `device_cell` decides it.
+@inline function nearest_code(D, k, lower::NTuple{N,Float64}, upper::NTuple{N,Float64}, outside) where {N}
+    code = Int32(1)
+    for r in 1:N
+        x = Float64(D[r, k])
+        if !(lower[r] <= x <= upper[r])
+            if outside isa RejectOutside
+                code = min(code, Int32(0))
+            elseif outside isa ThrowOutside || isnan(x)
+                code = Int32(-1)
+            end
+        end
+    end
+    return code
+end
+
+# Column `k` of `D` in Float64, clamped to the box.
+@inline function clamped_point(D, k, lower::NTuple{N,Float64}, upper::NTuple{N,Float64}) where {N}
+    return ntuple(r -> clamp(Float64(D[r, k]), lower[r], upper[r]), Val(N))
+end
+
+# The cell of each column `k` of `D` with the nearest centroid, as the k-d tree of a host
+# `CVTArchive` finds it: the same Float64 distances, summed in the same order, and the
+# lowest index on a tie; `0` and `-1` as for `device_cell`. One thread per solution, which
+# compares the descriptor with the centroids of its bucket only (see `CentroidBuckets`);
+# they are in increasing order, so the first of equally near centroids is kept.
+@kernel function nearest_kernel!(cells, @Const(centroids), @Const(offsets), @Const(members), @Const(D),
+                                 bucket_dims::NTuple{N,Int}, lower::NTuple{N,Float64}, upper::NTuple{N,Float64},
+                                 outside) where {N}
     k = @index(Global)
+    code = nearest_code(D, k, lower, upper, outside)
+    cells[k] = code == 1 ? nearest_in_bucket(centroids, offsets, members, clamped_point(D, k, lower, upper),
+                                             bucket_dims, lower, upper) : code
+end
+
+@inline function nearest_in_bucket(centroids, offsets, members, q::NTuple{N,Float64}, bucket_dims::NTuple{N,Int},
+                                   lower::NTuple{N,Float64}, upper::NTuple{N,Float64}) where {N}
+    b = 0
+    stride = 1
+    for r in 1:N
+        n = bucket_dims[r]
+        i = min(unsafe_trunc(Int, floor((q[r] - lower[r]) / (upper[r] - lower[r]) * n)) + 1, n)
+        b += (i - 1) * stride
+        stride *= n
+    end
+    best = Int32(0)
+    best_distance = Inf
+    for m in offsets[b+1]:(offsets[b+2]-1)
+        c = members[m]
+        distance = 0.0
+        for r in 1:N
+            delta = centroids[r, c] - q[r]
+            distance += delta * delta
+        end
+        if distance < best_distance
+            best_distance = distance
+            best = c
+        end
+    end
+    return best
+end
+
+# Classifies solution `k`, whose cell is `c`, against the archive before the batch, and
+# raises the key of the cell it enters. `flags` collects the first solution with a refused
+# descriptor, the first with a NaN fitness, and whether a cell is new.
+@inline function classify_solution!(k, c, cells, status, improvement, best_key, flags, occupied, stored,
+                                    batch_fitness)
     F = eltype(stored)
     f = convert(F, batch_fitness[k])
-    c = device_cell(dims, lower, upper, outside, D, k)
     cells[k] = c
     isnan(f) && @atomic flags[2] min Int32(k)
     if c < 0
@@ -230,6 +292,39 @@ end
         @atomic best_key[c] max fitness_key(f)
         @atomic flags[3] max Int32(1)
     end
+    return nothing
+end
+
+@kernel function grid_classify_kernel!(cells, status, improvement, best_key, flags, @Const(occupied),
+                                       @Const(stored), @Const(batch_fitness), @Const(D), dims, lower, upper,
+                                       outside)
+    k = @index(Global)
+    c = device_cell(dims, lower, upper, outside, D, k)
+    classify_solution!(k, c, cells, status, improvement, best_key, flags, occupied, stored, batch_fitness)
+end
+
+# For cells found beforehand, by `nearest_kernel!`.
+@kernel function found_classify_kernel!(cells, status, improvement, best_key, flags, @Const(occupied),
+                                        @Const(stored), @Const(batch_fitness))
+    k = @index(Global)
+    classify_solution!(k, cells[k], cells, status, improvement, best_key, flags, occupied, stored, batch_fitness)
+end
+
+function classify!(backend, archive::DeviceGridArchive, cells, status, improvement, batch_fitness, D)
+    grid_classify_kernel!(backend)(cells, status, improvement, archive.best_key, archive.flags, archive.occupied,
+                                   archive.fitness, batch_fitness, D, archive.dims, Tuple(archive.lower),
+                                   Tuple(archive.upper), archive.outside; ndrange=length(cells))
+    return nothing
+end
+
+function classify!(backend, archive::DeviceCVTArchive, cells, status, improvement, batch_fitness, D)
+    nearest_kernel!(backend)(cells, archive.centroid_matrix, archive.bucket_offsets, archive.bucket_members, D,
+                             archive.bucket_dims, Tuple(archive.lower), Tuple(archive.upper), archive.outside;
+                             ndrange=length(cells))
+    sync!(backend)
+    found_classify_kernel!(backend)(cells, status, improvement, archive.best_key, archive.flags, archive.occupied,
+                                    archive.fitness, batch_fitness; ndrange=length(cells))
+    return nothing
 end
 
 # The first solution of the batch with the best key of its cell.
@@ -273,7 +368,7 @@ end
     end
 end
 
-function QD.device_add_batch!(archive::DeviceGridArchive{T,F,N}, X::AbstractMatrix, batch_fitness::AbstractVector,
+function QD.device_add_batch!(archive::DeviceCellArchive{T,F,N}, X::AbstractMatrix, batch_fitness::AbstractVector,
                               D::AbstractMatrix) where {T,F,N}
     n = length(batch_fitness)
     size(X, 2) == n ||
@@ -288,12 +383,9 @@ function QD.device_add_batch!(archive::DeviceGridArchive{T,F,N}, X::AbstractMatr
     n == 0 && return results
     backend = get_backend(archive.genotypes)
     cells = similar(archive.occupied_idx, Int32, n)
-    flags = archive.flags
-    classify_kernel!(backend)(cells, status, improvement, archive.best_key, flags, archive.occupied, archive.fitness,
-                              batch_fitness, D, archive.dims, Tuple(archive.lower), Tuple(archive.upper),
-                              archive.outside; ndrange=n)
+    classify!(backend, archive, cells, status, improvement, batch_fitness, D)
     sync!(backend)
-    refused, nan, new_cell = Array(flags)
+    refused, nan, new_cell = Array(archive.flags)
     if refused != NONE || nan != NONE
         reset_kernel!(backend)(archive.best_key, archive.winner, archive.flags, cells, status; ndrange=n)
         sync!(backend)

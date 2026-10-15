@@ -136,7 +136,7 @@ end
     @test_throws "descriptor has 3 dimensions but the archive has 2" QD.add_batch!(dev, xs[1:1], [Evaluation(1.0, SVector(0.1, 0.2, 0.3))])
     @test_throws "the evaluation has a phenotype of type String but the archive stores none" QD.add_batch!(dev, xs[1:1], [Evaluation(1.0, SVector(0.1, 0.2), "p")])
     @test_throws "descriptors must be 2 × 3, one column per solution, got 2 × 2" QD.EvaluationBatch{2}(zeros(3), zeros(2, 2))
-    @test_throws "the kernels of DeviceGridArchive need KernelAbstractions.jl" QD.device_add_batch!(nothing, nothing, nothing, nothing)
+    @test_throws "the kernels of the device archives need KernelAbstractions.jl" QD.device_add_batch!(nothing, nothing, nothing, nothing)
 end
 
 @testset "conformance" begin
@@ -191,7 +191,7 @@ end
     @test_throws "DeviceVariationEmitter supports GaussianMutation and IsoLineVariation, not PolynomialMutation" DeviceVariationEmitter(PolynomialMutation(-1.0, 1.0); batch_size=4)
     @test_throws "batch_size must be at least 1, got 0" DeviceVariationEmitter(GaussianMutation(0.1); batch_size=0)
     @test_throws "cannot sample elites from an empty archive" QD.ask(Xoshiro(1), emitter, DeviceGridArchive(prob; dims=(2, 2), device=Array))
-    @test_throws "a DeviceVariationEmitter draws its parents from a DeviceGridArchive, not a GridArchive" QD.ask(Xoshiro(1), emitter, GridArchive(prob; dims=(2, 2)))
+    @test_throws "a DeviceVariationEmitter draws its parents from a device archive such as a DeviceGridArchive, not a GridArchive" QD.ask(Xoshiro(1), emitter, GridArchive(prob; dims=(2, 2)))
 end
 
 @testset "evaluate_batch of a device batch" begin
@@ -278,4 +278,98 @@ end
     @test_throws "a DeviceGridArchive stores no phenotypes" MAPElites(prob; dims=(2, 2), device=Array, phenotype=String)
     noisy = StochasticQDProblem((rng, x) -> (0.0, (0.0, 0.0)); init=rng -> rand(rng, 2), bounds=((0, 1), (0, 1)))
     @test_throws "a DeviceGridArchive takes deterministic problems" init(noisy, MAPElites(noisy; dims=(2, 2), device=Array); budget=100)
+end
+
+@testset "centroid buckets" begin
+    rng = Xoshiro(4)
+    points = [rand(rng, SVector{2,Float64}) for _ in 1:300]
+    tree = QD.CentroidTree(points)
+    for _ in 1:50
+        q = rand(rng, SVector{2,Float64})
+        radius2 = 0.05 * rand(rng)
+        @test sort!(QD.within!(Int[], tree, q, radius2)) == [i for i in eachindex(points) if sum(abs2, points[i] - q) <= radius2]
+    end
+    buckets = QD.CentroidBuckets(tree, SVector(0.0, 0.0), SVector(1.0, 1.0))
+    @test length(buckets.offsets) == prod(buckets.dims) + 1
+    @test all(b -> issorted(buckets.members[buckets.offsets[b]:buckets.offsets[b+1]-1]), 1:prod(buckets.dims))
+    # the nearest centroid of every point is among the centroids of its bucket
+    for _ in 1:2000
+        q = rand(rng, SVector{2,Float64})
+        k = map((x, n) -> min(floor(Int, x * n) + 1, n), Tuple(q), buckets.dims)
+        b = LinearIndices(buckets.dims)[k...]
+        @test QD.nearest(tree, q) in buckets.members[buckets.offsets[b]:buckets.offsets[b+1]-1]
+    end
+    # in many dimensions one bucket holds every centroid
+    many = [rand(rng, SVector{8,Float64}) for _ in 1:50]
+    wide = QD.CentroidBuckets(QD.CentroidTree(many), zero(SVector{8,Float64}), ones(SVector{8,Float64}))
+    @test length(wide.members) <= 32 * length(many)
+end
+
+@testset "DeviceCVTArchive" begin
+    prob = Rastrigin(4)
+    host = CVTArchive(Xoshiro(5), prob; cells=40, samples=4000)
+    dev = DeviceCVTArchive(Xoshiro(5), prob; cells=40, samples=4000, device=Array)
+    @test dev isa DeviceCVTArchive{Float64,Float64,2}
+    @test dev isa QD.DeviceCellArchive
+    @test QD.centroids(dev) == QD.centroids(host)
+    @test QD.capacity(dev) == 40
+    @test QD.descriptor_bounds(dev) == QD.descriptor_bounds(host)
+    given = DeviceCVTArchive{Float32,Float32}(JLArray, QD.centroids(host), QD.descriptor_bounds(prob), 4)
+    @test given.genotypes isa JLArray{Float32}
+    @test QD.centroids(given) == QD.centroids(host)
+    @test_throws "centroid 2 is (5.0, 0.0), outside the bounds" DeviceCVTArchive{Float64,Float64}(Array, [[0.0, 0.0], [5.0, 0.0]], ((-1, 1), (-1, 1)), 2)
+    @test_throws "two centroids are identical" DeviceCVTArchive{Float64,Float64}(Array, [[0.0, 0.0], [0.0, 0.0]], ((-1, 1), (-1, 1)), 2)
+    @test_throws "centroid 1 has 3 entries but bounds has 2" DeviceCVTArchive{Float64,Float64}(Array, [[0.0, 0.0, 0.0]], ((-1, 1), (-1, 1)), 2)
+    @test_throws "cells must be at least 1, got 0" DeviceCVTArchive{Float64,Float64}(Array, Xoshiro(1), 0, ((0, 1), (0, 1)), 2)
+
+    # add_batch! agrees with CVTArchive, for every outside policy and fitness type
+    rng = Xoshiro(6)
+    for outside in (ThrowOutside(), ClampOutside(), RejectOutside()), F in (Float64, Float32), device in (Array, JLArray)
+        h = CVTArchive{Vector{Float64},F}(Xoshiro(7), 30, ((0, 1), (0, 2)); samples=3000, outside)
+        d = DeviceCVTArchive{Float64,F}(device, Xoshiro(7), 30, ((0, 1), (0, 2)), 3; samples=3000, outside)
+        lo, hi = outside isa ThrowOutside ? ((0.0, 0.0), (1.0, 2.0)) : ((-0.3, -0.3), (1.3, 2.3))
+        for round in 1:5
+            n = rand(rng, 1:60)
+            xs = [randn(rng, 3) for _ in 1:n]
+            evs = [Evaluation(F(rand(rng, -3:3)), SVector(lo[1] + (hi[1] - lo[1]) * rand(rng), lo[2] + (hi[2] - lo[2]) * rand(rng)))
+                   for _ in 1:n]
+            @test QD.add_batch!(d, xs, evs) == QD.add_batch!(h, xs, evs)
+            @test elites_by_cell(h, d) == elites_by_cell(h, h)
+        end
+        @test qd_score(d) ≈ qd_score(h)
+        converted = CVTArchive(d)
+        @test converted isa CVTArchive{Vector{Float64},F}
+        @test elites_by_cell(h, converted) == elites_by_cell(h, h)
+    end
+
+    # the kernels assign the cell of the host k-d tree, also at exact ties between centroids
+    step = 1 / 10
+    grid = vec([[(i - 0.5) * step, (j - 0.5) * step] for i in 1:10, j in 1:10])
+    tied = DeviceCVTArchive{Float64,Float64}(Array, grid, ((0, 1), (0, 1)), 1)
+    points = [SVector(rand(rng), rand(rng)) for _ in 1:500]
+    append!(points, [(SVector{2}(grid[i]) + SVector{2}(grid[j])) / 2 for i in eachindex(grid) for j in eachindex(grid)
+                     if 0 < sum(abs2, grid[i] - grid[j]) <= 2.01 * step^2])
+    xs = [[0.0] for _ in points]
+    evs = [Evaluation(Float64(k), p) for (k, p) in enumerate(points)]
+    for (x, ev) in zip(xs, evs)
+        empty!(tied)
+        QD.add_batch!(tied, [x], [ev])
+        @test only(QD.host_occupied(tied)) == QD.cell_index(tied, ev.descriptor)
+    end
+
+    test_archive(() -> DeviceCVTArchive{Float64,Float64}(Array, QD.centroids(host), QD.descriptor_bounds(prob), 4), prob;
+                 sequential_batch=false)
+    test_archive(() -> DeviceCVTArchive{Float32,Float32}(JLArray, QD.centroids(host), QD.descriptor_bounds(prob), 4;
+                                                         outside=RejectOutside()), prob; sequential_batch=false)
+
+    # MAP-Elites over it, reproducible and close to the host archive
+    alg = MAPElites(dev; batch_size=200, variation=GaussianMutation(0.5))
+    @test alg.emitters[1] isa DeviceVariationEmitter
+    result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
+    @test result.archive isa DeviceCVTArchive
+    @test solve(prob, alg; budget=6_000, rng=Xoshiro(1)).history == result.history
+    cpu = solve(prob, MAPElites(host; batch_size=200, variation=GaussianMutation(0.5)); budget=6_000, rng=Xoshiro(1))
+    @test abs(coverage(result.archive) - coverage(cpu.archive)) < 0.15
+    noisy = StochasticQDProblem((rng, x) -> (0.0, (0.0, 0.0)); init=rng -> rand(rng, 2), bounds=((0, 1), (0, 1)))
+    @test_throws "a DeviceCVTArchive takes deterministic problems" init(noisy, MAPElites(DeviceCVTArchive{Float64,Float64}(Array, [[0.5, 0.5]], ((0, 1), (0, 1)), 2)); budget=100)
 end

@@ -82,8 +82,9 @@ end
 
 MAP-Elites over any archive: `archive` with one [`VariationEmitter`](@ref) that
 applies `variation` to `batch_size` children per round, or a
-[`DeviceVariationEmitter`](@ref) for a [`DeviceGridArchive`](@ref). Use it to run MAP-Elites
-with an archive other than the grid, such as a [`CVTArchive`](@ref).
+[`DeviceVariationEmitter`](@ref) for a [`DeviceCellArchive`](@ref). Use it to run MAP-Elites
+with an archive other than the grid, such as a [`CVTArchive`](@ref) or a
+[`DeviceCVTArchive`](@ref).
 
 # Example
 
@@ -98,7 +99,7 @@ function MAPElites(archive::AbstractArchive; batch_size::Integer=64,
     return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
 end
 
-function MAPElites(archive::DeviceGridArchive; batch_size::Integer=64,
+function MAPElites(archive::DeviceCellArchive; batch_size::Integer=64,
                    variation::AbstractVariation=GaussianMutation(0.1))
     return QDAlgorithm(archive, (DeviceVariationEmitter(variation; batch_size),))
 end
