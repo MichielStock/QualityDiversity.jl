@@ -15,6 +15,7 @@ const QD = QualityDiversity
     @testset "cvt archive" begin include("test_cvt.jl") end
     @testset "categorical archive" begin include("test_categorical.jl") end
     @testset "threshold archive" begin include("test_threshold.jl") end
+    @testset "spread archive and MELS" begin include("test_spread.jl") end
     @testset "unstructured archive" begin include("test_unstructured.jl") end
     @testset "variation" begin include("test_variation.jl") end
     @testset "emitters" begin include("test_emitters.jl") end

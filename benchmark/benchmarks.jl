@@ -32,6 +32,8 @@ const noisy = StochasticQDProblem((rng, x) -> (-sum(abs2, x) + randn(rng), (x[1]
 const sampled = Sampled(noisy; num_samples=10)
 SUITE["problem"]["StochasticQDProblem/evaluate"] = @benchmarkable QD.evaluate($rng, $noisy, $x)
 SUITE["problem"]["Sampled/evaluate"] = @benchmarkable QD.evaluate($rng, $sampled, $x)
+const spread_problem = SampledSpread(noisy; num_samples=10)
+SUITE["problem"]["SampledSpread/evaluate"] = @benchmarkable QD.evaluate($rng, $spread_problem, $x)
 for n in (36, 100, 1000)
     xs = [QD.random_solution(rng, prob) for _ in 1:n]
     SUITE["problem"]["evaluate_batch"]["batch=$n"] = @benchmarkable QD.evaluate_batch($prob, $xs)
@@ -113,6 +115,24 @@ SUITE["archive"]["ThresholdArchive/metrics/max_fitness"] = @benchmarkable max_fi
 SUITE["archive"]["ThresholdArchive/add_batch!/n=100"] = let xs = [QD.random_solution(rng, prob) for _ in 1:BATCH]
     evs = QD.evaluate_batch(prob, xs)
     @benchmarkable QD.add_batch!($threshold, $xs, $evs)
+end
+
+const spread_archive = let a = SpreadArchive(GridArchive(spread_problem; dims=(100, 100), outside=ClampOutside()))
+    xs = [QD.random_solution(rng, spread_problem) for _ in 1:20_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(rng, spread_problem, xs))
+    a
+end
+const spread_ev = QD.evaluate(rng, spread_problem, x)
+SUITE["archive"]["SpreadArchive/cell_index (10 samples)"] = @benchmarkable QD.cell_index($spread_archive, $(spread_ev.descriptor))
+SUITE["archive"]["SpreadArchive/add!/rejected"] =
+    @benchmarkable QD.add!($spread_archive, $x, $(QD.Evaluation(-1e9, spread_ev.descriptor)))
+SUITE["archive"]["SpreadArchive/add_batch!/n=100"] = let xs = [QD.random_solution(rng, spread_problem) for _ in 1:BATCH]
+    evs = QD.evaluate_batch(rng, spread_problem, xs)
+    @benchmarkable QD.add_batch!($spread_archive, $xs, $evs)
+end
+SUITE["algorithm"]["MELS/step!"] = let alg = MELS(spread_problem; dims=(100, 100), batch_size=BATCH, outside=ClampOutside())
+    state = init(spread_problem, alg; budget=10^9, rng=Xoshiro(1))
+    @benchmarkable step!($state)
 end
 
 # ── CMA-ES emitters ───────────────────────────────────────

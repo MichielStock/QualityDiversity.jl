@@ -58,14 +58,27 @@ function test_descriptor_space(prob)
     return categories, bounds
 end
 
+# Tests that a real descriptor lies inside the bounds, or each of the descriptors of a
+# `SampledSpread` problem.
+function test_descriptor_values(d, bounds)
+    @test d isa AbstractVector{<:Real}
+    @test length(d) == length(bounds)
+    @test all(i -> bounds[i][1] <= d[i] <= bounds[i][2], eachindex(bounds))
+    return nothing
+end
+
+function test_descriptor_values(samples::QD.DescriptorSamples, bounds)
+    @test !isempty(samples)
+    foreach(d -> test_descriptor_values(d, bounds), samples)
+    return nothing
+end
+
 # Tests that one evaluation has the types and the descriptor space of the problem.
 function test_evaluation_values(ev, categories, bounds)
     @test ev isa QD.Evaluation
     @test ev.fitness isa Union{Real,AbstractVector{<:Real}}
     if categories === nothing
-        @test ev.descriptor isa AbstractVector{<:Real}
-        @test length(ev.descriptor) == length(bounds)
-        @test all(i -> bounds[i][1] <= ev.descriptor[i] <= bounds[i][2], eachindex(bounds))
+        test_descriptor_values(ev.descriptor, bounds)
     else
         @test ev.descriptor isa Tuple
         @test length(ev.descriptor) == length(categories)
@@ -192,7 +205,8 @@ end
 Check that the archives built by `make_archive()` meet the contract of
 [`AbstractArchive`](@ref). `make_archive` is called without arguments and must
 return a new, empty archive each time. `prob` supplies solutions and
-evaluations; its descriptors must lie inside the archive's bounds.
+evaluations; its descriptors must lie inside the archive's bounds. A stochastic
+problem is evaluated with a fixed seed.
 
 The checks cover an empty archive, the status and `improvement` of each kind
 of insertion, `length`, `capacity`, `cell_index` (on an archive holding all `n`
@@ -238,7 +252,7 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
         end
 
         xs = [QD.random_solution(rng, prob) for _ in 1:n]
-        evs = QD.evaluate_batch(prob, xs)
+        evs = QD.evaluate_batch(Xoshiro(2), prob, xs)
 
         @testset "cell_index" begin
             # on a filled archive: one without a fixed partition has no cell to
@@ -397,7 +411,7 @@ function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::Abstr
         end
 
         xs = [QD.random_solution(rng, prob) for _ in 1:n]
-        evs = QD.evaluate_batch(prob, xs)
+        evs = QD.evaluate_batch(Xoshiro(2), prob, xs)
 
         @testset "cell_index" begin
             for ev in evs
@@ -553,7 +567,7 @@ function test_emitter(emitter::QD.AbstractEmitter, archive::QD.AbstractArchive{G
         @test length(xs) == QD.batch_size(emitter)
 
         @testset "tell!" begin
-            evs = QD.evaluate_batch(prob, xs)
+            evs = QD.evaluate_batch(Xoshiro(2), prob, xs)
             results = QD.add_batch!(archive, xs, evs)
             @test QD.tell!(emitter, xs, evs, results) === nothing
         end

@@ -51,7 +51,7 @@ julia> using QualityDiversity, StaticArrays
 julia> archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)), [0.0, 0.0]);
 
 julia> QualityDiversity.add!(archive, [0.1], Evaluation(SVector(1.0, 3.0), SVector(0.2, 0.2))).status
-NewCell::AddStatus = 1
+NewCell::AddStatus = 2
 
 julia> QualityDiversity.add!(archive, [0.2], Evaluation(SVector(3.0, 1.0), SVector(0.2, 0.2))).improvement
 2.0
