@@ -1,9 +1,9 @@
 """
-    UnstructuredArchive{G,F}(ndims; capacity, threshold)
-    UnstructuredArchive{G}(ndims; capacity, threshold)
-    UnstructuredArchive(ndims; capacity, threshold)
+    UnstructuredArchive{G,F}(ndims; capacity, threshold, phenotype=Nothing)
+    UnstructuredArchive{G}(ndims; capacity, threshold, phenotype=Nothing)
+    UnstructuredArchive(ndims; capacity, threshold, phenotype=Nothing)
     UnstructuredArchive(prob::AbstractQDProblem; capacity, threshold,
-                        genotype=Vector{Float64}, fitness=Float64)
+                        genotype=Vector{Float64}, fitness=Float64, phenotype=Nothing)
 
 Archive without a fixed partition of descriptor space. It stores up to
 `capacity` solutions, each at its own descriptor, and a solution enters if it
@@ -15,7 +15,9 @@ neighbour (local competition).
 by default, and `F<:Real` the fitness type, `Float64` by default. Descriptors
 are `SVector{ndims,Float64}`, and distances are Euclidean in descriptor units,
 so descriptors on very different scales should be normalized by the problem.
-`threshold` is the distance beyond which a descriptor counts as new.
+`threshold` is the distance beyond which a descriptor counts as new. `phenotype` is
+the type of the phenotypes the archive stores, `Nothing` for none; see
+[`Evaluation`](@ref).
 
 [`add!`](@ref QualityDiversity.add!) finds the stored solution with the nearest
 descriptor, at distance `r`:
@@ -54,48 +56,51 @@ julia> length(archive), QualityDiversity.capacity(archive)
 (0, 100)
 ```
 """
-mutable struct UnstructuredArchive{G,F<:Real,N} <: AbstractArchive{G,F,SVector{N,Float64}}
+mutable struct UnstructuredArchive{G,F<:Real,N,P} <: AbstractArchive{G,F,SVector{N,Float64},P}
     const threshold::Float64
     # One entry per slot; the first `n` are in use.
     const fitness::Vector{F}
     const descriptors::Vector{SVector{N,Float64}}
     const genotypes::Vector{G}
+    const phenotypes::Vector{P}
     n::Int
     # Running totals over the stored solutions, as in `CellArchive`.
     fitness_sum::Float64
     fitness_sum_error::Float64
     fitness_max::F
 
-    function UnstructuredArchive{G,F,N}(capacity, threshold) where {G,F<:Real,N}
+    function UnstructuredArchive{G,F,N,P}(capacity, threshold) where {G,F<:Real,N,P}
         N >= 1 || throw(ArgumentError("ndims must be at least 1, got $N"))
         capacity >= 1 || throw(ArgumentError("capacity must be at least 1, got $capacity"))
         (isfinite(threshold) && threshold >= 0) ||
             throw(ArgumentError("threshold must be finite and at least 0, got $threshold"))
-        return new{G,F,N}(Float64(threshold),
-                          Vector{F}(undef, capacity),
-                          Vector{SVector{N,Float64}}(undef, capacity),
-                          Vector{G}(undef, capacity),
+        return new{G,F,N,P}(Float64(threshold),
+                            Vector{F}(undef, capacity),
+                            Vector{SVector{N,Float64}}(undef, capacity),
+                            Vector{G}(undef, capacity),
+                            Vector{P}(undef, capacity),
                           0, 0.0, 0.0, zero(F))
     end
 end
 
-function UnstructuredArchive{G,F}(ndims::Integer; capacity::Integer,
-                                  threshold::Real) where {G,F<:Real}
-    return UnstructuredArchive{G,F,Int(ndims)}(Int(capacity), threshold)
+function UnstructuredArchive{G,F}(ndims::Integer; capacity::Integer, threshold::Real,
+                                  phenotype::Type=Nothing) where {G,F<:Real}
+    return UnstructuredArchive{G,F,Int(ndims),phenotype}(Int(capacity), threshold)
 end
 
-function UnstructuredArchive{G}(ndims::Integer; capacity::Integer, threshold::Real) where {G}
-    return UnstructuredArchive{G,Float64}(ndims; capacity, threshold)
+function UnstructuredArchive{G}(ndims::Integer; kwargs...) where {G}
+    return UnstructuredArchive{G,Float64}(ndims; kwargs...)
 end
 
-function UnstructuredArchive(ndims::Integer; capacity::Integer, threshold::Real)
-    return UnstructuredArchive{Vector{Float64}}(ndims; capacity, threshold)
+function UnstructuredArchive(ndims::Integer; kwargs...)
+    return UnstructuredArchive{Vector{Float64}}(ndims; kwargs...)
 end
 
 function UnstructuredArchive(prob::AbstractQDProblem; capacity::Integer, threshold::Real,
-                             genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64)
+                             genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
+                             phenotype::Type=Nothing)
     return UnstructuredArchive{genotype,fitness}(length(descriptor_bounds(prob));
-                                                 capacity, threshold)
+                                                 capacity, threshold, phenotype)
 end
 
 Base.length(archive::UnstructuredArchive) = archive.n
@@ -165,15 +170,16 @@ end
 Insert `x` if it is novel or beats its nearest neighbour; see
 [`UnstructuredArchive`](@ref) for the rules.
 """
-function add!(archive::UnstructuredArchive{G,F}, x,
-              ev::Evaluation{<:Real,<:AbstractVector{<:Real}}) where {G,F}
+function add!(archive::UnstructuredArchive{G,F,N,P}, x,
+              ev::Evaluation{<:Real,<:AbstractVector{<:Real}}) where {G,F,N,P}
     point = checked_descriptor(archive, ev.descriptor)
     fitness = convert(F, ev.fitness)
+    phenotype = stored_phenotype(P, ev.phenotype)
     nearest, distance = nearest_stored(archive, point)
     if nearest == 0 || distance > archive.threshold^2
         if archive.n < capacity(archive)
             archive.n += 1
-            _store!(archive, archive.n, x, fitness, point)
+            _store!(archive, archive.n, x, fitness, point, phenotype)
             _add_to_sum!(archive, Float64(fitness))
             archive.fitness_max = archive.n == 1 ? fitness : max(archive.fitness_max, fitness)
             return AddResult(NewCell, fitness)
@@ -181,7 +187,7 @@ function add!(archive::UnstructuredArchive{G,F}, x,
         weakest = weakest_stored(archive)
         previous = archive.fitness[weakest]
         fitness > previous || return AddResult(Rejected, fitness - previous)
-        _store!(archive, weakest, x, fitness, point)
+        _store!(archive, weakest, x, fitness, point, phenotype)
         _add_to_sum!(archive, Float64(fitness) - Float64(previous))
         archive.fitness_max = max(archive.fitness_max, fitness)
         return AddResult(NewCell, fitness)
@@ -189,16 +195,17 @@ function add!(archive::UnstructuredArchive{G,F}, x,
     previous = archive.fitness[nearest]
     improvement = fitness - previous
     improvement > 0 || return AddResult(Rejected, improvement)
-    _store!(archive, nearest, x, fitness, point)
+    _store!(archive, nearest, x, fitness, point, phenotype)
     _add_to_sum!(archive, Float64(fitness) - Float64(previous))
     archive.fitness_max = max(archive.fitness_max, fitness)
     return AddResult(Improved, improvement)
 end
 
-function _store!(archive::UnstructuredArchive, i, x, fitness, descriptor)
+function _store!(archive::UnstructuredArchive, i, x, fitness, descriptor, phenotype)
     archive.genotypes[i] = x
     archive.fitness[i] = fitness
     archive.descriptors[i] = descriptor
+    store_phenotype!(archive.phenotypes, i, phenotype)
     return nothing
 end
 
@@ -230,6 +237,6 @@ function sample_elites(rng::AbstractRNG, archive::UnstructuredArchive{G}, n::Int
 end
 
 function elites(archive::UnstructuredArchive)
-    return ((archive.genotypes[i], Evaluation(archive.fitness[i], archive.descriptors[i]))
+    return ((archive.genotypes[i], Evaluation(archive.fitness[i], archive.descriptors[i], archive.phenotypes[i]))
             for i in 1:archive.n)
 end

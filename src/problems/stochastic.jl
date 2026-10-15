@@ -3,8 +3,8 @@
     StochasticQDProblem(f; init, categories)
 
 Wrap a function of a random number generator and a solution as a stochastic problem.
-`f(rng, x)` returns a `(fitness, descriptor)` tuple for the solution `x` and draws every
-random number from `rng`. The other arguments are those of [`QDProblem`](@ref). See
+`f(rng, x)` returns a `(fitness, descriptor)` or `(fitness, descriptor, phenotype)` tuple
+for the solution `x` and draws every random number from `rng`. The other arguments are those of [`QDProblem`](@ref). See
 [`AbstractStochasticQDProblem`](@ref) for how the generators are made, and note that
 `f` is called from several threads at once.
 
@@ -34,10 +34,7 @@ end
 StochasticQDProblem(f; init, bounds=nothing, categories=nothing) =
     StochasticQDProblem(f, init, descriptor_space(bounds, categories))
 
-function evaluate(rng::AbstractRNG, prob::StochasticQDProblem, x)
-    fitness, descriptor = prob.f(rng, x)
-    return make_evaluation(prob.space, fitness, descriptor)
-end
+evaluate(rng::AbstractRNG, prob::StochasticQDProblem, x) = evaluation_of(prob.space, prob.f(rng, x))
 
 random_solution(rng::AbstractRNG, prob::StochasticQDProblem) = prob.init(rng)
 
@@ -103,6 +100,12 @@ solutions are scored for the same budget; see
 must be a real number and the descriptor a vector of real numbers. The descriptor bounds
 and the fitness offset are those of `prob`.
 
+If `prob` returns a phenotype, the result has the phenotype that occurs most often among
+the evaluations, compared with `isequal`; on a tie, the one that occurs first. The
+`expectation` applies to the fitness and the descriptor only. A phenotype type without its
+own `isequal` and `hash` compares by identity, so every evaluation differs and the result has
+the phenotype of the first.
+
 # Example
 
 ```jldoctest
@@ -152,15 +155,45 @@ function evaluate(rng::AbstractRNG, prob::Sampled, x)
     n = prob.num_samples
     fitness = Vector{typeof(first.fitness)}(undef, n)
     descriptors = Vector{typeof(first.descriptor)}(undef, n)
+    phenotypes = phenotype_samples(first.phenotype, n)
     fitness[1] = first.fitness
     descriptors[1] = first.descriptor
     for i in 2:n
         ev = evaluate(rng, prob.problem, x)
         fitness[i] = ev.fitness
         descriptors[i] = ev.descriptor
+        record_phenotype!(phenotypes, i, ev.phenotype)
     end
     return Evaluation(expectation(prob.expectation, fitness),
-                      expected_descriptor(prob.expectation, descriptors))
+                      expected_descriptor(prob.expectation, descriptors),
+                      most_frequent(phenotypes))
+end
+
+# The phenotypes of the evaluations of one solution; `nothing` when the problem returns
+# none, so that such a problem keeps no vector of them.
+phenotype_samples(::Nothing, n) = nothing
+function phenotype_samples(first, n)
+    phenotypes = Vector{typeof(first)}(undef, n)
+    phenotypes[1] = first
+    return phenotypes
+end
+
+record_phenotype!(::Nothing, i, ::Nothing) = nothing
+record_phenotype!(phenotypes, i, phenotype) = (phenotypes[i] = phenotype; nothing)
+
+# The value that occurs most often in `values`, compared with `isequal`; the first one on
+# a tie.
+most_frequent(::Nothing) = nothing
+function most_frequent(values::AbstractVector{T}) where {T}
+    counts = Dict{T,Int}()
+    for v in values
+        counts[v] = get(counts, v, 0) + 1
+    end
+    best = first(values)
+    for v in values
+        counts[v] > counts[best] && (best = v)
+    end
+    return best
 end
 
 function expected_descriptor(rule, descriptors::Vector{SVector{N,T}}) where {N,T}

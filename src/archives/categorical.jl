@@ -1,9 +1,9 @@
 """
-    CategoricalArchive{G,F}(categories; outside=ThrowOutside())
-    CategoricalArchive{G}(categories; outside=ThrowOutside())
-    CategoricalArchive(categories; outside=ThrowOutside())
+    CategoricalArchive{G,F}(categories; outside=ThrowOutside(), phenotype=Nothing)
+    CategoricalArchive{G}(categories; outside=ThrowOutside(), phenotype=Nothing)
+    CategoricalArchive(categories; outside=ThrowOutside(), phenotype=Nothing)
     CategoricalArchive(prob::AbstractQDProblem; genotype=Vector{Float64},
-                       fitness=Float64, outside=ThrowOutside())
+                       fitness=Float64, outside=ThrowOutside(), phenotype=Nothing)
 
 Archive with one cell for each combination of discrete descriptor values, and
 the highest-fitness solution found in each. Use it when a descriptor counts or
@@ -34,7 +34,8 @@ with a component that is not a category:
 - `ThrowOutside()` (default): throw an `ArgumentError`.
 - `RejectOutside()`: discard the solution; `add!` returns a `Rejected` result.
 
-`ClampOutside()` has no meaning for categories and is an error.
+`ClampOutside()` has no meaning for categories and is an error. `phenotype` is the
+type of the phenotypes the archive stores, `Nothing` for none; see [`Evaluation`](@ref).
 
 A category is found with a hash lookup, so a lookup takes constant time and does
 not allocate however many categories there are. A solution is stored without
@@ -55,7 +56,7 @@ julia> QualityDiversity.cell_index(archive, (3, :ring))
 16
 ```
 """
-mutable struct CategoricalArchive{G,F<:Real,D<:Tuple,C<:Tuple,L<:Tuple,O<:Union{ThrowOutside,RejectOutside}} <: CellArchive{G,F,D}
+mutable struct CategoricalArchive{G,F<:Real,D<:Tuple,C<:Tuple,L<:Tuple,O<:Union{ThrowOutside,RejectOutside},P} <: CellArchive{G,F,D,P}
     # The allowed values of each dimension, in the order given.
     const categories::C
     # For each dimension, the position of each value in `categories`.
@@ -65,32 +66,36 @@ mutable struct CategoricalArchive{G,F<:Real,D<:Tuple,C<:Tuple,L<:Tuple,O<:Union{
     const fitness::Vector{F}
     const descriptors::Vector{D}
     const genotypes::Vector{G}
+    const phenotypes::Vector{P}
     const occupied_idx::Vector{Int}
     # Running totals, as in GridArchive.
     fitness_sum::Float64
     fitness_sum_error::Float64
     fitness_max::F
 
-    function CategoricalArchive{G,F,D}(categories::C, lookups::L,
-                                       outside::O) where {G,F<:Real,D<:Tuple,C<:Tuple,L<:Tuple,
-                                                          O<:Union{ThrowOutside,RejectOutside}}
+    function CategoricalArchive{G,F,D,C,L,O,P}(categories, lookups,
+                                               outside) where {G,F<:Real,D<:Tuple,C<:Tuple,L<:Tuple,
+                                                               O<:Union{ThrowOutside,RejectOutside},P}
         ncells = prod(length, categories)
-        return new{G,F,D,C,L,O}(categories, lookups, outside,
-                                falses(ncells),
-                                Vector{F}(undef, ncells),
-                                Vector{D}(undef, ncells),
-                                Vector{G}(undef, ncells),
-                                Int[],
+        return new{G,F,D,C,L,O,P}(categories, lookups, outside,
+                                  falses(ncells),
+                                  Vector{F}(undef, ncells),
+                                  Vector{D}(undef, ncells),
+                                  Vector{G}(undef, ncells),
+                                  Vector{P}(undef, ncells),
+                                  Int[],
                                 0.0, 0.0, zero(F))
     end
 end
 
-function CategoricalArchive{G,F}(categories::Tuple; outside::OutsidePolicy=ThrowOutside()) where {G,F<:Real}
+function CategoricalArchive{G,F}(categories::Tuple; outside::OutsidePolicy=ThrowOutside(),
+                                 phenotype::Type=Nothing) where {G,F<:Real}
     isempty(categories) && throw(ArgumentError("categories must have at least one entry"))
     values = ntuple(i -> collect(categories[i]), length(categories))
     lookups = ntuple(i -> category_lookup(i, values[i]), length(categories))
     D = Tuple{map(eltype, values)...}
-    return CategoricalArchive{G,F,D}(values, lookups, check_categorical_outside(outside))
+    outside = check_categorical_outside(outside)
+    return CategoricalArchive{G,F,D,typeof(values),typeof(lookups),typeof(outside),phenotype}(values, lookups, outside)
 end
 
 CategoricalArchive{G}(categories::Tuple; kwargs...) where {G} =
@@ -100,10 +105,11 @@ CategoricalArchive(categories::Tuple; kwargs...) =
     CategoricalArchive{Vector{Float64}}(categories; kwargs...)
 
 function CategoricalArchive(prob::AbstractQDProblem; genotype::Type=Vector{Float64},
-                           fitness::Type{<:Real}=Float64, outside::OutsidePolicy=ThrowOutside())
+                           fitness::Type{<:Real}=Float64, outside::OutsidePolicy=ThrowOutside(),
+                           phenotype::Type=Nothing)
     hasmethod(descriptor_categories, Tuple{typeof(prob)}) ||
         throw(ArgumentError("$(typeof(prob)) defines no descriptor_categories; pass the categories to CategoricalArchive directly"))
-    return CategoricalArchive{genotype,fitness}(descriptor_categories(prob); outside)
+    return CategoricalArchive{genotype,fitness}(descriptor_categories(prob); outside, phenotype)
 end
 
 check_categorical_outside(outside::Union{ThrowOutside,RejectOutside}) = outside

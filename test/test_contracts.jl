@@ -1,6 +1,11 @@
 @testset "evaluation types" begin
     ev = Evaluation(1.5, (0.2, 0.7))
-    @test ev isa Evaluation{Float64,Tuple{Float64,Float64}}
+    @test ev isa Evaluation{Float64,Tuple{Float64,Float64},Nothing}
+    @test ev.phenotype === nothing
+    @test Evaluation{Float64,Tuple{Float64,Float64}}(1.5, (0.2, 0.7)) === ev
+    labelled = Evaluation(1.5, (0.2, 0.7), :ring)
+    @test labelled isa Evaluation{Float64,Tuple{Float64,Float64},Symbol}
+    @test labelled.phenotype === :ring
     r = AddResult(QD.NewCell, 0.5)
     @test r.status == QD.NewCell
     @test r.improvement === 0.5
@@ -12,7 +17,7 @@ end
     @test isabstracttype(AbstractArchive)
     @test isabstracttype(AbstractVariation)
     @test isabstracttype(AbstractEmitter)
-    @test AbstractArchive{Int,Float64,Float64} isa Type
+    @test AbstractArchive{Int,Float64,Float64,Nothing} isa Type
 end
 
 const INTERFACE_FUNCTIONS = (:evaluate, :evaluate_batch, :random_solution,
@@ -49,7 +54,7 @@ end
 end
 
 @testset "QDAlgorithm" begin
-    struct DummyArchive <: AbstractArchive{Int,Float64,Float64} end
+    struct DummyArchive <: AbstractArchive{Int,Float64,Float64,Nothing} end
     struct DummyEmitter <: AbstractEmitter end
     alg = QDAlgorithm(DummyArchive(), (DummyEmitter(), DummyEmitter()))
     @test alg isa QDAlgorithm{DummyArchive,Tuple{DummyEmitter,DummyEmitter}}

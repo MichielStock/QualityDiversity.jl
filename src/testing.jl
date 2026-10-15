@@ -197,7 +197,8 @@ evaluations; its descriptors must lie inside the archive's bounds.
 The checks cover an empty archive, the status and `improvement` of each kind
 of insertion, `length`, `capacity`, `cell_index` (on an archive holding all `n`
 solutions), `sample_elites`, `elites`,
-`add_batch!`, and `empty!` when the archive defines it. With
+`add_batch!`, and `empty!` when the archive defines it. `elites` must return the
+phenotype that came with each stored genotype, of the archive's phenotype type. With
 `check_allocations`, `cell_index` must not allocate, and neither must `add!`
 when the genotype type is `isbits`.
 
@@ -222,10 +223,10 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
                       sequential_batch::Bool=true)
     archive = make_archive()
     A = typeof(archive)
-    G, F, D = _archive_types(archive)
+    G, F, D, P = _archive_types(archive)
     @testset "test_archive($(nameof(A)))" begin
         @testset "types" begin
-            @test archive isa QD.AbstractArchive{G,F,D}
+            @test archive isa QD.AbstractArchive{G,F,D,P}
             @test isconcretetype(A)
             @test QD.capacity(archive) isa Integer
             @test QD.capacity(archive) >= 1
@@ -268,18 +269,19 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             @test (r.status == QD.Rejected) == (r.improvement <= 0)
             @test length(a) == 1
 
-            worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor)
+            worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor, ev.phenotype)
             r = QD.add!(a, xs[1], worse)
             elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
             @test (r.status == QD.Rejected) == (r.improvement <= 0)
             elitist && @test r.improvement < 0
 
-            better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor)
+            better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor, ev.phenotype)
             r = QD.add!(a, xs[2], better)
             @test r.status == QD.Improved
             @test r.improvement > 0
             @test length(a) == 1
             @test only(collect(QD.elites(a)))[1] == convert(G, xs[2])
+            @test isequal(only(collect(QD.elites(a)))[2].phenotype, ev.phenotype)
 
             if check_allocations && isbitstype(G)
                 @test allocations(QD.add!, a, xs[1], ev) == 0
@@ -316,7 +318,7 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             a = make_archive()
             QD.add_batch!(a, xs, evs)
             r = QD.result_archive(a)
-            @test r isa QD.AbstractArchive{G,F,D}
+            @test r isa QD.AbstractArchive{G,F,D,P}
             @test length(r) >= length(a)
             @test QD.max_fitness(r) >= QD.max_fitness(a)
             @test QD.result_archive(r) === r
@@ -327,7 +329,8 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             QD.add_batch!(a, xs, evs)
             stored = collect(QD.elites(a))
             @test length(stored) == length(a)
-            @test all(p -> p[1] isa G && p[2] isa QD.Evaluation, stored)
+            @test all(p -> p[1] isa G && p[2] isa QD.Evaluation && p[2].phenotype isa P, stored)
+            @test all(p -> _stored_with(G, p, xs, evs), stored)
             @test all(p -> QD.cell_index(a, p[2].descriptor) in 1:QD.capacity(a), stored)
             @test length(unique(QD.cell_index(a, p[2].descriptor) for p in stored)) == length(stored)
 
@@ -367,7 +370,8 @@ for a solution that a stored one matches in every objective, and `Improved` with
 none of which beats another, `length` counts the occupied cells and `num_solutions` the
 solutions that `elites` yields. `add_batch!` must give each solution the result that it has
 alone against the archive as it was before the batch. `sample_elites` must draw stored
-genotypes, inferrably, and reproducibly from the generator. The metrics must agree with the
+genotypes, inferrably, and reproducibly from the generator. `elites` must return the
+phenotype that came with each stored genotype. The metrics must agree with the
 hypervolume of the fronts. `add!` must not allocate for a rejected solution with an `isbits`
 genotype and two objectives when `check_allocations` is true.
 """
@@ -375,10 +379,10 @@ function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::Abstr
                             n::Integer=200, check_allocations::Bool=true)
     archive = make_archive()
     A = typeof(archive)
-    G, F, D = _archive_types(archive)
+    G, F, D, P = _archive_types(archive)
     @testset "test_front_archive($(nameof(A)))" begin
         @testset "types" begin
-            @test archive isa QD.AbstractArchive{G,F,D}
+            @test archive isa QD.AbstractArchive{G,F,D,P}
             @test isconcretetype(A)
             @test F <: AbstractVector{<:Real}
             @test QD.capacity(archive) >= 1
@@ -414,12 +418,12 @@ function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::Abstr
 
             r = QD.add!(a, xs[1], ev)
             @test r.status == QD.Rejected && r.improvement == 0
-            worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor)
+            worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor, ev.phenotype)
             r = QD.add!(a, xs[2], worse)
             @test r.status == QD.Rejected && r.improvement == 0
             @test QD.num_solutions(a) == 1
 
-            better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor)
+            better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor, ev.phenotype)
             r = QD.add!(a, xs[3], better)
             @test r.status == QD.Improved && r.improvement > 0
             # the new solution beats the old one in every objective and replaces it
@@ -469,7 +473,8 @@ function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::Abstr
             a = make_archive()
             QD.add_batch!(a, xs, evs)
             stored = collect(QD.elites(a))
-            @test all(p -> p[1] isa G && p[2] isa QD.Evaluation, stored)
+            @test all(p -> p[1] isa G && p[2] isa QD.Evaluation && p[2].phenotype isa P, stored)
+            @test all(p -> _stored_with(G, p, xs, evs), stored)
             parents = @inferred QD.sample_elites(Xoshiro(3), a, 25)
             @test parents isa Vector{G}
             @test all(p -> any(q -> q[1] == p, stored), parents)
@@ -488,7 +493,12 @@ function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::Abstr
     return nothing
 end
 
-_archive_types(::QD.AbstractArchive{G,F,D}) where {G,F,D} = (G, F, D)
+_archive_types(::QD.AbstractArchive{G,F,D,P}) where {G,F,D,P} = (G, F, D, P)
+
+# The stored pair `(x, ev)` has the phenotype of an evaluation of `x` in `evs`; the
+# archive holds `x` converted to its genotype type `G`.
+_stored_with(::Type{G}, (x, ev), xs, evs) where {G} =
+    any(k -> convert(G, xs[k]) == x && isequal(evs[k].phenotype, ev.phenotype), eachindex(xs, evs))
 
 _shift_fitness(f::Real, by) = f + by
 _shift_fitness(f::AbstractVector, by) = f .+ by

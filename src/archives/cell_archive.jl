@@ -16,7 +16,7 @@ struct ClampOutside <: OutsidePolicy end
 struct RejectOutside <: OutsidePolicy end
 
 """
-    CellArchive{G,F,D}
+    CellArchive{G,F,D,P}
 
 Supertype of the archives that divide descriptor space into a fixed number of
 cells and keep the highest-fitness solution found in each: [`GridArchive`](@ref),
@@ -32,11 +32,12 @@ shared methods use:
 
 - `outside`: an [`OutsidePolicy`](@ref)
 - `occupied::BitVector`, `fitness::Vector{F}`, `descriptors::Vector{D}`,
-  `genotypes::Vector{G}`, `occupied_idx::Vector{Int}`: one entry per cell
+  `genotypes::Vector{G}`, `phenotypes::Vector{P}`, `occupied_idx::Vector{Int}`:
+  one entry per cell
 - `fitness_sum::Float64`, `fitness_sum_error::Float64`, `fitness_max::F`: the
   running totals described under Metrics in [`GridArchive`](@ref)
 """
-abstract type CellArchive{G,F,D} <: AbstractArchive{G,F,D} end
+abstract type CellArchive{G,F,D,P} <: AbstractArchive{G,F,D,P} end
 
 Base.length(archive::CellArchive) = length(archive.occupied_idx)
 
@@ -73,12 +74,13 @@ with zero `improvement`. An empty cell takes any solution
 only if the fitness is strictly higher (`Improved`, otherwise `Rejected`).
 For an occupied cell, `improvement` is the fitness minus the occupant's.
 """
-function add!(archive::CellArchive{G,F}, x, ev::Evaluation{<:Real}) where {G,F}
+function add!(archive::CellArchive{G,F,D,P}, x, ev::Evaluation{<:Real}) where {G,F,D,P}
     i = cell_index(archive, ev.descriptor)
     fitness = convert(F, ev.fitness)
+    phenotype = stored_phenotype(P, ev.phenotype)
     i == 0 && return AddResult(Rejected, zero(F))
     result = classify(archive, i, fitness)
-    result.status == Rejected || place!(archive, i, x, ev.descriptor, fitness)
+    result.status == Rejected || place!(archive, i, x, ev.descriptor, fitness, phenotype)
     return result
 end
 
@@ -92,17 +94,17 @@ end
 
 # Makes `x` the occupant of cell `i`, keeping the running totals up to date. It
 # does not check `fitness` against the occupant.
-function place!(archive::CellArchive, i, x, descriptor, fitness)
+function place!(archive::CellArchive, i, x, descriptor, fitness, phenotype)
     if !archive.occupied[i]
         archive.occupied[i] = true
         push!(archive.occupied_idx, i)
-        _store!(archive, i, x, fitness, descriptor)
+        _store!(archive, i, x, fitness, descriptor, phenotype)
         _add_to_sum!(archive, Float64(fitness))
         archive.fitness_max = length(archive.occupied_idx) == 1 ? fitness : max(archive.fitness_max, fitness)
         return nothing
     end
     previous = archive.fitness[i]
-    _store!(archive, i, x, fitness, descriptor)
+    _store!(archive, i, x, fitness, descriptor, phenotype)
     # The difference is taken in Float64, where it is exact for Float32
     # and smaller fitness types.
     _add_to_sum!(archive, Float64(fitness) - Float64(previous))
@@ -121,7 +123,7 @@ that fill the same empty cell are both `NewCell`. Of the solutions that enter a
 cell, the one with the highest fitness (the first, on a tie) is kept, so the
 archive afterwards is the one that adding the solutions one at a time gives.
 """
-function add_batch!(archive::CellArchive{G,F}, xs::AbstractVector, evs::AbstractVector) where {G,F}
+function add_batch!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, evs::AbstractVector) where {G,F,D,P}
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
     Base.require_one_based_indexing(xs, evs)
@@ -130,6 +132,7 @@ function add_batch!(archive::CellArchive{G,F}, xs::AbstractVector, evs::Abstract
     cells = Vector{Int}(undef, n)
     for k in 1:n
         i = cell_index(archive, evs[k].descriptor)
+        stored_phenotype(P, evs[k].phenotype)    # throws before the archive changes
         cells[k] = i
         results[k] = i == 0 ? AddResult(Rejected, zero(F)) :
                      classify(archive, i, convert(F, evs[k].fitness))
@@ -141,7 +144,7 @@ function add_batch!(archive::CellArchive{G,F}, xs::AbstractVector, evs::Abstract
         i = cells[k]
         fitness = convert(F, evs[k].fitness)
         if !archive.occupied[i] || fitness > archive.fitness[i]
-            place!(archive, i, xs[k], evs[k].descriptor, fitness)
+            place!(archive, i, xs[k], evs[k].descriptor, fitness, stored_phenotype(P, evs[k].phenotype))
         end
     end
     return results
@@ -172,10 +175,11 @@ function mean_fitness(archive::CellArchive)
     return _fitness_sum(archive) / length(archive)
 end
 
-function _store!(archive::CellArchive, i, x, fitness, descriptor)
+function _store!(archive::CellArchive, i, x, fitness, descriptor, phenotype)
     archive.genotypes[i] = x
     archive.fitness[i] = fitness
     archive.descriptors[i] = stored_descriptor(archive, descriptor)
+    store_phenotype!(archive.phenotypes, i, phenotype)
     return nothing
 end
 
@@ -200,6 +204,6 @@ function sample_elites(rng::AbstractRNG, archive::CellArchive{G}, n::Integer) wh
 end
 
 function elites(archive::CellArchive)
-    return ((archive.genotypes[i], Evaluation(archive.fitness[i], archive.descriptors[i]))
+    return ((archive.genotypes[i], Evaluation(archive.fitness[i], archive.descriptors[i], archive.phenotypes[i]))
             for i in archive.occupied_idx)
 end

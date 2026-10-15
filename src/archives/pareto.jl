@@ -1,8 +1,9 @@
 """
-    ParetoGridArchive{G}(dims, bounds, reference_point; max_front=50, outside=ThrowOutside())
+    ParetoGridArchive{G}(dims, bounds, reference_point; max_front=50, outside=ThrowOutside(),
+                         phenotype=Nothing)
     ParetoGridArchive(prob::AbstractQDProblem; dims, reference_point, max_front=50,
                       bounds=descriptor_bounds(prob), genotype=Vector{Float64},
-                      outside=ThrowOutside())
+                      outside=ThrowOutside(), phenotype=Nothing)
 
 Archive for several objectives, the one of MOME (Pierrot et al., 2022): the cells are those
 of a [`GridArchive`](@ref), and every cell keeps a Pareto front, the solutions of the cell
@@ -14,7 +15,8 @@ objectives, all maximized, and `reference_point`, a vector of `M` numbers, is th
 from which hypervolumes are measured. It should lie below the objective values that matter,
 since a solution contributes hypervolume only where it is larger than the reference point in
 every objective. A cell keeps at most `max_front` solutions. The archive stores its
-fitness values as `SVector{M,Float64}`.
+fitness values as `SVector{M,Float64}`. `phenotype` is the type of the phenotypes the
+archive stores, `Nothing` for none; see [`Evaluation`](@ref).
 
 [`add!`](@ref QualityDiversity.add!) puts a solution into the front of its cell unless a
 solution there is at least as good in every objective; it removes the solutions that the new
@@ -58,7 +60,7 @@ julia> length(archive), num_solutions(archive), qd_score(archive)
 (1, 2, 5.0)
 ```
 """
-mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy} <: AbstractArchive{G,SVector{M,Float64},SVector{N,Float64}}
+mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P} <: AbstractArchive{G,SVector{M,Float64},SVector{N,Float64},P}
     const dims::NTuple{N,Int}
     const lower::SVector{N,Float64}
     const upper::SVector{N,Float64}
@@ -69,6 +71,7 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy} <: AbstractArchive{G,SV
     # for `k` up to `counts[i]`.
     const counts::Vector{Int}
     const genotypes::Vector{G}
+    const phenotypes::Vector{P}
     const fitness::Vector{SVector{M,Float64}}
     const descriptors::Vector{SVector{N,Float64}}
     # Hypervolume of the front of every cell, and the cells that are occupied.
@@ -81,7 +84,7 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy} <: AbstractArchive{G,SV
     # Workspace for the hypervolume of one front.
     const scratch::Vector{SVector{M,Float64}}
 
-    function ParetoGridArchive{G,M,N}(dims, lower, upper, reference_point, max_front, outside::O) where {G,M,N,O<:OutsidePolicy}
+    function ParetoGridArchive{G,M,N,O,P}(dims, lower, upper, reference_point, max_front, outside) where {G,M,N,O<:OutsidePolicy,P}
         for i in 1:N
             dims[i] >= 1 ||
                 throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))
@@ -93,18 +96,20 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy} <: AbstractArchive{G,SV
         max_front >= 1 || throw(ArgumentError("max_front must be at least 1, got $max_front"))
         ncells = prod(dims)
         slots = ncells * max_front
-        return new{G,M,N,O}(dims, lower, upper, outside, max_front, reference_point,
-                            zeros(Int, ncells),
-                            Vector{G}(undef, slots),
-                            Vector{SVector{M,Float64}}(undef, slots),
-                            Vector{SVector{N,Float64}}(undef, slots),
-                            zeros(ncells), Int[], 0.0, 0.0, 0,
-                            Vector{SVector{M,Float64}}(undef, max_front + 1))
+        return new{G,M,N,O,P}(dims, lower, upper, outside, max_front, reference_point,
+                              zeros(Int, ncells),
+                              Vector{G}(undef, slots),
+                              Vector{P}(undef, slots),
+                              Vector{SVector{M,Float64}}(undef, slots),
+                              Vector{SVector{N,Float64}}(undef, slots),
+                              zeros(ncells), Int[], 0.0, 0.0, 0,
+                              Vector{SVector{M,Float64}}(undef, max_front + 1))
     end
 end
 
 function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::AbstractVector{<:Real};
-                              max_front::Integer=50, outside::OutsidePolicy=ThrowOutside()) where {G}
+                              max_front::Integer=50, outside::OutsidePolicy=ThrowOutside(),
+                              phenotype::Type=Nothing) where {G}
     N = length(dims)
     length(bounds) == N ||
         throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
@@ -112,7 +117,7 @@ function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::Abstr
     M = length(reference_point)
     lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
     upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return ParetoGridArchive{G,M,N}(map(Int, dims), lower, upper,
+    return ParetoGridArchive{G,M,N,typeof(outside),phenotype}(map(Int, dims), lower, upper,
                                     SVector{M,Float64}(reference_point), Int(max_front), outside)
 end
 
@@ -122,8 +127,9 @@ end
 
 function ParetoGridArchive(prob::AbstractQDProblem; dims::Tuple, reference_point::AbstractVector{<:Real},
                            max_front::Integer=50, bounds::Tuple=descriptor_bounds(prob),
-                           genotype::Type=Vector{Float64}, outside::OutsidePolicy=ThrowOutside())
-    return ParetoGridArchive{genotype}(dims, bounds, reference_point; max_front, outside)
+                           genotype::Type=Vector{Float64}, outside::OutsidePolicy=ThrowOutside(),
+                           phenotype::Type=Nothing)
+    return ParetoGridArchive{genotype}(dims, bounds, reference_point; max_front, outside, phenotype)
 end
 
 Base.length(archive::ParetoGridArchive) = length(archive.occupied_idx)
@@ -222,7 +228,7 @@ end
 
 # Puts a solution that `front_outcome` accepted into cell `i` and returns the change in
 # the hypervolume of the cell.
-function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor)
+function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor, phenotype)
     n = archive.counts[i]
     base = (i - 1) * archive.max_front
     kept = 0
@@ -232,12 +238,14 @@ function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor)
         kept += 1
         if kept != k
             archive.genotypes[base+kept] = archive.genotypes[base+k]
+            move_phenotype!(archive.phenotypes, base + kept, base + k)
             archive.fitness[base+kept] = g
             archive.descriptors[base+kept] = archive.descriptors[base+k]
         end
         archive.scratch[kept] = g
     end
     archive.genotypes[base+kept+1] = x
+    store_phenotype!(archive.phenotypes, base + kept + 1, phenotype)
     archive.fitness[base+kept+1] = f
     archive.descriptors[base+kept+1] = descriptor
     archive.scratch[kept+1] = f
@@ -266,13 +274,14 @@ end
 Insert `x` into the front of the cell of `ev.descriptor`; see [`ParetoGridArchive`](@ref).
 `ev.fitness` must be a vector with one entry for each objective of the archive.
 """
-function add!(archive::ParetoGridArchive, x, ev::Evaluation)
+function add!(archive::ParetoGridArchive{G,M,N,O,P}, x, ev::Evaluation) where {G,M,N,O,P}
+    phenotype = stored_phenotype(P, ev.phenotype)
     i = cell_index(archive, ev.descriptor)
     i == 0 && return AddResult(Rejected, 0.0)
     f = objectives(archive, ev)
     result = front_outcome(archive, i, f)
     result.status == Rejected && return result
-    insert_front!(archive, i, x, f, stored_descriptor(archive, ev.descriptor))
+    insert_front!(archive, i, x, f, stored_descriptor(archive, ev.descriptor), phenotype)
     return result
 end
 
@@ -285,7 +294,8 @@ archive as it was before the batch, so they do not depend on the other solutions
 batch. The solutions are then added in order, so a solution that another solution of the
 batch beats is removed.
 """
-function add_batch!(archive::ParetoGridArchive, xs::AbstractVector, evs::AbstractVector)
+function add_batch!(archive::ParetoGridArchive{G,M,N,O,P}, xs::AbstractVector,
+                    evs::AbstractVector) where {G,M,N,O,P}
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
     Base.require_one_based_indexing(xs, evs)
@@ -295,6 +305,7 @@ function add_batch!(archive::ParetoGridArchive, xs::AbstractVector, evs::Abstrac
     fitness = Vector{eltype(archive.fitness)}(undef, n)
     for k in 1:n
         i = cell_index(archive, evs[k].descriptor)
+        stored_phenotype(P, evs[k].phenotype)    # throws before the archive changes
         cells[k] = i
         if i == 0
             results[k] = AddResult(Rejected, 0.0)
@@ -308,7 +319,8 @@ function add_batch!(archive::ParetoGridArchive, xs::AbstractVector, evs::Abstrac
         i = cells[k]
         # Another solution of the batch may have made this one redundant by now.
         front_outcome(archive, i, fitness[k]).status == Rejected && continue
-        insert_front!(archive, i, xs[k], fitness[k], stored_descriptor(archive, evs[k].descriptor))
+        insert_front!(archive, i, xs[k], fitness[k], stored_descriptor(archive, evs[k].descriptor),
+                      stored_phenotype(P, evs[k].phenotype))
     end
     return results
 end
@@ -332,7 +344,7 @@ end
 
 function elites(archive::ParetoGridArchive)
     L = archive.max_front
-    return ((archive.genotypes[slot], Evaluation(archive.fitness[slot], archive.descriptors[slot]))
+    return ((archive.genotypes[slot], Evaluation(archive.fitness[slot], archive.descriptors[slot], archive.phenotypes[slot]))
             for i in archive.occupied_idx for slot in (i-1)*L+1:(i-1)*L+archive.counts[i])
 end
 
