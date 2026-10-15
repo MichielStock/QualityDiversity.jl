@@ -454,15 +454,36 @@ In `float32` QDax is up to 15% faster; the CVT archive pays for a second kernel 
 In `float64` the bucket search is five times faster than QDax's at a batch of 10 000,
 because it computes about 9 distances per descriptor instead of 10 000.
 
+### CMA-ME
+
+`compare_cma_gpu.jl` runs CMA-ME on the same problem and grid, with 1 200 000
+evaluations, on the host and with a `DeviceCMAEmitter`, for 5, 50 and 500 CMA-ES searches
+of 12 candidates each (8 host threads, 5 runs per row). The device emitter samples and
+updates the searches on the host threads and evaluates and adds all their candidates on
+the GPU as one batch, so each search sees the archive as it was before the round; the host
+`CMAME` steps its searches one after another.
+
+| searches | host, median s | device, median s | host, QD score | device, QD score |
+|---:|---:|---:|---:|---:|
+| 5 | 1.410 | 5.029 | 5 035 124 | 5 035 042 |
+| 50 | 1.511 | 0.842 | 5 037 730 | 5 037 605 |
+| 500 | 2.516 | 0.332 | 5 033 974 | 5 033 762 |
+
+With the 5 searches of the CMA-ME paper a round is a batch of 60, too small for a GPU, and
+the device emitter is 3.6 times slower. With 500 searches it is 7.6 times faster than the
+host with as many searches, and 4.2 times faster than the host with 5. The QD scores agree
+within the spread between seeds. QDax runs one emitter of its pool per step, so it has no
+counterpart; pyribs adds the batches of all its emitters at once, on the CPU.
+
 ### Not measured
 
 - **Other GPUs.** The kernels are written with KernelAbstractions and should run on AMD and
   Intel GPUs as well, but only CUDA has been timed, and the tests run them on the CPU. Apple
   GPUs have no `Float64`, which the cell lookup needs.
-- **CMA-ME and MOME.** The device archives serve MAP-Elites only. For reference, QDax on this
-  GPU takes 0.95 s for CMA-ME with improvement emitters, where QualityDiversity.jl on one
-  core takes 0.31 s (a batch of 12 is too small for a GPU), and 3.5 s for MOME, where
-  QualityDiversity.jl takes 0.017 s (QDax inserts a batch one solution at a time).
+- **CMA-MAE and MOME.** They stay on the host. For reference, QDax on this GPU takes 0.95 s
+  for the CMA-ME of the CPU comparison (5 emitters of 12), where QualityDiversity.jl on one
+  core takes 0.31 s, and 3.5 s for MOME, where QualityDiversity.jl takes 0.017 s (QDax
+  inserts a batch one solution at a time).
 
 ### Reproducing
 
@@ -473,6 +494,7 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1
 
 # Julia
 taskset -c 2 julia benchmark/compare/gpu/compare_gpu.jl
+taskset -c 0-7 julia --threads=8 benchmark/compare/gpu/compare_cma_gpu.jl
 
 # QDax and pyribs, with the CUDA build of jax
 python -m venv venv && venv/bin/pip install -r benchmark/compare/requirements.txt "jax[cuda12]"

@@ -187,20 +187,34 @@ first after a restart, starts a new search from a random elite of `archive`
 (the first call uses `x0` if the emitter has one).
 """
 function ask(rng::AbstractRNG, emitter::CMAEmitter, archive::AbstractArchive{G}) where {G}
-    es = emitter.es
-    if !emitter.started || emitter.restart_pending
-        reset!(es, start_mean(rng, emitter, archive))
-        reset_ranker!(rng, emitter.ranker, archive)
-        emitter.started = true
-        emitter.restart_pending = false
-    end
-    sample!(rng, es)
-    emitter.asked = true
+    needs_start(emitter) && start_search!(rng, emitter, archive, start_mean(rng, emitter, archive))
+    es = draw_batch!(rng, emitter)
     xs = Vector{G}(undef, es.batch_size)
     for k in 1:es.batch_size
         xs[k] = convert(G, es.x[:, k])
     end
     return xs
+end
+
+# Whether the next ask starts a new search: the first one, or one after a restart.
+needs_start(emitter::CMAEmitter) = !emitter.started || emitter.restart_pending
+
+# Whether a new search of `emitter` starts from its `x0` rather than from an elite.
+starts_from_x0(emitter::CMAEmitter) = !emitter.started && emitter.x0 !== nothing
+
+function start_search!(rng, emitter::CMAEmitter, archive, mean)
+    reset!(emitter.es, mean)
+    reset_ranker!(rng, emitter.ranker, archive)
+    emitter.started = true
+    emitter.restart_pending = false
+    return nothing
+end
+
+# Draws a batch into the strategy and returns it; the batch is in `es.x`.
+function draw_batch!(rng, emitter::CMAEmitter)
+    sample!(rng, emitter.es)
+    emitter.asked = true
+    return emitter.es
 end
 
 """

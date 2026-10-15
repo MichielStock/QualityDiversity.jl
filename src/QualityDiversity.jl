@@ -57,6 +57,7 @@ include("emitters/openai_es.jl")
 include("emitters/rankers.jl")
 include("emitters/cma_emitter.jl")
 include("emitters/device_emitter.jl")
+include("emitters/device_cma_emitter.jl")
 include("solve.jl")
 include("algorithms.jl")
 include("testing.jl")
@@ -69,7 +70,7 @@ export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, Thresho
     SpreadArchive, ParetoGridArchive, DeviceGridArchive, DeviceCVTArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
-export VariationEmitter, CMAEmitter, DeviceVariationEmitter
+export VariationEmitter, CMAEmitter, DeviceVariationEmitter, DeviceCMAEmitter
 export AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES
 export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker,
     TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker,

@@ -308,7 +308,8 @@ QualityDiversity.jl/
 │   │   ├── openai_es.jl
 │   │   ├── rankers.jl
 │   │   ├── cma_emitter.jl
-│   │   └── device_emitter.jl     # DeviceVariationEmitter
+│   │   ├── device_emitter.jl     # DeviceVariationEmitter
+│   │   └── device_cma_emitter.jl # DeviceCMAEmitter
 │   ├── solve.jl                  # QDAlgorithm, QDState, QDResult, init/step!/solve!
 │   ├── algorithms.jl             # MAPElites(), CMAME(), ... constructors
 │   ├── metrics.jl
@@ -401,11 +402,10 @@ Julia LTS and the current release.
         KernelAbstractions kernels, and a GPU row in the comparison with QDax
   - [x] Device CVT archive: `DeviceCVTArchive`, the nearest centroid found in a kernel
         among the centroids of a bucket, reusing the insertion and variation kernels
-  - [ ] Device CMA-ME and CMA-MAE: many emitters that ask together, their batches
-        added to the archive at once and their search distributions updated as one
-        batched operation, over a device grid or threshold archive. Needs a decision:
-        the emitters of a round all see the archive as it was before the round, as in
-        pyribs, where the host loop steps them one after another
+  - [x] Device CMA-ME: `DeviceCMAEmitter`, many CMA-ES searches that ask together over a
+        device archive, with their updates on the host
+  - [ ] Device CMA-MAE: a device `ThresholdArchive` with the batch threshold update of
+        the CMA-MAE paper, for `DeviceCMAEmitter`
   - [ ] Device MOME: `ParetoGridArchive` fronts in device arrays, a batch inserted in
         parallel over the cells, with the dominance checks of a cell in parallel too
   - [ ] ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
@@ -556,6 +556,24 @@ Settled; change them only with the author's agreement.
   emitter supports `GaussianMutation` and `IsoLineVariation`; stochastic problems and the
   other archives stay on the CPU. Defaults are those of the CPU path (`Float64`); the
   documentation recommends `Float32` for consumer GPUs, which compute `Float64` slowly.
+- **Device CMA-ME.** `CMAME(prob; dims, sigma0, device=CuArray)` builds a
+  `DeviceGridArchive` and one `DeviceCMAEmitter` holding `num_emitters` CMA-ES searches,
+  each an ordinary `CMAEmitter`; `CMAME(archive)` does the same for any `DeviceCellArchive`.
+  The searches ask together and their candidates are evaluated and added on the device as
+  one batch, so within a round every search sees the archive as it was before the round,
+  as in pyribs; the host `CMAME` keeps stepping its emitters one after another, as in the
+  CMA-ME paper. The searches stay on the host, which reuses the code, rankers, selection
+  and restart rules of `CMAEmitter` for every strategy: each round draws, in order from the
+  run's generator, the elites that restarting searches start from (copied from the device
+  in one gather) and one seed per search, and the searches then sample with their own
+  `Xoshiro` in parallel on the host threads; the batch is copied to the device. After it is
+  added, its fitness values, descriptors and results are copied back once and the
+  searches update in parallel. A run is reproducible from its seed whatever the number of
+  threads, and its random numbers differ from those of the host `CMAME`. Samples are drawn
+  on the host and not on the device because a batch of a search has fewer candidates than
+  parameters, so the candidates are a smaller transfer than a sampling transform. A device
+  pays off with many searches (hundreds); with the five of the paper it is slower than the
+  host.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.
