@@ -1,3 +1,5 @@
+include("reference/sliding.jl")
+
 offer!(a, f, d) = QD.add!(a, [Float64(f)], Evaluation(Float64(f), SVector{length(d),Float64}(d)))
 
 @testset "SlidingBoundariesArchive construction" begin
@@ -132,6 +134,32 @@ end
     c = SlidingBoundariesArchive((2,), ((0, 1),); remap_frequency=7, buffer_capacity=3)
     QD.add_batch!(c, xs, evs)
     @test QD.boundaries(c) == ([0.5, 0.5, 0.9],)
+end
+
+@testset "SlidingBoundariesArchive remap does not evict first" begin
+    # 1 and 3 share the first of three regular cells, and 3 triggers the remap: it must
+    # not evict 1 beforehand, since 1 is no longer in the buffer and the remap puts the two
+    # in different cells
+    a = SlidingBoundariesArchive{Int}((3,), ((0, 1),); remap_frequency=3, buffer_capacity=2)
+    rs = [QD.add!(a, id, Evaluation(f, SVector(d))) for (id, f, d) in ((1, 1.0, 0.30), (2, 0.0, 0.20), (3, 2.0, 0.05))]
+    @test [r.status for r in rs] == [QD.NewCell, QD.Rejected, QD.Improved]
+    @test QD.boundaries(a) == ([0.05, 0.05, 0.2, 0.2],)
+    @test sort!([x for (x, _) in QD.elites(a)]) == [1, 3]              # pyribs keeps the same
+end
+
+@testset "SlidingBoundariesArchive matches pyribs" begin
+    # reference/sliding.jl: the boundaries and elites of pyribs after each solution, added
+    # one at a time; the initial regular grid differs from numpy's by rounding
+    for case in sliding_cases
+        N = length(case.dims)
+        a = SlidingBoundariesArchive{Int}(case.dims, ntuple(_ -> (-1, 1), N); remap_frequency=case.remap_frequency,
+                                          buffer_capacity=case.buffer_capacity)
+        for i in eachindex(case.fitness)
+            QD.add!(a, i, Evaluation(case.fitness[i], SVector{N}(case.descriptors[(i-1)*N+1:i*N])))
+            @test reduce(vcat, QD.boundaries(a)) ≈ case.boundaries[i] atol = 1e-15
+            @test sort!([x for (x, _) in QD.elites(a)]) == case.kept[i]
+        end
+    end
 end
 
 @testset "SlidingBoundariesArchive phenotypes and empty!" begin
