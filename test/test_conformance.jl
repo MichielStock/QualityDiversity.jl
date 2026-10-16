@@ -106,11 +106,24 @@ end
     test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0.5, genotype=Vector{Float32}, fitness=Float32), prob)
 end
 
+@testset "dns archives" begin
+    prob = Rastrigin(4)
+    # the population is chosen again as a whole for every batch
+    population = (; population=true)
+    test_archive(() -> DNSArchive(prob; capacity=400, k=3), prob; population...)
+    test_archive(() -> DNSArchive(prob; capacity=30, k=3), prob; population...)      # removes
+    test_archive(() -> DNSArchive(prob; capacity=30, k=1), prob; population...)
+    test_archive(() -> DNSArchive(prob; capacity=30, k=50), prob; population...)     # fewer than k fitter
+    test_archive(() -> DNSArchive(prob; capacity=1, k=3), prob; population...)
+    test_archive(() -> DNSArchive(prob; capacity=30, k=3, genotype=Vector{Float32}, fitness=Float32), prob; population...)
+end
+
 @testset "archive with an isbits genotype" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
                      bounds=((-1, 1), (-1, 1)))
     test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))), prob; sequential_batch=false)
+    test_archive(() -> DNSArchive{SVector{3,Float64}}(2; capacity=40, k=3), prob; population=true)
     test_archive(() -> SlidingBoundariesArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1)); remap_frequency=3), prob;
                  sequential_batch=false)
 end

@@ -200,7 +200,7 @@ end
 
 """
     test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true, elitist=true,
-                 sequential_batch=true)
+                 sequential_batch=true, population=false)
 
 Check that the archives built by `make_archive()` meet the contract of
 [`AbstractArchive`](@ref). `make_archive` is called without arguments and must
@@ -230,11 +230,17 @@ batch, such as a [`GridArchive`](@ref) or a [`ThresholdArchive`](@ref), passes
 `sequential_batch=false`. The checks then require that the results are valid and
 that the result of each solution equals that of adding the solution alone to the
 archive as it was before the batch.
+
+An archive that chooses its whole population again from the stored solutions and the
+batch, such as a [`DNSArchive`](@ref), passes `population=true`. A solution then has no
+cell to improve, so the checks require only that each result is `NewCell` or
+`Rejected`, that the solutions of a batch added to an empty archive that are `NewCell`
+are the ones it stores, and that the archive never holds more than its capacity.
 """
 function test_archive(make_archive, prob::QD.AbstractQDProblem;
                       rng::AbstractRNG=Xoshiro(1), n::Integer=200,
                       check_allocations::Bool=true, elitist::Bool=true,
-                      sequential_batch::Bool=true)
+                      sequential_batch::Bool=true, population::Bool=false)
     archive = make_archive()
     A = typeof(archive)
     G, F, D, P = _archive_types(archive)
@@ -277,25 +283,32 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             @test r isa QD.AddResult{F}
             @test r.status == QD.NewCell
             @test length(a) == 1
+            if population
+                for j in 2:min(n, QD.capacity(a) + 2)
+                    r = QD.add!(a, xs[j], evs[j])
+                    @test r.status in (QD.NewCell, QD.Rejected)
+                    @test length(a) == min(j, QD.capacity(a))
+                end
+            else
+                r = QD.add!(a, xs[1], ev)
+                elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
+                @test (r.status == QD.Rejected) == (r.improvement <= 0)
+                @test length(a) == 1
 
-            r = QD.add!(a, xs[1], ev)
-            elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
-            @test (r.status == QD.Rejected) == (r.improvement <= 0)
-            @test length(a) == 1
+                worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor, ev.phenotype)
+                r = QD.add!(a, xs[1], worse)
+                elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
+                @test (r.status == QD.Rejected) == (r.improvement <= 0)
+                elitist && @test r.improvement < 0
 
-            worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor, ev.phenotype)
-            r = QD.add!(a, xs[1], worse)
-            elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
-            @test (r.status == QD.Rejected) == (r.improvement <= 0)
-            elitist && @test r.improvement < 0
-
-            better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor, ev.phenotype)
-            r = QD.add!(a, xs[2], better)
-            @test r.status == QD.Improved
-            @test r.improvement > 0
-            @test length(a) == 1
-            @test only(collect(QD.elites(a)))[1] == convert(G, xs[2])
-            @test isequal(only(collect(QD.elites(a)))[2].phenotype, ev.phenotype)
+                better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor, ev.phenotype)
+                r = QD.add!(a, xs[2], better)
+                @test r.status == QD.Improved
+                @test r.improvement > 0
+                @test length(a) == 1
+                @test only(collect(QD.elites(a)))[1] == convert(G, xs[2])
+                @test isequal(only(collect(QD.elites(a)))[2].phenotype, ev.phenotype)
+            end
 
             if check_allocations && isbitstype(G)
                 @test allocations(QD.add!, a, xs[1], ev) == 0
@@ -310,7 +323,12 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             @test length(rs) == n
             @test 1 <= length(a) <= QD.capacity(a)
             new_cells = count(r -> r.status == QD.NewCell, rs)
-            if sequential_batch
+            if population
+                @test all(r -> r.status in (QD.Rejected, QD.NewCell), rs)
+                @test length(a) == new_cells == min(n, QD.capacity(a))
+                kept = [xs[j] for j in eachindex(xs) if rs[j].status == QD.NewCell]
+                @test all(p -> any(x -> convert(G, x) == p[1], kept), collect(QD.elites(a)))
+            elseif sequential_batch
                 @test rs == [QD.add!(b, x, ev) for (x, ev) in zip(xs, evs)]
                 @test length(a) == length(b)
                 # every solution that fills a cell stays, unless a full archive evicts one

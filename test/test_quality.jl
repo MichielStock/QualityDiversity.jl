@@ -54,6 +54,11 @@ end
                   budget=10_000, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(bandit)
 
+    dns = init(prob, MAPElites(DNSArchive(prob; capacity=50, k=3); batch_size=8); budget=10_000, rng=Xoshiro(1))
+    JET.@test_opt target_modules = (QualityDiversity,) step!(dns)
+    JET.@test_opt target_modules = (QualityDiversity,) QD.add!(dns.archive, [0.0, 0.0, 0.0, 0.0],
+                                                            Evaluation(1.0, SVector(0.0, 0.0)))
+
     sliding = init(prob, MAPElites(SlidingBoundariesArchive(prob; dims=(5, 5), remap_frequency=16); batch_size=8);
                    budget=64, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(sliding)

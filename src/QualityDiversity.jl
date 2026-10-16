@@ -39,6 +39,7 @@ include("archives/nearest_centroid.jl")
 include("archives/cvt.jl")
 include("archives/categorical.jl")
 include("archives/unstructured.jl")
+include("archives/dns.jl")
 include("archives/threshold.jl")
 include("archives/spread.jl")
 include("archives/pareto.jl")
@@ -68,7 +69,7 @@ export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
 export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, Rastrigin, Sphere, BiSphere
-export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive,
+export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, DNSArchive, ThresholdArchive,
     SpreadArchive, ParetoGridArchive, DeviceGridArchive, DeviceCVTArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover

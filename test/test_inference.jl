@@ -131,6 +131,24 @@ end
     @inferred QD.batch_size(state.emitters[1])
 end
 
+@testset "DNSArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
+                     bounds=((-1, 1), (-1, 1)))
+    xs = [QD.random_solution(Xoshiro(2), prob) for _ in 1:80]
+    for phenotype in (Nothing, Int)
+        archive = DNSArchive{SVector{3,Float64}}(2; capacity=50, k=3, phenotype)
+        evs = [Evaluation(ev.fitness, ev.descriptor, phenotype === Int ? 1 : nothing) for ev in QD.evaluate_batch(prob, xs)]
+        QD.add_batch!(archive, xs, evs)
+        @inferred QD.cell_index(archive, evs[1].descriptor)
+        @inferred QD.add!(archive, xs[1], evs[1])
+        @inferred QD.add_batch!(archive, xs[1:5], evs[1:5])
+        @test allocated(QD.cell_index, archive, evs[1].descriptor) == 0
+        @test allocated(QD.add!, archive, xs[1], evs[1]) == 0
+        @test allocated(QD.add!, archive, xs[2], Evaluation(evs[2].fitness + 1, evs[2].descriptor, evs[2].phenotype)) == 0
+    end
+end
+
 @testset "SlidingBoundariesArchive inference and allocations" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),

@@ -168,7 +168,8 @@ Concrete archives: `GridArchive`, `SlidingBoundariesArchive` (a grid whose bound
 follow the distribution of recent descriptors), `CVTArchive`, `CategoricalArchive` (discrete
 descriptors, numbers or labels), `ThresholdArchive` (CMA-MAE thresholds around
 a cell archive, with a result archive of the best solutions), `UnstructuredArchive` (novelty-style,
-distance threshold), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
+distance threshold), `DNSArchive` (Dominated Novelty Search: a population chosen by
+distance to fitter neighbours), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
 
 Storage layout for cell-based archives (`GridArchive`, `SlidingBoundariesArchive`,
 `CVTArchive`, `CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
@@ -297,6 +298,7 @@ QualityDiversity.jl/
 │   │   ├── device_cell_archive.jl # DeviceCellArchive: storage and insertion in device arrays
 │   │   ├── device_grid.jl        # DeviceGridArchive
 │   │   ├── device_cvt.jl         # DeviceCVTArchive
+│   │   ├── dns.jl                # DNSArchive
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -399,7 +401,8 @@ Julia LTS and the current release.
   - [x] `SlidingBoundariesArchive` (pyribs): a grid whose boundaries follow the
         descriptors found
   - [x] `BanditScheduler` for choosing among emitters (pyribs)
-  - [ ] `DensityArchive` and `DNSArchive` (pyribs)
+  - [x] `DNSArchive` (pyribs, QDax): Dominated Novelty Search
+  - [ ] `DensityArchive` (pyribs): Density Descent Search
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
@@ -488,6 +491,25 @@ Settled; change them only with the author's agreement.
   as in Algorithm 1 of the paper, with `zeta = 0.05`; an emitter without selections in the
   window scores `Inf`, and ties go to the earlier emitter of the pool. pyribs takes the
   log of the total successes instead. A mutable emitter may appear only once in the pool.
+- **Dominated novelty.** `DNSArchive(prob; capacity, k)` (Bahlous-Boldi, Faldor et al.,
+  2025; pyribs `DNSArchive`, QDax `DominatedNoveltyRepertoire`) keeps a population of at
+  most `capacity` solutions without cells. `add_batch!` merges the batch into the
+  population and gives every solution its dominated novelty: the mean Euclidean distance
+  in descriptor space to its `k` nearest other solutions with fitness at least as high
+  (all of them if there are fewer), `Inf` if there is none. A neighbour of equal fitness
+  counts, as in pyribs and QDax; the paper counts strictly fitter ones only, which gives
+  every solution of a fitness plateau `Inf` and stops pushing them apart. The `capacity`
+  solutions with the highest scores survive, a newer one before an older one on a tie
+  (QDax; pyribs breaks ties arbitrarily). The selection is joint, so a result depends on
+  the rest of the batch, unlike the batch rule of the cell archives: a solution of the
+  batch that survives is `NewCell`, one that does not is `Rejected`, and its
+  `improvement` is its score (pyribs returns it as `dns`). `add!` is a batch of one. The
+  fitness type is a floating-point type, for the `Inf` score. Parents are drawn
+  uniformly, as in pyribs and QDax; the paper draws them from the better half.
+  `cell_index` is the slot of the nearest stored descriptor. `max_fitness` and
+  `mean_fitness` are recomputed after every batch, since a remove can lower them.
+  `test/reference/dns.jl` holds the populations that QDax (commit 46b8fee; DNS is not in
+  QDax 0.5.0) and pyribs 0.12.0 keep after each batch of four sequences; ours match.
 - **Stochastic evaluation.** Noisy problems receive an explicit generator,
   `evaluate(rng, prob, x)`, and opt in through `AbstractStochasticQDProblem`;
   deterministic problems keep `evaluate(prob, x)`. The loop calls
