@@ -492,7 +492,11 @@ Settled; change them only with the author's agreement.
   highest UCB1 score `successes/selections + zeta*sqrt(log(total selections)/selections)`,
   as in Algorithm 1 of the paper, with `zeta = 0.05`; an emitter without selections in the
   window scores `Inf`, and ties go to the earlier emitter of the pool. pyribs takes the
-  log of the total successes instead. A mutable emitter may appear only once in the pool.
+  log of the total successes instead, and takes the last emitter on a tie.
+  `test/reference/bandit.jl` holds the emitters that pyribs 0.12.0 runs in each of 230
+  rounds of scripted statuses; with the whole run as window, ours makes the same choice in
+  every round without a tie, and the log term never changes a choice there. A mutable
+  emitter may appear only once in the pool.
 - **Dominated novelty.** `DNSArchive(prob; capacity, k)` (Bahlous-Boldi, Faldor et al.,
   2025; pyribs `DNSArchive`, QDax `DominatedNoveltyRepertoire`) keeps a population of at
   most `capacity` solutions without cells. `add_batch!` merges the batch into the
@@ -652,10 +656,15 @@ Settled; change them only with the author's agreement.
   buffered solutions from oldest to newest, as pyribs does, so the best solution is
   never lost. `add_batch!` follows the batch rule of the cell archives; a remap happens
   after the batch in which the count of offered solutions passes a multiple of
-  `remap_frequency`, never in the middle of a batch (pyribs remaps mid-batch). One
-  solution at a time, the archive matches pyribs up to ties in fitness and pyribs's
-  tolerance of `1e-6` at a boundary; the result of the solution that triggers a remap is
-  computed against the archive before the remap, where pyribs reports the one after. `outside` defaults to
+  `remap_frequency`, never in the middle of a batch (pyribs remaps mid-batch). The
+  solution that `add!` offers when a remap is due is not placed in the old cells, where it
+  could evict an elite that is no longer in the buffer; the remap adds it, as pyribs does.
+  Its result is computed against the archive before the remap, where pyribs reports the
+  one after. One solution at a time, the archive matches pyribs (`test/reference/sliding.jl`)
+  up to ties in fitness and pyribs's tolerance of `1e-6` below a boundary, with one pyribs
+  bug corrected in the reference: pyribs 0.12.0 clips descriptors to the old bounds while
+  it adds the solutions back during a remap, so when the boundaries widen, solutions land
+  in the wrong cells. `outside` defaults to
   `ClampOutside()`, since after a remap the outer boundaries are the extremes of the
   buffer; during a remap the old elites are always clamped. A non-finite descriptor
   throws whatever the policy, because it would make the boundaries infinite. Every

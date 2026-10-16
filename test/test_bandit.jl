@@ -1,3 +1,5 @@
+include("reference/bandit.jl")
+
 const bandit_prob = Rastrigin(4)
 
 function bandit_archive()
@@ -150,4 +152,49 @@ end
     again = solve(prob, alg; budget=5_000, rng=Xoshiro(1))
     @test collect(QD.elites(again.archive)) == collect(QD.elites(result.archive))
     @test alg.emitters[1].rounds == 0                       # init works on a copy
+end
+
+# An emitter whose restarts the test decides: it restarts during the tell! that follows a
+# call of `restart_next!`.
+mutable struct ScriptedEmitter <: AbstractEmitter
+    const n::Int
+    const restarting::Bool
+    restarts::Int
+    restart_next::Bool
+end
+QD.batch_size(e::ScriptedEmitter) = e.n
+QD.ask(rng, e::ScriptedEmitter, archive) = [zeros(1) for _ in 1:e.n]
+QD.restarts(e::ScriptedEmitter) = e.restarting ? e.restarts : nothing
+function QD.tell!(e::ScriptedEmitter, xs, evs, results)
+    e.restart_next && (e.restarts += 1; e.restart_next = false)
+    return nothing
+end
+
+@testset "BanditScheduler matches pyribs" begin
+    # reference/bandit.jl: the emitters pyribs runs in each round, for statuses drawn at
+    # random. The counts here cover the whole run, as in pyribs.
+    status(k) = (QD.Rejected, QD.Improved, QD.NewCell)[k+1]
+    archive = GridArchive((2,), ((0, 1),))
+    for case in bandit_cases
+        pool = Tuple(ScriptedEmitter(n, r == 1, 0, false) for (n, r) in zip(case.sizes, case.restarting))
+        s = BanditScheduler(pool; num_active=case.num_active, reselect=case.reselect, window=10^6)
+        for t in eachindex(case.actives)
+            ours = findall(QD.active(s))
+            expected = case.actives[t]
+            if ours != expected
+                # only on a tie, where pyribs takes the last of the emitters and this
+                # package the first: the emitters chosen differently score the same
+                total = sum(s.selections)
+                score(i) = QD.ucb1(s.successes[i], s.selections[i], total, s.zeta)
+                @test allequal(score.(symdiff(ours, expected)))
+                @test maximum(setdiff(ours, expected)) < minimum(setdiff(expected, ours))
+            end
+            # continue from pyribs's choice, so that the counts stay the same
+            fill!(s.active, false)
+            s.active[expected] .= true
+            foreach(i -> s.pool[i].restart_next = true, case.restarts[t])
+            xs = QD.ask(Xoshiro(1), s, archive)
+            QD.tell!(s, xs, [Evaluation(0.0, SVector(0.0)) for _ in xs], [AddResult(status(k), 0.0) for k in case.statuses[t]])
+        end
+    end
 end

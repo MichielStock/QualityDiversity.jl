@@ -214,11 +214,19 @@ function last_cell_at_or_below(b, n, x)
     return lo
 end
 
-function add!(archive::SlidingBoundariesArchive, x, ev::Evaluation{<:Real})
-    result = add_to_cells!(archive, x, ev)
-    before = archive.offered
+function add!(archive::SlidingBoundariesArchive{G,F,N,O,P}, x, ev::Evaluation{<:Real}) where {G,F,N,O,P}
+    if (archive.offered + 1) % archive.remap_frequency != 0
+        result = add_to_cells!(archive, x, ev)
+        remember!(archive, x, ev)
+        return result
+    end
+    # The solution that triggers a remap is not placed in the old cells, where it could
+    # evict an elite that is no longer in the buffer; the remap adds it from the buffer.
+    i = cell_index(archive, ev.descriptor)
+    stored_phenotype(P, ev.phenotype)    # throws before the archive changes
+    result = i == 0 ? AddResult(Rejected, zero(F)) : classify(archive, i, convert(F, ev.fitness))
     remember!(archive, x, ev)
-    remap_if_due!(archive, before)
+    remap!(archive)
     return result
 end
 
