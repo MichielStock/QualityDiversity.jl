@@ -1,4 +1,4 @@
-using Makie: Makie, Heatmap, Figure, Axis, heatmap, heatmap!
+using Makie: Makie, ECDFPlot, Heatmap, Lines, Figure, Axis, heatmap, heatmap!, ecdfplot, lines
 
 const MakieExt = Base.get_extension(QualityDiversity, :QualityDiversityMakieExt)
 
@@ -91,4 +91,56 @@ end
     plot = heatmap!(ax, result.archive)
     @test plot isa Heatmap
     @test Makie.plot(result.archive) isa Makie.FigureAxisPlot
+end
+
+@testset "DensityArchive heatmap" begin
+    archive = DensityArchive(Xoshiro(1), GridArchive((3, 2), ((0, 3), (10, 12))); bandwidth=0.5)
+    QD.add!(archive, [0.0], Evaluation(1.5, SVector(0.5, 10.5)))
+    @test Makie.plottype(archive) === Heatmap
+    @test isequal(convert_heatmap(archive), convert_heatmap(QD.result_archive(archive)))
+end
+
+# The points of the stairs that Makie draws for an ECDF.
+ecdf_points(x) = only(Makie.convert_arguments(ECDFPlot, x).args)
+
+@testset "archive ECDF" begin
+    archive = GridArchive((4,), ((0, 1),))
+    for (f, d) in ((3.0, 0.1), (1.0, 0.4), (2.0, 0.9))
+        QD.add!(archive, [0.0], Evaluation(f, SVector(d)))
+    end
+    # the ECDF of the elite fitness is that of the fitness values themselves
+    @test ecdf_points(archive) == ecdf_points([3.0, 1.0, 2.0])
+    @test ecdfplot(archive) isa Makie.FigureAxisPlot
+    # a ThresholdArchive shows its result archive, whose elites can differ
+    t = ThresholdArchive(GridArchive((4,), ((0, 1),)); learning_rate=0.5, threshold_min=0)
+    QD.add!(t, [0.0], Evaluation(3.0, SVector(0.1)))
+    QD.add!(t, [0.0], Evaluation(2.0, SVector(0.1)))        # passes the threshold of 1.5
+    @test only(ev.fitness for (_, ev) in QD.elites(t)) == 2.0
+    @test ecdf_points(t) == ecdf_points([3.0])
+    d = DensityArchive(Xoshiro(1), GridArchive((4,), ((0, 1),)); bandwidth=0.5)
+    QD.add!(d, [0.0], Evaluation(2.5, SVector(0.3)))
+    @test ecdf_points(d) == ecdf_points([2.5])
+    u = UnstructuredArchive(1; capacity=5, threshold=0.1)
+    QD.add!(u, [0.0], Evaluation(-1.0, SVector(0.3)))
+    @test ecdf_points(u) == ecdf_points([-1.0])
+    f32 = GridArchive{Vector{Float64},Float32}((2,), ((0, 1),))
+    QD.add!(f32, [0.0], Evaluation(0.25f0, SVector(0.1)))
+    @test ecdf_points(f32) == ecdf_points([0.25])
+
+    bi = BiSphere(2)
+    p = ParetoGridArchive(bi; dims=(3, 3), reference_point=QD.reference_point(bi))
+    @test_throws "an ECDF needs a single real fitness, but this ParetoGridArchive" ecdf_points(p)
+end
+
+@testset "CQD score plot" begin
+    archive = GridArchive((4,), ((0, 1),))
+    for (f, d) in ((3.0, 0.1), (1.0, 0.4), (2.0, 0.9))
+        QD.add!(archive, [0.0], Evaluation(f, SVector(d)))
+    end
+    r = cqd_score(archive; targets=[[0.5]], fitness_range=(0, 3), penalties=3)
+    @test Makie.plottype(r) === Lines
+    xs, ys = Makie.convert_arguments(Lines, r)
+    @test xs == [0.0, 0.5, 1.0]
+    @test ys ≈ [1.0, 0.8, 0.6]
+    @test lines(r) isa Makie.FigureAxisPlot
 end

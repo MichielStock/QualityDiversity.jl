@@ -410,8 +410,8 @@ Julia LTS and the current release.
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
 - [ ] **Phase 7 — Extensions and docs.**
-  - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain (CQD score in the
-        core metrics, its plot in the extension)
+  - [x] Makie: archive heatmaps, archive ECDF, and the plot of the CQD score (the score
+        itself is a core metric)
   - [x] Device MAP-Elites: `DeviceGridArchive` and `DeviceVariationEmitter` with
         KernelAbstractions kernels, and a GPU row in the comparison with QDax
   - [x] Device CVT archive: `DeviceCVTArchive`, the nearest centroid found in a kernel
@@ -598,7 +598,8 @@ Settled; change them only with the author's agreement.
   result, a `CQDScore`, also holds the mean `ω` over targets for each weight, which the
   Makie extension plots against the weight (`lines(result)`), the figure of the paper.
   The score is defined for archives with a real fitness and `SVector` descriptors; an
-  empty archive throws.
+  empty archive throws. `test/reference/cqd.jl` holds scores of pyribs 0.12.0's
+  `cqd_score` for three archives; ours match.
 - **Archive ECDF.** The Makie extension adds `Makie.convert_arguments` for `ECDFPlot`, so
   `ecdfplot(archive)` draws the empirical distribution of the elite fitness, as pyribs's
   `archive_ecdf`; Makie's own attributes pick the complementary curve or counts. A
@@ -608,8 +609,8 @@ Settled; change them only with the author's agreement.
   package gains no plotting function of its own. It draws archives with two descriptor
   dimensions and throws for any other number. A `GridArchive` shows one rectangle per cell and
   a `CVTArchive` its Voronoi cells sampled on a `pixels` by `pixels` grid; a
-  `ParetoGridArchive` shows the hypervolume of each front, and a `ThresholdArchive` its result
-  archive. Empty cells are `NaN`, which Makie leaves transparent. `CategoricalArchive` and
+  `ParetoGridArchive` shows the hypervolume of each front, and a `ThresholdArchive` or a
+  `DensityArchive` its result archive. Empty cells are `NaN`, which Makie leaves transparent. `CategoricalArchive` and
   archives with more dimensions are not drawn yet.
 - **Device MAP-Elites.** The CPU is the default and nothing moves to a device unless the
   user asks: `MAPElites(prob; dims, device=CuArray)` (any array type: `ROCArray`,

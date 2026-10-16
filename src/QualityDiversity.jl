@@ -84,7 +84,7 @@ export ReselectTerminated, ReselectAll
 export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
 export MAPElites, CMAME, CMAMAE, MOME, MELS, DDS
 export init, step!, solve!, solve
-export qd_score, coverage, max_fitness, mean_fitness
+export qd_score, coverage, max_fitness, mean_fitness, cqd_score, CQDScore
 export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scores
 
 @compat public Rejected, Improved, NewCell
