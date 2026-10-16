@@ -48,6 +48,27 @@ struct QDResult{A<:AbstractArchive,H<:NamedTuple}
     n_evals::Int
 end
 
+function Base.show(io::IO, mime::MIME"text/plain", result::QDResult)
+    print(io, "QDResult after ", result.n_evals, " evaluations\n  archive: ")
+    show(io, mime, result.archive)
+    show_metrics(io, result.history)
+end
+
+function Base.show(io::IO, mime::MIME"text/plain", state::QDState)
+    print(io, "QDState after ", state.n_evals, " of ", state.budget, " evaluations\n  archive: ")
+    show(io, mime, state.archive)
+    show_metrics(io, state.history)
+end
+
+# The latest metrics of a run, one per line.
+function show_metrics(io::IO, history)
+    isempty(history) && return nothing
+    for (name, value) in pairs(last(history))
+        name == :n_evals || print(io, "\n  ", name, ": ", value)
+    end
+    return nothing
+end
+
 """
     init(prob, alg::QDAlgorithm; budget, rng=Random.default_rng(), callback=nothing,
          init_size=<sum of the emitters' batch sizes>) -> QDState
@@ -196,4 +217,16 @@ function CommonSolve.solve!(state::QDState)
         CommonSolve.step!(state)
     end
     return QDResult(result_archive(state.archive), state.history, state.n_evals)
+end
+
+"""
+    solve(prob, alg::QDAlgorithm; budget, rng=Random.default_rng(), callback=nothing,
+          init_size) -> QDResult
+
+Run `alg` on `prob` until `budget` evaluations are spent: `solve!(init(prob, alg; ...))`.
+The keyword arguments are those of [`init`](@ref). `alg` is not modified, so it can be
+solved again.
+"""
+function CommonSolve.solve(prob::AbstractQDProblem, alg::QDAlgorithm; kwargs...)
+    return solve!(init(prob, alg; kwargs...))
 end

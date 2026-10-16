@@ -346,14 +346,30 @@ QualityDiversity.jl/
 │   └── compare/                  # same problem in pyribs and QDax, for the comparison table
 │       └── gpu/                  # MAP-Elites on a CUDA GPU; CUDA lives in its own Project.toml
 ├── docs/                         # Documenter.jl
+│   ├── Project.toml              # Documenter, Literate, CairoMakie, Graphs
+│   ├── make.jl                   # turns the tutorial scripts into pages, builds and deploys
+│   └── src/
+│       ├── index.md
+│       ├── guide/                # concepts, choosing an algorithm, extending, GPU, comparison
+│       └── api/                  # the docstrings, one page per role
 └── examples/
     ├── Project.toml              # Graphs.jl and JLArrays for the examples
     ├── rastrigin.jl              # continuous genotype
-    ├── rastrigin_tutorial.jl     # step-by-step walkthrough
+    ├── rastrigin_tutorial.jl     # step-by-step walkthrough (tutorial)
     ├── gpu_evaluation.jl         # optional: evaluate_batch on a GPU array type
-    ├── graphs.jl                 # structured genotype (proves the pitch)
-    └── heatmap.jl                # archive heatmaps with CairoMakie
+    ├── graphs.jl                 # structured genotype, proves the pitch (tutorial)
+    ├── noisy.jl                  # Sampled and MELS on a noisy problem (tutorial)
+    ├── mome.jl                   # several objectives (tutorial)
+    └── heatmap.jl                # plots with CairoMakie (tutorial)
 ```
+
+The tutorials of the documentation are the scripts marked "(tutorial)", which
+`docs/make.jl` turns into pages with Literate.jl, so the code on a page is the code
+that runs. Lines ending in `#src` are left out of the page and lines starting with
+`#md` appear only there; comments inside a function start with `##`, since Literate
+turns a comment that starts with `# ` into text. The documentation build runs every
+tutorial and doctest and fails on a broken cross-reference or on a public name whose
+docstring no API page includes.
 
 `QualityDiversity.Testing` is a public submodule. A user who defines a new
 problem, archive or emitter calls e.g.
@@ -422,8 +438,10 @@ Julia LTS and the current release.
         the CMA-MAE paper, for `DeviceCMAEmitter`
   - [ ] Device MOME: `ParetoGridArchive` fronts in device arrays, a batch inserted in
         parallel over the cells, with the dominance checks of a cell in parallel too
+  - [x] Documenter site with tutorials, deployed to GitHub Pages by
+        `.github/workflows/Documentation.yml`
   - [ ] ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
-        emitter; Documenter site with tutorials
+        emitter
 
 GPU support is optional and never a dependency of the package. Scoring a batch
 on a device works through `evaluate_batch` (`examples/gpu_evaluation.jl`,
@@ -800,7 +818,8 @@ violations after each edit.
 - When adding a dependency, choose it on its merits, not because it happens
   to be installed.
 - Run `Pkg.test()` as the final check before a pull request; iterate with
-  Revise and targeted includes.
+  Revise and targeted includes. A change to a docstring, an example or `docs/`
+  also needs a clean `julia --project=docs docs/make.jl`.
 - Do not add developer tools (BenchmarkTools, JET, Cthulhu, Revise) to the
   package's `[deps]`. Test-only dependencies go in `test/Project.toml`.
 

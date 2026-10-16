@@ -17,6 +17,7 @@ that the results have the right types, and, for archives, that `cell_index`
 
 - [`test_problem`](@ref QualityDiversity.Testing.test_problem)
 - [`test_archive`](@ref QualityDiversity.Testing.test_archive)
+- [`test_front_archive`](@ref QualityDiversity.Testing.test_front_archive)
 - [`test_variation`](@ref QualityDiversity.Testing.test_variation)
 - [`test_emitter`](@ref QualityDiversity.Testing.test_emitter)
 """
@@ -90,11 +91,11 @@ end
 """
     test_problem(prob; rng=Xoshiro(1), n=5, rtol=0)
 
-Check that `prob` meets the contract of [`AbstractQDProblem`](@ref), or of
-[`AbstractStochasticQDProblem`](@ref).
+Check that `prob` meets the contract of [`AbstractQDProblem`](@ref QualityDiversity.AbstractQDProblem), or of
+[`AbstractStochasticQDProblem`](@ref QualityDiversity.AbstractStochasticQDProblem).
 
 `random_solution` is called `n` times. Every solution must evaluate to an
-[`Evaluation`](@ref) with a real or vector fitness and a descriptor that lies
+[`Evaluation`](@ref QualityDiversity.Evaluation) with a real or vector fitness and a descriptor that lies
 inside `descriptor_bounds(prob)` and has one entry per bound. For a problem
 that defines `descriptor_categories(prob)` instead, the descriptor must be a
 tuple with one entry equal to a category of each dimension. `evaluate` must be
@@ -203,7 +204,7 @@ end
                  sequential_batch=true, population=false, gain=true)
 
 Check that the archives built by `make_archive()` meet the contract of
-[`AbstractArchive`](@ref). `make_archive` is called without arguments and must
+[`AbstractArchive`](@ref QualityDiversity.AbstractArchive). `make_archive` is called without arguments and must
 return a new, empty archive each time. `prob` supplies solutions and
 evaluations; its descriptors must lie inside the archive's bounds. A stochastic
 problem is evaluated with a fixed seed.
@@ -219,27 +220,27 @@ when the genotype type is `isbits`.
 An archive is `elitist` if a cell only accepts a solution with higher fitness
 than its occupant, so that adding the same solution again, or a worse one, is
 `Rejected`. An archive whose cells accept solutions below the occupant, such as a
-[`ThresholdArchive`](@ref) with a finite `threshold_min` and a `learning_rate`
+[`ThresholdArchive`](@ref QualityDiversity.ThresholdArchive) with a finite `threshold_min` and a `learning_rate`
 below 1, passes `elitist=false`. The checks then require only that a status
 agrees with the sign of `improvement`: `Rejected` for zero or less, `Improved` for
 more than zero.
 
 By default `add_batch!` must give the results of `add!` on each solution in order.
 An archive that computes the results of a batch against its state before the
-batch, such as a [`GridArchive`](@ref) or a [`ThresholdArchive`](@ref), passes
+batch, such as a [`GridArchive`](@ref QualityDiversity.GridArchive) or a [`ThresholdArchive`](@ref QualityDiversity.ThresholdArchive), passes
 `sequential_batch=false`. The checks then require that the results are valid and
 that the result of each solution equals that of adding the solution alone to the
 archive as it was before the batch.
 
 An archive that chooses its whole population again from the stored solutions and the
-batch, such as a [`DNSArchive`](@ref), passes `population=true`. A solution then has no
+batch, such as a [`DNSArchive`](@ref QualityDiversity.DNSArchive), passes `population=true`. A solution then has no
 cell to improve, so the checks require only that each result is `NewCell` or
 `Rejected`, that the solutions of a batch added to an empty archive that are `NewCell`
 are the ones it stores, and that the archive never holds more than its capacity.
 
 By default `improvement` is a gain in fitness: positive for an `Improved` solution and
 zero or less for a `Rejected` one. An archive that reports another quantity there, such
-as a [`DensityArchive`](@ref), whose `improvement` is the negated density, passes
+as a [`DensityArchive`](@ref QualityDiversity.DensityArchive), whose `improvement` is the negated density, passes
 `gain=false`, and the checks ignore the value of `improvement`.
 """
 function test_archive(make_archive, prob::QD.AbstractQDProblem;
@@ -396,7 +397,7 @@ end
     test_front_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true)
 
 Check that the archives built by `make_archive()` meet the contract of an archive that keeps
-a Pareto front in every cell, such as a [`ParetoGridArchive`](@ref). `prob` is a problem with
+a Pareto front in every cell, such as a [`ParetoGridArchive`](@ref QualityDiversity.ParetoGridArchive). `prob` is a problem with
 a vector fitness whose solutions are evaluated for the checks, and `make_archive()` returns an
 empty archive for it whose reference point lies below the fitness values of `prob`. The
 fitness type of the archive must be a vector of reals.
@@ -544,7 +545,7 @@ _shift_fitness(f::AbstractVector, by) = f .+ by
     test_variation(op, parent; parent2=nothing, rng=Xoshiro(1))
 
 Check that the variation operator `op` meets the contract of
-[`AbstractVariation`](@ref) for the genotype `parent`. Without `parent2` the
+[`AbstractVariation`](@ref QualityDiversity.AbstractVariation) for the genotype `parent`. Without `parent2` the
 operator is a mutation, `vary(rng, op, parent)`, and `n_parents(op)` must be
 `1`; with it, a crossover, `vary(rng, op, parent, parent2)`, and `n_parents(op)`
 must be `2`.
@@ -567,10 +568,14 @@ function test_variation(op::QD.AbstractVariation, parent;
     return nothing
 end
 
+# The type of the batches that the emitters of `archive` return.
+batch_type(::QD.AbstractArchive{G}) where {G} = Vector{G}
+batch_type(::QD.DeviceCellArchive) = QD.DeviceBatch
+
 """
     test_emitter(emitter, archive, prob; rng=Xoshiro(1))
 
-Check that `emitter` meets the contract of [`AbstractEmitter`](@ref). `archive`
+Check that `emitter` meets the contract of [`AbstractEmitter`](@ref QualityDiversity.AbstractEmitter). `archive`
 must be an archive for `prob` that already holds at least one solution. The
 check modifies both `emitter` and `archive`.
 
@@ -580,10 +585,6 @@ genotypes of the archive's genotype type, inferrably, as a `Vector`, or as a
 [`DeviceCellArchive`](@ref QualityDiversity.DeviceCellArchive). The batch must then pass
 through `evaluate_batch`, `add_batch!` and `tell!`.
 """
-# The type of the batches that the emitters of `archive` return.
-batch_type(::QD.AbstractArchive{G}) where {G} = Vector{G}
-batch_type(::QD.DeviceCellArchive) = QD.DeviceBatch
-
 function test_emitter(emitter::QD.AbstractEmitter, archive::QD.AbstractArchive{G},
                       prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1)) where {G}
     @testset "test_emitter($(nameof(typeof(emitter))))" begin

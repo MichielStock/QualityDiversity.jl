@@ -1,0 +1,90 @@
+```@meta
+CurrentModule = QualityDiversity
+```
+
+# Choosing an algorithm
+
+Every algorithm is an archive and a tuple of emitters. The constructors below choose
+both with the settings of the paper that introduced the algorithm; the API reference
+gives every keyword.
+
+## Algorithms
+
+| Constructor | Algorithm | Archive | Emitters | Use it when |
+|---|---|---|---|---|
+| [`MAPElites`](@ref) | MAP-Elites (Mouret and Clune, 2015) | [`GridArchive`](@ref), or [`CategoricalArchive`](@ref) for discrete descriptors | one [`VariationEmitter`](@ref) | any genotype; the first thing to try |
+| [`CMAME`](@ref) | CMA-ME (Fontaine et al., 2020) | [`GridArchive`](@ref) | five [`CMAEmitter`](@ref)s | real-vector genotypes, especially many parameters |
+| [`CMAMAE`](@ref) | CMA-MAE (Fontaine and Nikolaidis, 2023) | [`ThresholdArchive`](@ref) around a grid | five [`CMAEmitter`](@ref)s | as CMA-ME, when fitness should count for more |
+| [`DDS`](@ref) | Density Descent Search (Lee et al., 2024) | [`DensityArchive`](@ref) around a grid | fifteen [`CMAEmitter`](@ref)s | exploring descriptor space with little regard for fitness |
+| [`MOME`](@ref) | Multi-objective MAP-Elites (Pierrot et al., 2022) | [`ParetoGridArchive`](@ref) | one [`VariationEmitter`](@ref) | several objectives |
+| [`MELS`](@ref) | MAP-Elites with low spread (Mace et al., 2023) | [`SpreadArchive`](@ref) around a grid | one [`VariationEmitter`](@ref) | noisy descriptors |
+
+A few rules of thumb:
+
+- **Start with MAP-Elites.** It works with any genotype for which you can write a
+  variation operator, and its one parameter that matters is the size of the mutation.
+- **Real vectors with many parameters:** the CMA emitters adapt the shape of their
+  search to the problem and usually reach better fitness than a fixed Gaussian
+  mutation. `sigma0`, the initial step size, has no default because it depends on the
+  scale of the solutions; a tenth to a half of the range of a parameter is a usual
+  start.
+- **CMA-ME or CMA-MAE:** CMA-MAE keeps searching where it has already found good
+  solutions, which CMA-ME abandons once a region is covered. It needs `threshold_min`,
+  the lowest fitness the problem can produce.
+- **Noisy problems:** wrap the problem in [`Sampled`](@ref) to average several
+  evaluations; use MELS when the descriptor is noisy too. See the
+  [noisy problems tutorial](../tutorials/noisy.md).
+
+## Archives
+
+The constructors pick a grid, but any archive can be given to [`MAPElites`](@ref),
+[`CMAME`](@ref) and the others in place of the problem:
+
+```julia
+archive = CVTArchive(Xoshiro(1), prob; cells=1_000)
+alg = MAPElites(archive; batch_size=100)
+```
+
+| Archive | Cells | Use it when |
+|---|---|---|
+| [`GridArchive`](@ref) | a regular grid over the descriptor bounds | few descriptor dimensions (up to about 4) |
+| [`CVTArchive`](@ref) | the Voronoi cells of centroids from k-means | more descriptor dimensions, or a fixed number of cells |
+| [`SlidingBoundariesArchive`](@ref) | a grid whose boundaries follow the quantiles of recent descriptors | descriptors crowd into a small part of their range |
+| [`CategoricalArchive`](@ref) | one per combination of discrete values | descriptors are labels or small integers |
+| [`UnstructuredArchive`](@ref) | none: a solution enters if it is far from those stored | descriptor bounds are unknown (novelty search) |
+| [`DNSArchive`](@ref) | none: a population chosen by distance to fitter neighbours | as above, with a fixed population size |
+| [`ThresholdArchive`](@ref) | those of the archive it wraps | CMA-MAE |
+| [`SpreadArchive`](@ref) | those of the grid or CVT archive it wraps | MELS |
+| [`DensityArchive`](@ref) | those of the archive it wraps | DDS |
+| [`ParetoGridArchive`](@ref) | a grid, with a Pareto front in each cell | several objectives |
+
+A descriptor outside the bounds of a grid is an error by default, which catches a
+descriptor function that does not match its bounds. Pass `outside=ClampOutside()` to
+put it in the nearest cell, or `outside=RejectOutside()` to discard it.
+
+## Variation
+
+| Operator | Parents | For |
+|---|---|---|
+| [`GaussianMutation`](@ref) | 1 | real vectors |
+| [`IsoLineVariation`](@ref) | 2 | real vectors; moves along the line between two elites (Vassiliades and Mouret, 2018) |
+| [`PolynomialMutation`](@ref) | 1 | real vectors within bounds |
+| [`UniformCrossover`](@ref) | 2 | vectors of any element type |
+
+Any other genotype needs an operator of its own; see the
+[graph tutorial](../tutorials/graphs.md).
+
+## Combining emitters
+
+[`QDAlgorithm`](@ref) takes any archive and any tuple of emitters, for example a
+Gaussian and an iso-line emitter side by side:
+
+```julia
+archive = GridArchive(prob; dims=(50, 50))
+emitters = (VariationEmitter(GaussianMutation(0.1); batch_size=50),
+            VariationEmitter(IsoLineVariation(0.01, 0.2); batch_size=50))
+alg = QDAlgorithm(archive, emitters)
+```
+
+All emitters run every round. A [`BanditScheduler`](@ref) instead holds a pool of
+emitters and runs the most successful few each round.

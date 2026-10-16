@@ -1,4 +1,4 @@
-# # Tutorial: MAP-Elites on the Rastrigin function
+# # MAP-Elites on the Rastrigin function
 #
 # Run it from the repository root:
 #
@@ -77,6 +77,12 @@ for row in 1:20
     println(join(isnan(f) ? ' ' : shades[2 + round(Int, 3 * (f - lo) / (hi - lo))]
                  for f in fitnesses[row, :]))
 end
+
+#md # With a Makie backend loaded, the archive draws as a heatmap; see
+#md # [Plotting archives](heatmap.md).
+#md
+#md using CairoMakie
+#md heatmap(archive; axis=(xlabel="descriptor 1", ylabel="descriptor 2", aspect=1))
 
 # ## 5. Things to try
 #

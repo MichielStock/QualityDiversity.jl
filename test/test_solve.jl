@@ -116,3 +116,18 @@ end
     mutated = solve(prob, MAPElites(prob; dims=(10, 10), batch_size=50); budget=5_000, rng=Xoshiro(1))
     @test mutated.history != result.history
 end
+
+@testset "display" begin
+    prob = Rastrigin(4)
+    alg = MAPElites(prob; dims=(5, 5), batch_size=10)
+    result = solve(prob, alg; budget=100, rng=Xoshiro(1))
+    n = length(result.archive)
+    @test repr(MIME"text/plain"(), result.archive) == "GridArchive with $n of 25 cells occupied"
+    shown = repr(MIME"text/plain"(), result)
+    @test startswith(shown, "QDResult after 100 evaluations\n  archive: GridArchive with $n of 25 cells occupied\n")
+    @test occursin("\n  coverage: $(n / 25)", shown)
+    @test !occursin("n_evals", shown)
+
+    state = init(prob, alg; budget=100, rng=Xoshiro(1))
+    @test startswith(repr(MIME"text/plain"(), state), "QDState after 10 of 100 evaluations\n  archive: GridArchive with ")
+end

@@ -1,0 +1,19 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
+QualityDiversity = "5f1c2a3e-8b47-4d0e-9a6c-2e7d1b94c0a3"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[sources]
+QualityDiversity = {path = ".."}
+
+[compat]
+CairoMakie = "0.15"
+Documenter = "1"
+Graphs = "1"
+KernelAbstractions = "0.9"
+Literate = "2"
