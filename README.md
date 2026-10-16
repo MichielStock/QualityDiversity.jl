@@ -1,2 +1,115 @@
 # QualityDiversity.jl
-QualityDiversity.jl is a package that makes use of Julia's multiple dispatch to write simple and generic code for Quality Diversity problems while performing well.
+
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://wclaerhout.github.io/QualityDiversity.jl/dev/)
+[![CI](https://github.com/wclaerhout/QualityDiversity.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/wclaerhout/QualityDiversity.jl/actions/workflows/CI.yml)
+
+Quality-diversity (QD) optimization in Julia: MAP-Elites and the algorithms built from
+the same parts, such as CMA-ME, CMA-MAE, MOME and Dominated Novelty Search.
+
+A QD algorithm does not look for one best solution. It looks for the best solution of
+every kind, where the kind of a solution is given by a few numbers called its
+descriptor, and returns an archive of them.
+
+QualityDiversity.jl works with **any genotype you can write as a Julia type**: vectors
+of numbers, and also graphs, molecules, programs or recipes. You define a function
+that scores and describes a solution and, for a new genotype, a way to vary it; the
+library compiles specialized code for it. Python's QD libraries,
+[pyribs](https://pyribs.org) and [QDax](https://github.com/adaptive-intelligent-robotics/QDax),
+store solutions as arrays of numbers, which makes such genotypes slow or impossible.
+
+The package is under development and not yet registered.
+
+## Installation
+
+```julia
+using Pkg
+Pkg.add(url="https://github.com/wclaerhout/QualityDiversity.jl")
+```
+
+Julia 1.10 or later.
+
+## Quick start
+
+```julia
+using QualityDiversity
+using Random: Xoshiro
+
+prob = Rastrigin(10)                                  # a benchmark with 10 parameters
+alg = MAPElites(prob; dims=(20, 20), variation=GaussianMutation(0.3))
+result = solve(prob, alg; budget=100_000, rng=Xoshiro(1))
+
+coverage(result.archive), max_fitness(result.archive)
+```
+
+For a problem of your own, wrap a function that returns the fitness (maximized) and
+the descriptor:
+
+```julia
+f(x) = (-sum(abs2, x), clamp.((x[1], x[2]), -2, 2))
+prob = QDProblem(f; init=rng -> randn(rng, 5), bounds=((-2, 2), (-2, 2)))
+result = solve(prob, MAPElites(prob; dims=(20, 20)); budget=50_000, rng=Xoshiro(1))
+```
+
+Switching algorithm is one argument:
+
+```julia
+result = solve(prob, CMAME(prob; dims=(20, 20), sigma0=0.5); budget=50_000, rng=Xoshiro(1))
+```
+
+With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
+
+### A custom genotype
+
+Any type works as a genotype. Define a variation operator for it, and tell the algorithm
+the type. Here `graph_prob` is a `QDProblem` whose function scores a graph and whose
+`init` draws a random one:
+
+```julia
+using Graphs
+
+struct EdgeFlip <: AbstractVariation end
+
+function QualityDiversity.vary(rng, ::EdgeFlip, parent::SimpleGraph{Int})
+    child = copy(parent)
+    a, b = rand(rng, vertices(child), 2)
+    a == b || (has_edge(child, a, b) ? rem_edge!(child, a, b) : add_edge!(child, a, b))
+    return child
+end
+
+alg = MAPElites(graph_prob; dims=(20, 20), genotype=SimpleGraph{Int}, variation=EdgeFlip())
+```
+
+The [graph tutorial](https://wclaerhout.github.io/QualityDiversity.jl/dev/tutorials/graphs/)
+works through a complete example.
+
+## What is included
+
+| | |
+|---|---|
+| Algorithms | MAP-Elites, CMA-ME, CMA-MAE, Density Descent Search, MOME, MAP-Elites with low spread |
+| Archives | grid, CVT, sliding boundaries, categorical, threshold (CMA-MAE), unstructured (novelty), dominated novelty, density, spread, Pareto grid |
+| Emitters | variation emitter, CMA emitter (CMA-ES, sep-CMA-ES, LM-MA-ES, OpenAI-ES, with the rankers and restart rules of pyribs), bandit scheduler |
+| Variation | Gaussian, iso-line, polynomial (bounded), uniform crossover; your own for any type |
+| Problems | function wrappers, noisy problems with averaged or spread-aware evaluation, benchmarks |
+| Metrics | QD score, coverage, continuous QD score, hypervolume and MOQD score |
+| Extensions | Makie plots (heatmaps, ECDF, CQD curve); MAP-Elites and CMA-ME with the archive on a GPU |
+
+Every run is reproducible from its seed, also with threaded evaluation. Several archives
+and emitters are checked against pyribs and QDax on the same inputs.
+
+## Speed
+
+`benchmark/compare` runs the same problems in QualityDiversity.jl, pyribs and QDax; its
+[README](benchmark/compare/README.md) has the settings and results. On one CPU core,
+MAP-Elites on Rastrigin is 2 to 10 times faster than pyribs and CMA-ME 4 to 6 times
+faster; on a GPU, MAP-Elites is level with QDax.
+
+## Documentation
+
+The [documentation](https://wclaerhout.github.io/QualityDiversity.jl/dev/) has
+tutorials, a guide to choosing an algorithm, how to write your own problem, variation,
+emitter or archive, and the API reference.
+
+## License
+
+MIT; see [LICENSE](LICENSE).

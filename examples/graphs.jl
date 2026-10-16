@@ -28,7 +28,7 @@
 # so the interesting comparison is between cells of equal density: how much
 # efficiency does each degree of clustering cost?
 
-module GraphExample
+module GraphExample #src
 
 using Graphs: SimpleGraph, add_edge!, add_vertex!, edges, erdos_renyi, global_clustering_coefficient,
               gdistances, has_edge, ne, nv, rem_edge!, rem_vertex!
@@ -150,7 +150,7 @@ function main()
     sizes = [nv(g) for (g, _) in QualityDiversity.elites(archive)]
     println("vertices in the archive: ", minimum(sizes), " to ", maximum(sizes))
 
-    # At one density, the most efficient graph found for each level of clustering.
+    ## At one density, the most efficient graph found for each level of clustering.
     println("\ndensity 0.25–0.35:   transitivity   vertices  edges  efficiency")
     best = Dict{Int,Any}()
     for (g, ev) in QualityDiversity.elites(archive)
@@ -166,8 +166,8 @@ function main()
                 round(ev.fitness; digits=3))
     end
 
-    # A text picture of the grid: darker means more efficient, blank is empty.
-    # Columns are the density, rows the transitivity.
+    ## A text picture of the grid: darker means more efficient, blank is empty.
+    ## Columns are the density, rows the transitivity.
     shades = collect(" ░▒▓█")
     efficiencies = fill(NaN, 20, 20)
     for (_, ev) in QualityDiversity.elites(archive)
@@ -183,6 +183,7 @@ function main()
     return result
 end
 
-end # module
+end # module #src
 
-abspath(PROGRAM_FILE) == (@__FILE__) && GraphExample.main()
+abspath(PROGRAM_FILE) == (@__FILE__) && GraphExample.main() #src
+#md main()

@@ -218,3 +218,15 @@ function CommonSolve.solve!(state::QDState)
     end
     return QDResult(result_archive(state.archive), state.history, state.n_evals)
 end
+
+"""
+    solve(prob, alg::QDAlgorithm; budget, rng=Random.default_rng(), callback=nothing,
+          init_size) -> QDResult
+
+Run `alg` on `prob` until `budget` evaluations are spent: `solve!(init(prob, alg; ...))`.
+The keyword arguments are those of [`init`](@ref). `alg` is not modified, so it can be
+solved again.
+"""
+function CommonSolve.solve(prob::AbstractQDProblem, alg::QDAlgorithm; kwargs...)
+    return solve!(init(prob, alg; kwargs...))
+end
