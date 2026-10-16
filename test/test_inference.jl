@@ -149,6 +149,30 @@ end
     end
 end
 
+@testset "DensityArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
+                     bounds=((-1, 1), (-1, 1)))
+    xs = [QD.random_solution(Xoshiro(2), prob) for _ in 1:80]
+    evs = QD.evaluate_batch(prob, xs)
+    for phenotype in (Nothing, Int)
+        grid = GridArchive{SVector{3,Float64}}((10, 10), ((-1, 1), (-1, 1)); phenotype)
+        # a buffer that is full, so that reservoir sampling runs
+        archive = DensityArchive(Xoshiro(1), grid; bandwidth=0.2, buffer_size=40)
+        pevs = [Evaluation(ev.fitness, ev.descriptor, phenotype === Int ? 1 : nothing) for ev in evs]
+        QD.add_batch!(archive, xs, pevs)
+        @inferred QD.density(archive, pevs[1].descriptor)
+        @inferred QD.add!(archive, xs[1], pevs[1])
+        @inferred QD.add_batch!(archive, xs[1:5], pevs[1:5])
+        @test allocated(QD.cell_index, archive, pevs[1].descriptor) == 0
+        @test allocated(QD.density, archive, pevs[1].descriptor) == 0
+        @test allocated(QD.add!, archive, xs[1], pevs[1]) == 0
+    end
+    prob4 = Rastrigin(4)
+    state = init(prob4, DDS(Xoshiro(1), prob4; dims=(5, 5), sigma0=0.5, bandwidth=0.5, num_emitters=2); budget=10_000, rng=Xoshiro(1))
+    @inferred step!(state)
+end
+
 @testset "SlidingBoundariesArchive inference and allocations" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),

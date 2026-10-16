@@ -206,6 +206,48 @@ function CMAMAE(prob::AbstractQDProblem; dims::Tuple, sigma0::Real, threshold_mi
     return CMAME(archive; sigma0, dim=solution_dim(prob), num_emitters, ranker, selection, restart, kwargs...)
 end
 
+"""
+    DDS(rng::AbstractRNG, prob; dims, sigma0, bandwidth, buffer_size=10_000, num_emitters=15,
+        batch_size=36, ranker=ImprovementRanker(), selection=MuSelection(),
+        restart=ConvergenceRestart(), x0=nothing, lower=-Inf, upper=Inf,
+        bounds=descriptor_bounds(prob), genotype=Vector{Float64}, fitness=Float64,
+        outside=ClampOutside(), phenotype=Nothing) -> QDAlgorithm
+
+Density Descent Search with a kernel density estimate (DDS-KDE; Lee et al., 2024): a
+[`DensityArchive`](@ref) around a [`GridArchive`](@ref) with `dims` cells, and
+`num_emitters` [`CMAEmitter`](@ref)s that rank their candidates by the density of the
+descriptors found so far, lowest first, recombine the best half and restart on
+convergence, the settings of the paper. It searches for diversity alone: the fitness only
+decides which solution the grid keeps in a cell. `rng` drives the buffer of the
+[`DensityArchive`](@ref), and `bandwidth` and `buffer_size` are its arguments. The grid
+clamps descriptors outside `bounds` to the nearest cell by default, since the search
+moves away from the descriptors it knows. The other arguments are those of
+[`CMAME`](@ref).
+
+# Example
+
+```julia
+prob = Rastrigin(10)
+alg = DDS(Xoshiro(1), prob; dims=(20, 20), sigma0=0.5, bandwidth=0.5)
+result = solve(prob, alg; budget=50_000, rng=Xoshiro(2))
+coverage(result.archive)
+```
+"""
+function DDS(rng::AbstractRNG, prob::AbstractQDProblem; dims::Tuple, sigma0::Real, bandwidth::Real,
+             buffer_size::Integer=10_000, num_emitters::Integer=15, batch_size::Integer=36,
+             ranker::AbstractRanker=ImprovementRanker(),
+             selection::SelectionRule=MuSelection(),
+             restart::RestartRule=ConvergenceRestart(),
+             bounds::Tuple=descriptor_bounds(prob),
+             genotype::Type=Vector{Float64},
+             fitness::Type{<:AbstractFloat}=Float64,
+             outside::OutsidePolicy=ClampOutside(), phenotype::Type=Nothing, kwargs...)
+    grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+    archive = DensityArchive(rng, grid; bandwidth, buffer_size)
+    return CMAME(archive; sigma0, dim=solution_dim(prob), num_emitters, batch_size, ranker, selection,
+                 restart, kwargs...)
+end
+
 # Length of the solutions of `prob`, from one random solution.
 solution_dim(prob::AbstractQDProblem) = length(random_solution(Random.Xoshiro(0), prob))
 

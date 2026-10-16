@@ -404,7 +404,7 @@ Julia LTS and the current release.
         descriptors found
   - [x] `BanditScheduler` for choosing among emitters (pyribs)
   - [x] `DNSArchive` (pyribs, QDax): Dominated Novelty Search
-  - [ ] `DensityArchive` (pyribs): Density Descent Search
+  - [x] `DensityArchive` (pyribs) and `DDS()`: Density Descent Search
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
@@ -531,7 +531,8 @@ Settled; change them only with the author's agreement.
   improvement, with mu selection and restarts on convergence, as in the paper; the grid
   clamps descriptors outside its bounds by default (pyribs clips), since density descent
   leaves the known region on purpose. Only the kernel estimate is offered; the normalizing
-  flow of DDS-CNF would need a neural-network package.
+  flow of DDS-CNF would need a neural-network package. `test/reference/density.jl` holds
+  the densities that pyribs 0.12.0 reports for three sequences; ours match.
 - **Stochastic evaluation.** Noisy problems receive an explicit generator,
   `evaluate(rng, prob, x)`, and opt in through `AbstractStochasticQDProblem`;
   deterministic problems keep `evaluate(prob, x)`. The loop calls

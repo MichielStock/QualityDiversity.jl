@@ -200,7 +200,7 @@ end
 
 """
     test_archive(make_archive, prob; rng=Xoshiro(1), n=200, check_allocations=true, elitist=true,
-                 sequential_batch=true, population=false)
+                 sequential_batch=true, population=false, gain=true)
 
 Check that the archives built by `make_archive()` meet the contract of
 [`AbstractArchive`](@ref). `make_archive` is called without arguments and must
@@ -236,11 +236,16 @@ batch, such as a [`DNSArchive`](@ref), passes `population=true`. A solution then
 cell to improve, so the checks require only that each result is `NewCell` or
 `Rejected`, that the solutions of a batch added to an empty archive that are `NewCell`
 are the ones it stores, and that the archive never holds more than its capacity.
+
+By default `improvement` is a gain in fitness: positive for an `Improved` solution and
+zero or less for a `Rejected` one. An archive that reports another quantity there, such
+as a [`DensityArchive`](@ref), whose `improvement` is the negated density, passes
+`gain=false`, and the checks ignore the value of `improvement`.
 """
 function test_archive(make_archive, prob::QD.AbstractQDProblem;
                       rng::AbstractRNG=Xoshiro(1), n::Integer=200,
                       check_allocations::Bool=true, elitist::Bool=true,
-                      sequential_batch::Bool=true, population::Bool=false)
+                      sequential_batch::Bool=true, population::Bool=false, gain::Bool=true)
     archive = make_archive()
     A = typeof(archive)
     G, F, D, P = _archive_types(archive)
@@ -292,19 +297,19 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             else
                 r = QD.add!(a, xs[1], ev)
                 elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
-                @test (r.status == QD.Rejected) == (r.improvement <= 0)
+                gain && @test (r.status == QD.Rejected) == (r.improvement <= 0)
                 @test length(a) == 1
 
                 worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor, ev.phenotype)
                 r = QD.add!(a, xs[1], worse)
                 elitist ? (@test r.status == QD.Rejected) : (@test r.status in (QD.Rejected, QD.Improved))
-                @test (r.status == QD.Rejected) == (r.improvement <= 0)
-                elitist && @test r.improvement < 0
+                gain && @test (r.status == QD.Rejected) == (r.improvement <= 0)
+                gain && elitist && @test r.improvement < 0
 
                 better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor, ev.phenotype)
                 r = QD.add!(a, xs[2], better)
                 @test r.status == QD.Improved
-                @test r.improvement > 0
+                gain && @test r.improvement > 0
                 @test length(a) == 1
                 @test only(collect(QD.elites(a)))[1] == convert(G, xs[2])
                 @test isequal(only(collect(QD.elites(a)))[2].phenotype, ev.phenotype)
