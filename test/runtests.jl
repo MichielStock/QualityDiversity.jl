@@ -12,6 +12,7 @@ const QD = QualityDiversity
     @testset "stochastic problems" begin include("test_stochastic.jl") end
     @testset "pareto archive and MOME" begin include("test_pareto.jl") end
     @testset "archives" begin include("test_archives.jl") end
+    @testset "sliding boundaries archive" begin include("test_sliding.jl") end
     @testset "cvt archive" begin include("test_cvt.jl") end
     @testset "categorical archive" begin include("test_categorical.jl") end
     @testset "threshold archive" begin include("test_threshold.jl") end

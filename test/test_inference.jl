@@ -120,6 +120,27 @@ end
     @test allocated(QD.cell_index, archive, SVector(0.1, 0.2)) == 0
 end
 
+@testset "SlidingBoundariesArchive inference and allocations" begin
+    prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
+                     init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
+                     bounds=((-1, 1), (-1, 1)))
+    xs = [QD.random_solution(Xoshiro(2), prob) for _ in 1:50]
+    evs = QD.evaluate_batch(prob, xs)
+    for outside in (ThrowOutside(), ClampOutside(), RejectOutside()), phenotype in (Nothing, Int)
+        # a remap after every solution, so that each measured call remaps
+        archive = SlidingBoundariesArchive{SVector{3,Float64}}((10, 10), ((-1, 1), (-1, 1));
+                                                               outside, phenotype, remap_frequency=1, buffer_capacity=20)
+        QD.add_batch!(archive, xs, [Evaluation(ev.fitness, ev.descriptor, phenotype === Int ? 1 : nothing) for ev in evs])
+        x = xs[1]
+        ev = Evaluation(evs[1].fitness, evs[1].descriptor, phenotype === Int ? 1 : nothing)
+        @inferred QD.cell_index(archive, ev.descriptor)
+        @inferred QD.add!(archive, x, ev)
+        @test allocated(QD.cell_index, archive, ev.descriptor) == 0
+        @test allocated(QD.add!, archive, x, ev) == 0
+        @test allocated(QD.add!, archive, x, Evaluation(ev.fitness + 1, ev.descriptor, ev.phenotype)) == 0
+    end
+end
+
 @testset "CVTArchive inference and allocations" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
