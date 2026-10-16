@@ -14,14 +14,23 @@ cells left transparent.
 - [`ThresholdArchive`](@ref QualityDiversity.ThresholdArchive): the result archive, as
   `solve` returns it.
 - [`SpreadArchive`](@ref QualityDiversity.SpreadArchive): the archive it wraps.
+- [`DensityArchive`](@ref QualityDiversity.DensityArchive): its result archive.
+
+`ecdfplot(archive)` draws the empirical distribution function of the elite fitness of
+any archive with a single real fitness, as pyribs's `archive_ecdf`: the fraction of
+elites with fitness at most each value. An archive that wraps a result archive, such as a
+[`ThresholdArchive`](@ref QualityDiversity.ThresholdArchive), shows its result archive.
+
+`lines(result)` for a [`CQDScore`](@ref QualityDiversity.CQDScore) plots the mean of `ω`
+over the targets against the penalty weight, the figure of Kent et al. (2022).
 
 An archive with another number of descriptor dimensions throws an `ArgumentError`.
 """
 module QualityDiversityMakieExt
 
-using Makie: Makie, Heatmap
-using QualityDiversity: QualityDiversity, CellArchive, GridArchive, CVTArchive,
-    ParetoGridArchive, ThresholdArchive, SpreadArchive
+using Makie: Makie, ECDFPlot, Heatmap, Lines
+using QualityDiversity: QualityDiversity, AbstractArchive, CellArchive, CQDScore, GridArchive, CVTArchive,
+    ParetoGridArchive, ThresholdArchive, SpreadArchive, DensityArchive
 using StaticArrays: SVector
 
 const DEFAULT_PIXELS = 200
@@ -31,6 +40,8 @@ Makie.plottype(::CVTArchive) = Heatmap
 Makie.plottype(::ParetoGridArchive) = Heatmap
 Makie.plottype(::ThresholdArchive) = Heatmap
 Makie.plottype(::SpreadArchive) = Heatmap
+Makie.plottype(::DensityArchive) = Heatmap
+Makie.plottype(::CQDScore) = Lines
 
 function require_two_dimensions(archive, N)
     N == 2 || throw(ArgumentError(
@@ -94,5 +105,24 @@ Makie.used_attributes(::Type{P}, archive::SpreadArchive) where {P<:Heatmap} =
 function Makie.convert_arguments(P::Type{<:Heatmap}, archive::SpreadArchive; kwargs...)
     return Makie.convert_arguments(P, archive.inner; kwargs...)
 end
+
+Makie.used_attributes(::Type{P}, archive::DensityArchive) where {P<:Heatmap} =
+    Makie.used_attributes(P, QualityDiversity.result_archive(archive))
+
+function Makie.convert_arguments(P::Type{<:Heatmap}, archive::DensityArchive; kwargs...)
+    return Makie.convert_arguments(P, QualityDiversity.result_archive(archive); kwargs...)
+end
+
+function Makie.convert_arguments(P::Type{<:ECDFPlot}, archive::AbstractArchive)
+    return Makie.convert_arguments(P, elite_fitness(QualityDiversity.result_archive(archive)))
+end
+
+function elite_fitness(archive::AbstractArchive{G,F}) where {G,F}
+    F <: Real || throw(ArgumentError(
+        "an ECDF needs a single real fitness, but this $(nameof(typeof(archive))) has fitness of type $F"))
+    return Float64[ev.fitness for (_, ev) in QualityDiversity.elites(archive)]
+end
+
+Makie.convert_arguments(::Type{<:Lines}, result::CQDScore) = (result.penalties, result.per_penalty)
 
 end

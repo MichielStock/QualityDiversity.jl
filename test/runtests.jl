@@ -27,6 +27,7 @@ const QD = QualityDiversity
     @testset "cma emitter" begin include("test_cma_emitter.jl") end
     @testset "bandit scheduler" begin include("test_bandit.jl") end
     @testset "solve" begin include("test_solve.jl") end
+    @testset "cqd score" begin include("test_cqd.jl") end
     @testset "conformance" begin include("test_conformance.jl") end
     @testset "phenotype" begin include("test_phenotype.jl") end
     @testset "graph example" begin include("test_graphs.jl") end
