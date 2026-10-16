@@ -323,6 +323,11 @@ function result_archive end
 
 result_archive(archive::AbstractArchive) = archive
 
+# A summary instead of the stored arrays, which can hold millions of numbers.
+function Base.show(io::IO, ::MIME"text/plain", archive::AbstractArchive)
+    print(io, nameof(typeof(archive)), " with ", length(archive), " of ", capacity(archive), " cells occupied")
+end
+
 # ── Variation ─────────────────────────────────────────────
 
 """
