@@ -118,12 +118,24 @@ end
     test_archive(() -> DNSArchive(prob; capacity=30, k=3, genotype=Vector{Float32}, fitness=Float32), prob; population...)
 end
 
+@testset "density archives" begin
+    prob = Rastrigin(4)
+    # improvement is the negated density, not a gain in fitness
+    density = (; sequential_batch=false, gain=false)
+    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive(prob; dims=(8, 8)); bandwidth=0.5), prob; density...)
+    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive(prob; dims=(8, 8)); bandwidth=0.5, buffer_size=20), prob; density...)
+    test_archive(() -> DensityArchive(Xoshiro(1), CVTArchive(Xoshiro(1), prob; cells=40, samples=2_000); bandwidth=2), prob; density...)
+    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive(prob; dims=(8, 8), fitness=Float32); bandwidth=0.5), prob; density...)
+end
+
 @testset "archive with an isbits genotype" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
                      bounds=((-1, 1), (-1, 1)))
     test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))), prob; sequential_batch=false)
     test_archive(() -> DNSArchive{SVector{3,Float64}}(2; capacity=40, k=3), prob; population=true)
+    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))); bandwidth=0.2,
+                                      buffer_size=30), prob; sequential_batch=false, gain=false)
     test_archive(() -> SlidingBoundariesArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1)); remap_frequency=3), prob;
                  sequential_batch=false)
 end

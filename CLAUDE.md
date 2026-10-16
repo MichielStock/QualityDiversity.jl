@@ -169,7 +169,8 @@ follow the distribution of recent descriptors), `CVTArchive`, `CategoricalArchiv
 descriptors, numbers or labels), `ThresholdArchive` (CMA-MAE thresholds around
 a cell archive, with a result archive of the best solutions), `UnstructuredArchive` (novelty-style,
 distance threshold), `DNSArchive` (Dominated Novelty Search: a population chosen by
-distance to fitter neighbours), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
+distance to fitter neighbours), `DensityArchive` (Density Descent Search: the density of
+recent descriptors around a result archive), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
 
 Storage layout for cell-based archives (`GridArchive`, `SlidingBoundariesArchive`,
 `CVTArchive`, `CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
@@ -299,6 +300,7 @@ QualityDiversity.jl/
 │   │   ├── device_grid.jl        # DeviceGridArchive
 │   │   ├── device_cvt.jl         # DeviceCVTArchive
 │   │   ├── dns.jl                # DNSArchive
+│   │   ├── density.jl            # DensityArchive for DDS
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -377,7 +379,7 @@ Julia LTS and the current release.
       on Rastrigin (same archive shape, batch size, evaluation budget).
 - [x] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
       Graphs.jl genotype, custom `vary`, descriptor from graph statistics.
-- [ ] **Phase 6 — More algorithms.** One at a time, easiest first. Each comes
+- [x] **Phase 6 — More algorithms.** One at a time, easiest first. Each comes
       with tests, a conformance check from `Testing`, and a benchmark entry.
       The list follows what pyribs and QDax offer, minus what is out of scope.
   - [x] `IsoLineVariation` and `VariationEmitter` with two parents
@@ -402,7 +404,7 @@ Julia LTS and the current release.
         descriptors found
   - [x] `BanditScheduler` for choosing among emitters (pyribs)
   - [x] `DNSArchive` (pyribs, QDax): Dominated Novelty Search
-  - [ ] `DensityArchive` (pyribs): Density Descent Search
+  - [x] `DensityArchive` (pyribs) and `DDS()`: Density Descent Search
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
@@ -510,6 +512,27 @@ Settled; change them only with the author's agreement.
   `mean_fitness` are recomputed after every batch, since a remove can lower them.
   `test/reference/dns.jl` holds the populations that QDax (commit 46b8fee; DNS is not in
   QDax 0.5.0) and pyribs 0.12.0 keep after each batch of four sequences; ours match.
+- **Density descent.** `DensityArchive(rng, inner; bandwidth, buffer_size=10_000)`
+  (Lee et al., 2024, "Density Descent for Diversity Optimization"; pyribs `DensityArchive`;
+  QDax has none) wraps an archive with `SVector` descriptors, as `ThresholdArchive` and
+  `SpreadArchive` do: every solution goes to `inner`, which `result_archive` returns and
+  whose elites emitters draw, and the descriptors go to a buffer of `buffer_size`, kept a
+  uniform sample of all descriptors seen by reservoir sampling (Li, 1994, Algorithm L;
+  pyribs's version picks the wrong elements when it replaces several in one batch). The
+  generator is given at construction, as for `CVTArchive`, since `add!` has none. The
+  density at a descriptor is the Gaussian kernel density estimate of the buffer,
+  `sum(φ(|y - b| / h)) / (|B| h)` with `h = bandwidth`, as in the paper and pyribs, zero
+  for an empty buffer; `bandwidth` has no default (the paper finds about 5% of the width of
+  descriptor space good). A result keeps the status of `inner` and has `improvement =
+  -density` computed before the batch enters the buffer, so `ImprovementRanker` ranks the
+  lowest density first, as pyribs's `DensityRanker`; every result of a batch is computed
+  against the buffer before the batch. `DDS(rng, prob; dims, sigma0, bandwidth)` is a
+  `DensityArchive` around a `GridArchive` with 15 `CMAEmitter`s of 36 solutions, ranked by
+  improvement, with mu selection and restarts on convergence, as in the paper; the grid
+  clamps descriptors outside its bounds by default (pyribs clips), since density descent
+  leaves the known region on purpose. Only the kernel estimate is offered; the normalizing
+  flow of DDS-CNF would need a neural-network package. `test/reference/density.jl` holds
+  the densities that pyribs 0.12.0 reports for three sequences; ours match.
 - **Stochastic evaluation.** Noisy problems receive an explicit generator,
   `evaluate(rng, prob, x)`, and opt in through `AbstractStochasticQDProblem`;
   deterministic problems keep `evaluate(prob, x)`. The loop calls

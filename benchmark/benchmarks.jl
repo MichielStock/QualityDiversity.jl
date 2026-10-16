@@ -97,6 +97,13 @@ SUITE["archive"]["DNSArchive/add_batch!/n=100"] = let xs = [QD.random_solution(r
     evs = QD.evaluate_batch(prob, xs)
     @benchmarkable QD.add_batch!($dns, $xs, $evs)
 end
+const density_archive = let a = DensityArchive(Xoshiro(4), GridArchive(prob; dims=(100, 100), outside=ClampOutside()); bandwidth=0.5)
+    xs = [QD.random_solution(rng, prob) for _ in 1:20_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
+    a
+end
+SUITE["archive"]["DensityArchive/density (10_000 buffered)"] = @benchmarkable QD.density($density_archive, $d)
+SUITE["archive"]["DensityArchive/add!"] = @benchmarkable QD.add!($density_archive, $x, $ev)
 const sliding = filled_sliding(typemax(Int))
 SUITE["archive"]["SlidingBoundariesArchive/cell_index"] = @benchmarkable QD.cell_index($sliding, $d)
 SUITE["archive"]["SlidingBoundariesArchive/add!/rejected"] = @benchmarkable QD.add!($sliding, $x, $(QD.Evaluation(-1e6, ev.descriptor)))
@@ -207,6 +214,13 @@ SUITE["algorithm"]["BanditScheduler/step!"] = let
     state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
     for _ in 1:50
         step!(state)
+    end
+    @benchmarkable step!($state)
+end
+SUITE["algorithm"]["DDS/step!"] = let alg = DDS(Xoshiro(1), sphere; dims=(100, 100), sigma0=0.5, bandwidth=0.5)
+    state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
+    for _ in 1:30
+        step!(state)    # past the first 10_000 descriptors, so that the buffer is full
     end
     @benchmarkable step!($state)
 end

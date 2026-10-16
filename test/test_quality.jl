@@ -59,6 +59,10 @@ end
     JET.@test_opt target_modules = (QualityDiversity,) QD.add!(dns.archive, [0.0, 0.0, 0.0, 0.0],
                                                             Evaluation(1.0, SVector(0.0, 0.0)))
 
+    dds = init(prob, DDS(Xoshiro(1), prob; dims=(5, 5), sigma0=0.5, bandwidth=0.5, num_emitters=2); budget=10_000,
+               rng=Xoshiro(1))
+    JET.@test_opt target_modules = (QualityDiversity,) step!(dds)
+
     sliding = init(prob, MAPElites(SlidingBoundariesArchive(prob; dims=(5, 5), remap_frequency=16); batch_size=8);
                    budget=64, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(sliding)

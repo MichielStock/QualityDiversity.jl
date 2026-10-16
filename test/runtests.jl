@@ -19,6 +19,7 @@ const QD = QualityDiversity
     @testset "spread archive and MELS" begin include("test_spread.jl") end
     @testset "unstructured archive" begin include("test_unstructured.jl") end
     @testset "dns archive" begin include("test_dns.jl") end
+    @testset "density archive and DDS" begin include("test_density.jl") end
     @testset "variation" begin include("test_variation.jl") end
     @testset "emitters" begin include("test_emitters.jl") end
     @testset "cma-es" begin include("test_cma_es.jl") end

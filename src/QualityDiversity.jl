@@ -40,6 +40,7 @@ include("archives/cvt.jl")
 include("archives/categorical.jl")
 include("archives/unstructured.jl")
 include("archives/dns.jl")
+include("archives/density.jl")
 include("archives/threshold.jl")
 include("archives/spread.jl")
 include("archives/pareto.jl")
@@ -69,7 +70,7 @@ export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
 export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, Rastrigin, Sphere, BiSphere
-export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, DNSArchive, ThresholdArchive,
+export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, DNSArchive, DensityArchive, ThresholdArchive,
     SpreadArchive, ParetoGridArchive, DeviceGridArchive, DeviceCVTArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
@@ -81,7 +82,7 @@ export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRa
 export FilterSelection, MuSelection
 export ReselectTerminated, ReselectAll
 export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
-export MAPElites, CMAME, CMAMAE, MOME, MELS
+export MAPElites, CMAME, CMAMAE, MOME, MELS, DDS
 export init, step!, solve!, solve
 export qd_score, coverage, max_fitness, mean_fitness
 export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scores
@@ -91,7 +92,7 @@ export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scor
     descriptor_categories, fitness_offset, reference_point
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
-@compat public CellArchive, boundaries, centroids, thresholds, spreads, DescriptorSamples
+@compat public CellArchive, boundaries, density, centroids, thresholds, spreads, DescriptorSamples
 @compat public DeviceCellArchive, DeviceBatch, EvaluationBatch, AddResultBatch
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop

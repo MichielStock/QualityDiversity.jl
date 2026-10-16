@@ -38,6 +38,10 @@ Ranks candidates by the `improvement` of their [`AddResult`](@ref), the gain ove
 threshold of the cell. This is the ranking of CMA-MAE, for use with a
 [`ThresholdArchive`](@ref).
 
+With a [`DensityArchive`](@ref), whose `improvement` is the negated density, it ranks
+the candidates in the sparsest regions of descriptor space first, the ranking of Density
+Descent Search ([`DDS`](@ref)).
+
 For an archive where a new cell reports its fitness as `improvement`, as the other
 cell archives do, the improvements of new and old cells are on different scales;
 [`TwoStageImprovementRanker`](@ref) is the ranking for those.
