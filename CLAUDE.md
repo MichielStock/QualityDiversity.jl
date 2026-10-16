@@ -246,7 +246,8 @@ first step.
 `qd_score(archive; offset)`, `coverage(archive)`, `max_fitness(archive)`,
 `mean_fitness(archive)`. QD-score needs an offset so negative fitness values
 do not reduce the score; the problem may supply a default via
-`fitness_offset(prob)` (optional, default `0`).
+`fitness_offset(prob)` (optional, default `0`). `cqd_score` measures an archive without
+reference to cells (see Decisions).
 
 ---
 
@@ -409,7 +410,8 @@ Julia LTS and the current release.
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
 - [ ] **Phase 7 — Extensions and docs.**
-  - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain
+  - [ ] Makie: archive heatmaps are done; ECDF and CQD score remain (CQD score in the
+        core metrics, its plot in the extension)
   - [x] Device MAP-Elites: `DeviceGridArchive` and `DeviceVariationEmitter` with
         KernelAbstractions kernels, and a GPU row in the comparison with QDax
   - [x] Device CVT archive: `DeviceCVTArchive`, the nearest centroid found in a kernel
@@ -580,6 +582,27 @@ Settled; change them only with the author's agreement.
   takes no offset; `max_fitness` and `mean_fitness` are not defined. The record of a run of such
   an archive has the fields of `ParetoMetricsRecord`, chosen by `metrics_record_type`. `hypervolume`
   is exact for any number of objectives.
+- **CQD score.** `cqd_score(archive; targets, fitness_range, penalties=10, distance_max)`
+  is the continuous QD score of Kent, Branke, Gaier and Mouret (2022), as pyribs
+  `cqd_score`; QDax has none. For each target descriptor `G` and penalty weight `θ` the
+  archive recommends the elite that maximizes `ω = f / (f_max - f_min) - θ d(G) /
+  distance_max`, with `d` the Euclidean distance between its descriptor and `G`, and the
+  score is the sum of those `ω` over targets and weights. The fitness is divided by the
+  range without subtracting `f_min`, as in equation 1 of the paper and in pyribs.
+  `fitness_range = (f_min, f_max)` has no default (the paper takes the problem's known
+  values or the range over all compared runs); `penalties` is a number of weights spread
+  evenly over `[0, 1]` (ends included, as pyribs's `linspace`) or the weights themselves;
+  `distance_max` defaults to the diagonal of `descriptor_bounds(archive)`. Targets are
+  given, as in pyribs; `cqd_score(rng, archive; num_targets, ...)` draws them uniformly
+  within the descriptor bounds, so that a run draws new targets, as the paper does. The
+  result, a `CQDScore`, also holds the mean `ω` over targets for each weight, which the
+  Makie extension plots against the weight (`lines(result)`), the figure of the paper.
+  The score is defined for archives with a real fitness and `SVector` descriptors; an
+  empty archive throws.
+- **Archive ECDF.** The Makie extension adds `Makie.convert_arguments` for `ECDFPlot`, so
+  `ecdfplot(archive)` draws the empirical distribution of the elite fitness, as pyribs's
+  `archive_ecdf`; Makie's own attributes pick the complementary curve or counts. A
+  `ThresholdArchive` shows its result archive, as for the heatmap.
 - **Archive heatmaps.** The Makie extension adds `Makie.convert_arguments` methods for
   `Heatmap`, so `heatmap(archive)`, `heatmap!(ax, archive)` and `plot(archive)` work and the
   package gains no plotting function of its own. It draws archives with two descriptor
