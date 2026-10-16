@@ -401,7 +401,8 @@ Julia LTS and the current release.
   - [x] `SlidingBoundariesArchive` (pyribs): a grid whose boundaries follow the
         descriptors found
   - [x] `BanditScheduler` for choosing among emitters (pyribs)
-  - [ ] `DensityArchive` (pyribs) and `DNSArchive` (pyribs, QDax)
+  - [x] `DNSArchive` (pyribs, QDax): Dominated Novelty Search
+  - [ ] `DensityArchive` (pyribs): Density Descent Search
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
@@ -507,6 +508,8 @@ Settled; change them only with the author's agreement.
   uniformly, as in pyribs and QDax; the paper draws them from the better half.
   `cell_index` is the slot of the nearest stored descriptor. `max_fitness` and
   `mean_fitness` are recomputed after every batch, since a remove can lower them.
+  `test/reference/dns.jl` holds the populations that QDax (commit 46b8fee; DNS is not in
+  QDax 0.5.0) and pyribs 0.12.0 keep after each batch of four sequences; ours match.
 - **Stochastic evaluation.** Noisy problems receive an explicit generator,
   `evaluate(rng, prob, x)`, and opt in through `AbstractStochasticQDProblem`;
   deterministic problems keep `evaluate(prob, x)`. The loop calls

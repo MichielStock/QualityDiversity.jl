@@ -87,6 +87,16 @@ function filled_sliding(remap_frequency)
     end
     return a
 end
+const dns = let a = DNSArchive(prob; capacity=1024, k=3)
+    xs = [QD.random_solution(rng, prob) for _ in 1:2_000]
+    QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
+    a
+end
+SUITE["archive"]["DNSArchive/add! (1024 solutions)"] = @benchmarkable QD.add!($dns, $x, $ev)
+SUITE["archive"]["DNSArchive/add_batch!/n=100"] = let xs = [QD.random_solution(rng, prob) for _ in 1:BATCH]
+    evs = QD.evaluate_batch(prob, xs)
+    @benchmarkable QD.add_batch!($dns, $xs, $evs)
+end
 const sliding = filled_sliding(typemax(Int))
 SUITE["archive"]["SlidingBoundariesArchive/cell_index"] = @benchmarkable QD.cell_index($sliding, $d)
 SUITE["archive"]["SlidingBoundariesArchive/add!/rejected"] = @benchmarkable QD.add!($sliding, $x, $(QD.Evaluation(-1e6, ev.descriptor)))
