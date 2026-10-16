@@ -197,12 +197,14 @@ bounded genotypes, and `UniformCrossover(proportion)`. A user with a custom geno
 | `ask(rng, emitter, archive) -> Vector{G}` | required | a batch of candidates |
 | `tell!(emitter, xs, evs, results)` | optional | update internal state; default no-op |
 | `batch_size(emitter)` | required | |
+| `restarts(emitter)` | optional | number of times the emitter has restarted; default `nothing`, for an emitter that never restarts |
 
 Concrete emitters: `VariationEmitter(op; batch_size)` (select parents
 uniformly, apply `op`) and `CMAEmitter` (a search distribution whose update
 is driven by a ranker, a selection rule and a restart rule, all types chosen by
 dispatch; the optimizer is an `AbstractEvolutionStrategy`: `CMAES`, `SepCMAES`,
-`LMMAES` or `OpenAIES`). An emitter with state may require `tell!` to follow the `ask` that
+`LMMAES` or `OpenAIES`), and `BanditScheduler` (a pool of emitters of which a bandit
+runs a few each round). An emitter with state may require `tell!` to follow the `ask` that
 produced the batch.
 
 **Algorithm and state** — CommonSolve.jl interface:
@@ -310,6 +312,7 @@ QualityDiversity.jl/
 │   │   ├── openai_es.jl
 │   │   ├── rankers.jl
 │   │   ├── cma_emitter.jl
+│   │   ├── bandit_scheduler.jl   # BanditScheduler
 │   │   ├── device_emitter.jl     # DeviceVariationEmitter
 │   │   └── device_cma_emitter.jl # DeviceCMAEmitter
 │   ├── solve.jl                  # QDAlgorithm, QDState, QDResult, init/step!/solve!
@@ -395,8 +398,8 @@ Julia LTS and the current release.
   - [x] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
   - [x] `SlidingBoundariesArchive` (pyribs): a grid whose boundaries follow the
         descriptors found
-  - [ ] `BanditScheduler` for choosing among emitters (pyribs), `DensityArchive`
-        and `DNSArchive` (pyribs)
+  - [x] `BanditScheduler` for choosing among emitters (pyribs)
+  - [ ] `DensityArchive` and `DNSArchive` (pyribs)
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
@@ -467,6 +470,24 @@ Settled; change them only with the author's agreement.
   that pyribs computes, for reproducing results produced with pyribs; `CMAES` follows
   the textbook `c1`. `AcceptedRandomDirectionRanker` is the random direction ranking of
   the CMA-ME paper; the two-stage one is that of pyribs.
+- **Bandit scheduler.** `BanditScheduler(pool; num_active)` (pyribs; Cully, 2021,
+  "Multi-Emitter MAP-Elites") is an emitter that holds a tuple of emitters and runs
+  `num_active` of them each round, so the loop does not change. `ask` returns the batches
+  of the active emitters one after the other, in the order of the pool; `tell!` hands each
+  its part and counts, per emitter, the solutions it produced (selections) and those the
+  archive accepted (successes, `NewCell` or `Improved`), over the last `window` rounds (50
+  by default, as in the paper; pyribs counts the whole run). Then it chooses the emitters
+  of the next round, so `batch_size(scheduler)`, the sum of the batch sizes of the active
+  emitters, is known before `ask` and emitters of different batch sizes can share a pool.
+  The first round runs the first `num_active` emitters. An emitter leaves the active set
+  by the reselection rule, a type: `ReselectTerminated()` (default) when it restarted
+  during the round, which `restarts(emitter)` tells, or always if it cannot restart (its
+  `restarts` is `nothing`), as in pyribs and the paper; `ReselectAll()` every round. The
+  free slots go to the inactive emitters (including the ones that just left) with the
+  highest UCB1 score `successes/selections + zeta*sqrt(log(total selections)/selections)`,
+  as in Algorithm 1 of the paper, with `zeta = 0.05`; an emitter without selections in the
+  window scores `Inf`, and ties go to the earlier emitter of the pool. pyribs takes the
+  log of the total successes instead. A mutable emitter may appear only once in the pool.
 - **Stochastic evaluation.** Noisy problems receive an explicit generator,
   `evaluate(rng, prob, x)`, and opt in through `AbstractStochasticQDProblem`;
   deterministic problems keep `evaluate(prob, x)`. The loop calls

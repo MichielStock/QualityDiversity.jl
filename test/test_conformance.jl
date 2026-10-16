@@ -183,6 +183,13 @@ end
         test_emitter(CMAEmitter(4; sigma0=1.0), archive, QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> convert(G, randn(rng, 4)), bounds=((-5.12, 5.12), (-5.12, 5.12))))
     end
+    # bandit schedulers, with emitters of different batch sizes in one pool
+    pool() = (VariationEmitter(GaussianMutation(0.2); batch_size=16), VariationEmitter(UniformCrossover(); batch_size=5),
+              CMAEmitter(4; sigma0=1.0), CMAEmitter(4; sigma0=1.0, batch_size=9))
+    for num_active in 1:4, reselect in (ReselectTerminated(), ReselectAll())
+        test_emitter(BanditScheduler(pool(); num_active, reselect), filled(), prob)
+    end
+    test_emitter(BanditScheduler((CMAEmitter(4; sigma0=1.0),); num_active=1, window=1), filled(), prob)
 end
 
 struct BadProblem <: AbstractQDProblem end
