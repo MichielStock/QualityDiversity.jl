@@ -79,6 +79,21 @@ SUITE["archive"]["CVTArchive/cell_index (1000 cells)"] = @benchmarkable QD.cell_
 SUITE["archive"]["CVTArchive/add!/rejected"] = @benchmarkable QD.add!($cvt, $x, $ev)
 SUITE["archive"]["CVTArchive/sample_elites/n=100"] = @benchmarkable QD.sample_elites($rng, $cvt, 100)
 
+function filled_sliding(remap_frequency)
+    a = SlidingBoundariesArchive(prob; dims=(100, 100), remap_frequency)
+    for _ in 1:20
+        xs = [QD.random_solution(rng, prob) for _ in 1:BATCH]
+        QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
+    end
+    return a
+end
+const sliding = filled_sliding(typemax(Int))
+SUITE["archive"]["SlidingBoundariesArchive/cell_index"] = @benchmarkable QD.cell_index($sliding, $d)
+SUITE["archive"]["SlidingBoundariesArchive/add!/rejected"] = @benchmarkable QD.add!($sliding, $x, $(QD.Evaluation(-1e6, ev.descriptor)))
+# with a full buffer of 1000 solutions, every call remaps
+const remapping = filled_sliding(1)
+SUITE["archive"]["SlidingBoundariesArchive/add! with remap"] = @benchmarkable QD.add!($remapping, $x, $ev)
+
 # ── emitter ───────────────────────────────────────────────
 const emitter = VariationEmitter(mutation; batch_size=BATCH)
 SUITE["emitter"]["ask/batch=100"] = @benchmarkable QD.ask($rng, $emitter, $archive)
@@ -90,6 +105,12 @@ for _ in 1:200
     step!(state)    # reach a steady state before measuring
 end
 SUITE["algorithm"]["step!/batch=100"] = @benchmarkable step!($state)
+const sliding_state = init(prob, MAPElites(SlidingBoundariesArchive(prob; dims=(100, 100)); batch_size=BATCH,
+                                          variation=mutation); budget=typemax(Int), rng=Xoshiro(2))
+for _ in 1:200
+    step!(sliding_state)
+end
+SUITE["algorithm"]["SlidingBoundariesArchive/step!/batch=100"] = @benchmarkable step!($sliding_state)
 SUITE["algorithm"]["solve/360k evaluations"] =
     @benchmarkable solve($prob, $alg; budget=360_000, rng=Xoshiro(3)) samples = 5 evals = 1 seconds = 120
 

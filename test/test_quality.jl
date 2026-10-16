@@ -48,6 +48,12 @@ end
     JET.@test_opt target_modules = (QualityDiversity,) QD.ask(Xoshiro(1), state.emitters[1], state.archive)
     JET.@test_opt target_modules = (QualityDiversity,) QD.vary(Xoshiro(1), GaussianMutation(0.1), [0.0, 0.0])
 
+    sliding = init(prob, MAPElites(SlidingBoundariesArchive(prob; dims=(5, 5), remap_frequency=16); batch_size=8);
+                   budget=64, rng=Xoshiro(1))
+    JET.@test_opt target_modules = (QualityDiversity,) step!(sliding)
+    JET.@test_opt target_modules = (QualityDiversity,) QD.add!(sliding.archive, [0.0, 0.0, 0.0, 0.0],
+                                                            Evaluation(1.0, SVector(0.0, 0.0)))
+
     noisy = Sampled(StochasticQDProblem((rng, x) -> (-sum(abs2, x) + randn(rng), (x[1], x[2]));
                                         init=rng -> randn(rng, 4), bounds=((-3, 3), (-3, 3))); num_samples=2)
     noisy_state = init(noisy, MAPElites(noisy; dims=(5, 5), batch_size=8); budget=200, rng=Xoshiro(1))

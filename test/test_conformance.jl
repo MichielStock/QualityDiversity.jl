@@ -111,6 +111,20 @@ end
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
                      bounds=((-1, 1), (-1, 1)))
     test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))), prob; sequential_batch=false)
+    test_archive(() -> SlidingBoundariesArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1)); remap_frequency=3), prob;
+                 sequential_batch=false)
+end
+
+@testset "sliding boundaries archives" begin
+    prob = Rastrigin(4)
+    # results of a batch are against the archive before it, and a remap waits for the end of the batch
+    batchwise = (; sequential_batch=false)
+    test_archive(() -> SlidingBoundariesArchive(prob; dims=(8, 8)), prob; batchwise...)
+    test_archive(() -> SlidingBoundariesArchive(prob; dims=(8, 8), remap_frequency=7, buffer_capacity=50), prob; batchwise...)
+    test_archive(() -> SlidingBoundariesArchive(prob; dims=(8, 8), remap_frequency=1, buffer_capacity=10), prob; batchwise...)
+    test_archive(() -> SlidingBoundariesArchive(prob; dims=(1, 1), remap_frequency=5), prob; batchwise...)
+    test_archive(() -> SlidingBoundariesArchive(prob; dims=(5, 3), remap_frequency=5, fitness=Float32), prob; batchwise...)
+    test_archive(() -> SlidingBoundariesArchive(prob; dims=(8, 8), remap_frequency=5, outside=RejectOutside()), prob; batchwise...)
 end
 
 @testset "front archives" begin

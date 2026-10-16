@@ -34,6 +34,7 @@ include("problems/stochastic.jl")
 include("problems/benchmarks.jl")
 include("archives/cell_archive.jl")
 include("archives/grid.jl")
+include("archives/sliding.jl")
 include("archives/nearest_centroid.jl")
 include("archives/cvt.jl")
 include("archives/categorical.jl")
@@ -66,7 +67,7 @@ export Evaluation, AddStatus, AddResult
 export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
 export QDAlgorithm, QDState, QDResult
 export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, Rastrigin, Sphere, BiSphere
-export GridArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive,
+export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, ThresholdArchive,
     SpreadArchive, ParetoGridArchive, DeviceGridArchive, DeviceCVTArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
@@ -87,7 +88,7 @@ export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scor
     descriptor_categories, fitness_offset, reference_point
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
-@compat public CellArchive, centroids, thresholds, spreads, DescriptorSamples
+@compat public CellArchive, boundaries, centroids, thresholds, spreads, DescriptorSamples
 @compat public DeviceCellArchive, DeviceBatch, EvaluationBatch, AddResultBatch
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop

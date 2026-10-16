@@ -20,7 +20,7 @@ struct RejectOutside <: OutsidePolicy end
 
 Supertype of the archives that divide descriptor space into a fixed number of
 cells and keep the highest-fitness solution found in each: [`GridArchive`](@ref),
-[`CVTArchive`](@ref) and [`CategoricalArchive`](@ref). They differ in how a
+[`SlidingBoundariesArchive`](@ref), [`CVTArchive`](@ref) and [`CategoricalArchive`](@ref). They differ in how a
 descriptor is assigned to a cell and share everything else: storage, `add!`,
 `add_batch!`, `sample_elites`, `elites`, `length`, `capacity`, `empty!` and the
 metrics, including the running totals that make `qd_score`, `max_fitness` and
@@ -43,7 +43,10 @@ Base.length(archive::CellArchive) = length(archive.occupied_idx)
 
 capacity(archive::CellArchive) = length(archive.occupied)
 
-function Base.empty!(archive::CellArchive{G,F}) where {G,F}
+Base.empty!(archive::CellArchive) = clear_cells!(archive)
+
+# Empties every cell and resets the running totals.
+function clear_cells!(archive::CellArchive{G,F}) where {G,F}
     fill!(archive.occupied, false)
     empty!(archive.occupied_idx)
     archive.fitness_sum = 0.0
@@ -74,7 +77,9 @@ with zero `improvement`. An empty cell takes any solution
 only if the fitness is strictly higher (`Improved`, otherwise `Rejected`).
 For an occupied cell, `improvement` is the fitness minus the occupant's.
 """
-function add!(archive::CellArchive{G,F,D,P}, x, ev::Evaluation{<:Real}) where {G,F,D,P}
+add!(archive::CellArchive, x, ev::Evaluation{<:Real}) = add_to_cells!(archive, x, ev)
+
+function add_to_cells!(archive::CellArchive{G,F,D,P}, x, ev::Evaluation{<:Real}) where {G,F,D,P}
     i = cell_index(archive, ev.descriptor)
     fitness = convert(F, ev.fitness)
     phenotype = stored_phenotype(P, ev.phenotype)
@@ -123,7 +128,9 @@ that fill the same empty cell are both `NewCell`. Of the solutions that enter a
 cell, the one with the highest fitness (the first, on a tie) is kept, so the
 archive afterwards is the one that adding the solutions one at a time gives.
 """
-function add_batch!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, evs::AbstractVector) where {G,F,D,P}
+add_batch!(archive::CellArchive, xs::AbstractVector, evs::AbstractVector) = add_batch_to_cells!(archive, xs, evs)
+
+function add_batch_to_cells!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, evs::AbstractVector) where {G,F,D,P}
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
     Base.require_one_based_indexing(xs, evs)

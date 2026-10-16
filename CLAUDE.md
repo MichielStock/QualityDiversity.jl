@@ -393,8 +393,10 @@ Julia LTS and the current release.
   - [x] Random-direction rankers (CMA-ME-RD) and the two-stage objective ranker;
         further evolution strategies (sep-CMA-ES, LM-MA-ES, OpenAI-ES)
   - [x] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
-  - [ ] `SlidingBoundariesArchive` (pyribs), `BanditScheduler` for choosing
-        among emitters (pyribs), `DensityArchive` and `DNSArchive` (pyribs)
+  - [x] `SlidingBoundariesArchive` (pyribs): a grid whose boundaries follow the
+        descriptors found
+  - [ ] `BanditScheduler` for choosing among emitters (pyribs), `DensityArchive`
+        and `DNSArchive` (pyribs)
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread
         for every cell, with `SampledSpread` problems
@@ -584,8 +586,10 @@ Settled; change them only with the author's agreement.
   buffered solutions from oldest to newest, as pyribs does, so the best solution is
   never lost. `add_batch!` follows the batch rule of the cell archives; a remap happens
   after the batch in which the count of offered solutions passes a multiple of
-  `remap_frequency`, never in the middle of a batch (pyribs remaps mid-batch, so a batch
-  differs from pyribs while single `add!` calls do not). `outside` defaults to
+  `remap_frequency`, never in the middle of a batch (pyribs remaps mid-batch). One
+  solution at a time, the archive matches pyribs up to ties in fitness and pyribs's
+  tolerance of `1e-6` at a boundary; the result of the solution that triggers a remap is
+  computed against the archive before the remap, where pyribs reports the one after. `outside` defaults to
   `ClampOutside()`, since after a remap the outer boundaries are the extremes of the
   buffer; during a remap the old elites are always clamped. A non-finite descriptor
   throws whatever the policy, because it would make the boundaries infinite. Every

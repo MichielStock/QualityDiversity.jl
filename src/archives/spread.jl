@@ -74,6 +74,10 @@ function SpreadArchive(::CategoricalArchive)
     throw(ArgumentError("a SpreadArchive measures distances between descriptors, which the categories of a CategoricalArchive do not have; wrap a GridArchive or a CVTArchive"))
 end
 
+function SpreadArchive(::SlidingBoundariesArchive)
+    throw(ArgumentError("a SpreadArchive keeps the spread of the elite of every cell, but the cells of a SlidingBoundariesArchive move when it remaps; wrap a GridArchive or a CVTArchive"))
+end
+
 """
     spreads(archive::SpreadArchive) -> Vector{Float64}
 

@@ -109,6 +109,10 @@ function ThresholdArchive(inner::CellArchive{G,F,D,P}; learning_rate::Real=1.0,
     return ThresholdArchive{G,F,D,P,typeof(inner),typeof(result)}(inner, result, learning_rate, threshold_min)
 end
 
+function ThresholdArchive(::SlidingBoundariesArchive{G,F}; kwargs...) where {G,F<:AbstractFloat}
+    throw(ArgumentError("a ThresholdArchive keeps a threshold for every cell, but the cells of a SlidingBoundariesArchive move when it remaps; wrap a GridArchive or a CVTArchive"))
+end
+
 # With the thresholds at the fitness of the elites the archive already keeps the
 # best solutions; otherwise an empty copy collects them.
 default_result(inner, learning_rate, threshold_min) =
