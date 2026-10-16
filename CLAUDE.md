@@ -379,7 +379,7 @@ Julia LTS and the current release.
       on Rastrigin (same archive shape, batch size, evaluation budget).
 - [x] **Phase 5 — Structured genotype.** `examples/graphs.jl` with a
       Graphs.jl genotype, custom `vary`, descriptor from graph statistics.
-- [ ] **Phase 6 — More algorithms.** One at a time, easiest first. Each comes
+- [x] **Phase 6 — More algorithms.** One at a time, easiest first. Each comes
       with tests, a conformance check from `Testing`, and a benchmark entry.
       The list follows what pyribs and QDax offer, minus what is out of scope.
   - [x] `IsoLineVariation` and `VariationEmitter` with two parents
