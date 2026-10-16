@@ -164,13 +164,14 @@ evaluations one solution costs; the budget of a run counts them.
 | `result_archive(archive)` | optional | the archive of the best solutions found, which `solve` returns and whose metrics a run records; default: the archive itself |
 | `Base.empty!(archive)` | optional | |
 
-Concrete archives: `GridArchive`, `CVTArchive`, `CategoricalArchive` (discrete
+Concrete archives: `GridArchive`, `SlidingBoundariesArchive` (a grid whose boundaries
+follow the distribution of recent descriptors), `CVTArchive`, `CategoricalArchive` (discrete
 descriptors, numbers or labels), `ThresholdArchive` (CMA-MAE thresholds around
 a cell archive, with a result archive of the best solutions), `UnstructuredArchive` (novelty-style,
 distance threshold), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
 
-Storage layout for cell-based archives (`GridArchive`, `CVTArchive`,
-`CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
+Storage layout for cell-based archives (`GridArchive`, `SlidingBoundariesArchive`,
+`CVTArchive`, `CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
 `occupied::BitVector`, `fitness::Vector{F}`, `descriptors::Vector{D}`,
 `genotypes::Vector{G}`, `phenotypes::Vector{P}` (unassigned slots left `#undef`
 and guarded by `occupied`), plus `occupied_idx::Vector{Int}` so a uniform parent
@@ -284,6 +285,7 @@ QualityDiversity.jl/
 │   ├── archives/
 │   │   ├── cell_archive.jl       # CellArchive: shared storage, add!, metrics
 │   │   ├── grid.jl
+│   │   ├── sliding.jl            # SlidingBoundariesArchive
 │   │   ├── nearest_centroid.jl   # k-d tree, k-means and centroid buckets for the CVT archives
 │   │   ├── cvt.jl
 │   │   ├── categorical.jl
@@ -574,6 +576,22 @@ Settled; change them only with the author's agreement.
   parameters, so the candidates are a smaller transfer than a sampling transform. A device
   pays off with many searches (hundreds); with the five of the paper it is slower than the
   host.
+- **Sliding boundaries.** `SlidingBoundariesArchive` (pyribs; Fontaine et al., 2019) is a
+  grid whose boundaries along each dimension move to the quantiles of the descriptors of
+  the last `buffer_capacity` solutions offered to it (1000 by default), every
+  `remap_frequency` solutions (100 by default). It starts as a regular grid over `bounds`.
+  A remap empties the cells and adds back, one at a time, the old elites and then the
+  buffered solutions from oldest to newest, as pyribs does, so the best solution is
+  never lost. `add_batch!` follows the batch rule of the cell archives; a remap happens
+  after the batch in which the count of offered solutions passes a multiple of
+  `remap_frequency`, never in the middle of a batch (pyribs remaps mid-batch, so a batch
+  differs from pyribs while single `add!` calls do not). `outside` defaults to
+  `ClampOutside()`, since after a remap the outer boundaries are the extremes of the
+  buffer; during a remap the old elites are always clamped. A non-finite descriptor
+  throws whatever the policy, because it would make the boundaries infinite. Every
+  offered solution enters the buffer, also one that is rejected, so the boundaries can
+  grow toward descriptors outside them. `ThresholdArchive` and `SpreadArchive` cannot wrap
+  it: their thresholds and spreads belong to cells that move.
 - **Outside-bounds descriptors.** `GridArchive` throws by default. The
   `outside` keyword takes `ThrowOutside()`, `ClampOutside()` or
   `RejectOutside()`, chosen by dispatch.
