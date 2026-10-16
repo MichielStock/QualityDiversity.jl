@@ -380,6 +380,7 @@ learn from how the archive received them.
 # Optional methods
 
 - [`tell!(emitter, xs, evs, results)`](@ref QualityDiversity.tell!)
+- [`restarts(emitter)`](@ref QualityDiversity.restarts)
 """
 abstract type AbstractEmitter end
 

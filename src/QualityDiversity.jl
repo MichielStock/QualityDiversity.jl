@@ -57,6 +57,7 @@ include("emitters/lm_ma_es.jl")
 include("emitters/openai_es.jl")
 include("emitters/rankers.jl")
 include("emitters/cma_emitter.jl")
+include("emitters/bandit_scheduler.jl")
 include("emitters/device_emitter.jl")
 include("emitters/device_cma_emitter.jl")
 include("solve.jl")
@@ -71,12 +72,13 @@ export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, Un
     SpreadArchive, ParetoGridArchive, DeviceGridArchive, DeviceCVTArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
-export VariationEmitter, CMAEmitter, DeviceVariationEmitter, DeviceCMAEmitter
+export VariationEmitter, CMAEmitter, BanditScheduler, DeviceVariationEmitter, DeviceCMAEmitter
 export AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES
 export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker,
     TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker,
     AcceptedRandomDirectionRanker
 export FilterSelection, MuSelection
+export ReselectTerminated, ReselectAll
 export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
 export MAPElites, CMAME, CMAMAE, MOME, MELS
 export init, step!, solve!, solve
@@ -93,6 +95,6 @@ export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scor
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop
 @compat public RankOneRule, TextbookRankOne, PyribsRankOne
-@compat public ask, tell!, batch_size, rank_key, reset_ranker!, SelectionRule, RestartRule
+@compat public ask, tell!, batch_size, restarts, active, ReselectRule, rank_key, reset_ranker!, SelectionRule, RestartRule
 
 end

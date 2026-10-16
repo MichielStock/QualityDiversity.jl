@@ -120,6 +120,17 @@ end
     @test allocated(QD.cell_index, archive, SVector(0.1, 0.2)) == 0
 end
 
+@testset "inference with a bandit scheduler" begin
+    prob = Rastrigin(4)
+    pool = (VariationEmitter(GaussianMutation(0.1); batch_size=8), VariationEmitter(IsoLineVariation(0.01, 0.1); batch_size=4),
+            (CMAEmitter(4; sigma0=0.5, batch_size=6) for _ in 1:30)...)
+    scheduler = BanditScheduler(pool; num_active=3)
+    state = init(prob, QDAlgorithm(GridArchive(prob; dims=(5, 5)), (scheduler,)); budget=10_000, rng=Xoshiro(1))
+    @inferred step!(state)
+    @inferred QD.ask(Xoshiro(1), state.emitters[1], state.archive)
+    @inferred QD.batch_size(state.emitters[1])
+end
+
 @testset "SlidingBoundariesArchive inference and allocations" begin
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),

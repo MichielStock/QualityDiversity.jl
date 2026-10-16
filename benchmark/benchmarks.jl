@@ -188,6 +188,18 @@ SUITE["algorithm"]["CMAME/step!"] = let alg = CMAME(sphere; dims=(100, 100), sig
     state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
     @benchmarkable step!($state)
 end
+SUITE["algorithm"]["BanditScheduler/step!"] = let
+    # the pool of Cully (2021) in miniature: mutation, iso-line and CMA emitters, 4 of 12 active
+    pool = ((VariationEmitter(GaussianMutation(0.5); batch_size=36) for _ in 1:4)...,
+            (VariationEmitter(IsoLineVariation(0.01, 0.1); batch_size=36) for _ in 1:4)...,
+            (CMAEmitter(20; sigma0=0.5, batch_size=36) for _ in 1:4)...)
+    alg = QDAlgorithm(GridArchive(sphere; dims=(100, 100)), (BanditScheduler(pool; num_active=4),))
+    state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
+    for _ in 1:50
+        step!(state)
+    end
+    @benchmarkable step!($state)
+end
 SUITE["algorithm"]["CMAMAE/step!"] = let alg = CMAMAE(sphere; dims=(100, 100), sigma0=0.5, threshold_min=0.0, learning_rate=0.01)
     state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
     @benchmarkable step!($state)

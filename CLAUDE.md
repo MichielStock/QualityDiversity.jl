@@ -398,7 +398,7 @@ Julia LTS and the current release.
   - [x] `ParetoGridArchive` and `MOME()` (QDax), with hypervolume metrics
   - [x] `SlidingBoundariesArchive` (pyribs): a grid whose boundaries follow the
         descriptors found
-  - [ ] `BanditScheduler` for choosing among emitters (pyribs)
+  - [x] `BanditScheduler` for choosing among emitters (pyribs)
   - [ ] `DensityArchive` and `DNSArchive` (pyribs)
   - [x] Stochastic problems: `AbstractStochasticQDProblem` and `Sampled`
   - [x] MAP-Elites with low spread (QDax `MELS`): `SpreadArchive` stores a spread

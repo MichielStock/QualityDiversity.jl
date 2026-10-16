@@ -48,6 +48,12 @@ end
     JET.@test_opt target_modules = (QualityDiversity,) QD.ask(Xoshiro(1), state.emitters[1], state.archive)
     JET.@test_opt target_modules = (QualityDiversity,) QD.vary(Xoshiro(1), GaussianMutation(0.1), [0.0, 0.0])
 
+    pool = (VariationEmitter(GaussianMutation(0.1); batch_size=8), CMAEmitter(4; sigma0=0.5, batch_size=6),
+            CMAEmitter(4; sigma0=0.5, batch_size=6))
+    bandit = init(prob, QDAlgorithm(GridArchive(prob; dims=(5, 5)), (BanditScheduler(pool; num_active=2),));
+                  budget=10_000, rng=Xoshiro(1))
+    JET.@test_opt target_modules = (QualityDiversity,) step!(bandit)
+
     sliding = init(prob, MAPElites(SlidingBoundariesArchive(prob; dims=(5, 5), remap_frequency=16); batch_size=8);
                    budget=64, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(sliding)
