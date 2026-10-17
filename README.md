@@ -1,4 +1,9 @@
-# QualityDiversity.jl
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/src/assets/logo-wordmark-dark.png">
+    <img alt="QualityDiversity.jl" src="docs/src/assets/logo-wordmark.png" width="400">
+  </picture>
+</p>
 
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://wclaerhout.github.io/QualityDiversity.jl/dev/)
 [![CI](https://github.com/wclaerhout/QualityDiversity.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/wclaerhout/QualityDiversity.jl/actions/workflows/CI.yml)

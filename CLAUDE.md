@@ -350,6 +350,7 @@ QualityDiversity.jl/
 │   ├── make.jl                   # turns the tutorial scripts into pages, builds and deploys
 │   └── src/
 │       ├── index.md
+│       ├── assets/               # logo (grid, light and dark), wordmark for the README, favicon
 │       ├── guide/                # concepts, choosing an algorithm, extending, GPU, comparison
 │       └── api/                  # the docstrings, one page per role
 └── examples/
