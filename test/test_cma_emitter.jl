@@ -65,6 +65,8 @@ end
     @test_throws "dim must be at least 1, got 0" CMAEmitter(0; sigma0=1)
     @test_throws "batch_size must be at least 2 so that there is a parent, got 1" CMAEmitter(3; sigma0=1, batch_size=1)
     @test_throws "x0 has 2 entries but the dimension is 3" CMAEmitter(3; sigma0=1, x0=[1.0, 2.0])
+    @test_throws "x0 has the entry 2.0, outside the bounds [0.0, 1.0]" CMAEmitter([0.5, 2.0]; sigma0=0.1, lower=0, upper=1)
+    @test_throws "x0 has the entry -1.0, outside the bounds [0.0, 1.0]" CMAEmitter([-1.0]; sigma0=0.1, lower=0, upper=[1.0])
     @test_throws "x0 must be finite" CMAEmitter(2; sigma0=1, x0=[1.0, Inf])
 end
 
@@ -174,6 +176,13 @@ end
     stored = first.(collect(QD.elites(result.archive)))
     @test all(x -> all(0 .<= x .<= 1), stored)
     @test max_fitness(result.archive) > -0.01                # the optimum is the corner 0.9
+
+    # A mean on the boundary of the box puts a draw inside with probability 2^-12 in 12
+    # dimensions; after the tries the draws move inside instead of failing.
+    corner = CMAEmitter(zeros(12); sigma0=0.3, lower=0, upper=1)
+    xs = QD.ask(Xoshiro(1), corner, GridArchive((2, 2), ((0, 1), (0, 1))))
+    @test length(xs) == QD.batch_size(corner)
+    @test all(x -> all(0 .<= x .<= 1), xs)
 end
 
 @testset "CMAEmitter with an objective ranker maximizes" begin

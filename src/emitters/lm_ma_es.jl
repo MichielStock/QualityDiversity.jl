@@ -92,8 +92,10 @@ function sample!(rng::AbstractRNG, es::LMMAES)
             end
             column_inside(es.x, k, es.lower, es.upper) && break
             draws += 1
-            draws > RESAMPLE_LIMIT &&
-                throw(resample_error("the mean is $(es.mean) and the step size $(es.sigma)"))
+            if draws > RESAMPLE_LIMIT
+                clip_step!(es.x, es.y, k, es.mean, es.sigma, es.lower, es.upper)
+                break
+            end
         end
     end
     return es.x

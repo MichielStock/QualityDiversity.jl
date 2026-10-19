@@ -213,7 +213,9 @@ The checks cover an empty archive, the status and `improvement` of each kind
 of insertion, `length`, `capacity`, `cell_index` (on an archive holding all `n`
 solutions), `sample_elites`, `elites`,
 `add_batch!`, and `empty!` when the archive defines it. `elites` must return the
-phenotype that came with each stored genotype, of the archive's phenotype type. With
+phenotype that came with each stored genotype, of the archive's phenotype type. A
+fitness that is `NaN` or infinite must throw an `ArgumentError` from `add!` and from
+`add_batch!` before the archive changes. With
 `check_allocations`, `cell_index` must not allocate, and neither must `add!`
 when the genotype type is `isbits`.
 
@@ -352,6 +354,18 @@ function test_archive(make_archive, prob::QD.AbstractQDProblem;
             end
         end
 
+        @testset "fitness that is not finite" begin
+            a = make_archive()
+            QD.add!(a, xs[1], evs[1])
+            stored = collect(QD.elites(a))
+            for bad in (NaN, Inf, -Inf)
+                ev = QD.Evaluation(bad, evs[2].descriptor, evs[2].phenotype)
+                @test_throws ArgumentError QD.add!(a, xs[2], ev)
+                @test_throws ArgumentError QD.add_batch!(a, xs[2:3], [evs[3], ev])
+                @test isequal(collect(QD.elites(a)), stored)
+            end
+        end
+
         @testset "result_archive" begin
             a = make_archive()
             QD.add_batch!(a, xs, evs)
@@ -407,7 +421,9 @@ for a solution that a stored one matches in every objective, and `Improved` with
 `improvement` for a solution that beats the front. Every cell must hold a front of solutions
 none of which beats another, `length` counts the occupied cells and `num_solutions` the
 solutions that `elites` yields. `add_batch!` must give each solution the result that it has
-alone against the archive as it was before the batch. `sample_elites` must draw stored
+alone against the archive as it was before the batch, and leave the archive as adding the
+solutions one at a time does. An objective that is `NaN` or infinite must throw an
+`ArgumentError` from `add!` and from `add_batch!` before the archive changes. `sample_elites` must draw stored
 genotypes, inferrably, and reproducibly from the generator. `elites` must return the
 phenotype that came with each stored genotype. The metrics must agree with the
 hypervolume of the fronts. `add!` must not allocate for a rejected solution with an `isbits`
@@ -502,6 +518,23 @@ function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::Abstr
             batch = QD.add_batch!(deepcopy(a), xs[half+1:n], evs[half+1:n])
             @test batch isa AbstractVector{<:QD.AddResult}
             @test all(k -> batch[k] == QD.add!(deepcopy(a), xs[half+k], evs[half+k]), 1:min(25, n - half))
+            together = deepcopy(a)
+            QD.add_batch!(together, xs[half+1:n], evs[half+1:n])
+            one_by_one = deepcopy(a)
+            foreach((x, ev) -> QD.add!(one_by_one, x, ev), xs[half+1:n], evs[half+1:n])
+            @test isequal(collect(QD.elites(together)), collect(QD.elites(one_by_one)))
+        end
+
+        @testset "objectives that are not finite" begin
+            a = make_archive()
+            QD.add!(a, xs[1], evs[1])
+            stored = collect(QD.elites(a))
+            for bad in (NaN, Inf, -Inf)
+                ev = QD.Evaluation([bad; evs[2].fitness[2:end]], evs[2].descriptor, evs[2].phenotype)
+                @test_throws ArgumentError QD.add!(a, xs[2], ev)
+                @test_throws ArgumentError QD.add_batch!(a, xs[2:3], [evs[3], ev])
+                @test isequal(collect(QD.elites(a)), stored)
+            end
         end
 
         @testset "result_archive" begin

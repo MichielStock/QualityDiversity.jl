@@ -60,8 +60,7 @@ function DeviceGridArchive{T,F}(device::Type, dims::Tuple, bounds::Tuple, dim::I
     for i in 1:N
         dims[i] >= 1 ||
             throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))
-        (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
-            throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
+        check_bound(i, lower[i], upper[i])
     end
     s = device_storage(device, T, F, N, dim, prod(dims))
     return DeviceGridArchive{T,F,N,typeof(outside),typeof(s.genotypes),typeof(s.fitness),typeof(s.occupied),

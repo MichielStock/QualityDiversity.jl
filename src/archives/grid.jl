@@ -76,8 +76,7 @@ mutable struct GridArchive{G,F<:Real,N,O<:OutsidePolicy,P} <: CellArchive{G,F,SV
         for i in 1:N
             dims[i] >= 1 ||
                 throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))
-            (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
-                throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
+            check_bound(i, lower[i], upper[i])
         end
         ncells = prod(dims)
         return new{G,F,N,O,P}(dims, lower, upper, outside,

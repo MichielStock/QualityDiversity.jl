@@ -1,3 +1,5 @@
+using OffsetArrays: OffsetArray
+
 @testset "GaussianMutation" begin
     op = GaussianMutation(0.5)
     parent = zeros(1000)
@@ -11,8 +13,8 @@
 
     @test QD.vary(Xoshiro(1), GaussianMutation(1), [1, 2, 3]) isa Vector{Float64}
     @test QD.vary(Xoshiro(1), op, Float32[1, 2]) isa Vector{Float64}
-    @test_throws "σ must be positive, got 0" GaussianMutation(0)
-    @test_throws "σ must be positive, got -1.0" GaussianMutation(-1.0)
+    @test_throws "σ must be positive and finite, got 0" GaussianMutation(0)
+    @test_throws "σ must be positive and finite, got -1.0" GaussianMutation(-1.0)
 end
 
 @testset "IsoLineVariation" begin
@@ -52,8 +54,8 @@ end
     @test QD.vary(Xoshiro(1), op, [1, 2, 3], Float32[4, 5, 6]) isa Vector{Float64}
     @test QD.vary(Xoshiro(1), IsoLineVariation(0.1f0, 0.2f0), Float32[1, 2], Float32[3, 4]) isa Vector{Float32}
     @test_throws "parents have 2 and 3 entries but must have the same number" QD.vary(Xoshiro(1), op, [1.0, 2.0], [1.0, 2.0, 3.0])
-    @test_throws "σ_iso must be non-negative, got -0.1" IsoLineVariation(-0.1, 0.2)
-    @test_throws "σ_line must be non-negative, got -1" IsoLineVariation(0.1, -1)
+    @test_throws "σ_iso must be non-negative and finite, got -0.1" IsoLineVariation(-0.1, 0.2)
+    @test_throws "σ_line must be non-negative and finite, got -1" IsoLineVariation(0.1, -1)
 end
 
 @testset "PolynomialMutation" begin
@@ -210,4 +212,31 @@ end
     crossed = solve(prob, QDAlgorithm(archive, emitters); budget=6_000, rng=Xoshiro(2))
     @test crossed.n_evals == 6_000 && length(crossed.archive) > 30
     @test all(all(-5.12 .<= g .<= 5.12) for (g, _) in QD.elites(crossed.archive))
+end
+
+@testset "variation keeps the indices of the parents" begin
+    # A child has the indices of its parents and the entries of the child of the same
+    # parents with ordinary indices.
+    p1 = [0.5, -1.0, 2.0]
+    p2 = [1.0, 0.0, -2.0]
+    o1 = OffsetArray(p1, 0:2)
+    o2 = OffsetArray(p2, 0:2)
+    for (op, parents, offset) in ((GaussianMutation(0.1), (p1,), (o1,)),
+                                  (PolynomialMutation(-5.0, 5.0), (p1,), (o1,)),
+                                  (PolynomialMutation([-5.0, -5.0, -5.0], [5.0, 5.0, 5.0]), (p1,), (o1,)),
+                                  (IsoLineVariation(0.1, 0.2), (p1, p2), (o1, o2)),
+                                  (UniformCrossover(0.5), (p1, p2), (o1, o2)))
+        child = QD.vary(Xoshiro(7), op, offset...)
+        @test axes(child) == axes(o1)
+        @test parent(child) == QD.vary(Xoshiro(7), op, parents...)
+        @test QD.vary(Xoshiro(7), op, parents...) isa Vector
+    end
+    @test_throws "parents have the indices 0:2 and 1:3 but must have the same" QD.vary(Xoshiro(1), IsoLineVariation(0.1, 0.2), o1, p2)
+    @test_throws "parents have the indices 0:2 and 1:3 but must have the same" QD.vary(Xoshiro(1), UniformCrossover(0.5), o1, p2)
+    # views keep working
+    @test length(QD.vary(Xoshiro(1), GaussianMutation(0.1), view([1.0, 2.0, 3.0], 2:3))) == 2
+
+    @test_throws "σ must be positive and finite, got Inf" GaussianMutation(Inf)
+    @test_throws "σ_iso must be non-negative and finite, got Inf" IsoLineVariation(Inf, 0.1)
+    @test_throws "σ_line must be non-negative and finite, got NaN" IsoLineVariation(0.1, NaN)
 end

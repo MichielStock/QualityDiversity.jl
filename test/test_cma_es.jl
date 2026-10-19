@@ -64,10 +64,13 @@ end
     QD.reset!(bounded, [0.5, 1.0, 1.5])
     xb = QD.sample!(Xoshiro(5), bounded)
     @test all(0 .<= xb .<= [1.0, 2.0, 3.0])
-    # a distribution that cannot reach the bounds is reported
+    # a distribution that does not reach the bounds puts its draws on the nearest point
+    # inside, and the update sees the steps to it
     stuck = QD.CMAES(2; sigma0=0.01, lower=10.0, upper=11.0)
     QD.reset!(stuck, [0.0, 0.0])
-    @test_throws "could not draw a solution inside the bounds in 1000 tries" QD.sample!(Xoshiro(1), stuck)
+    xs = QD.sample!(Xoshiro(1), stuck)
+    @test all(==(10.0), xs)
+    @test stuck.y ≈ (xs .- stuck.mean) ./ stuck.sigma
 end
 
 @testset "CMAES converges on the sphere" begin

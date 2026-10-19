@@ -208,10 +208,10 @@ zero `improvement`.
 """
 function add!(archive::ThresholdArchive{G,F,D,P}, x, ev::Evaluation{<:Real}) where {G,F,D,P}
     phenotype = stored_phenotype(P, ev.phenotype)
-    offer!(archive.result, x, ev)
+    fitness = stored_fitness(F, ev.fitness)    # throws before either archive changes
     i = cell_index(archive.inner, ev.descriptor)
+    offer!(archive.result, x, ev)
     i == 0 && return AddResult(Rejected, zero(F))
-    fitness = convert(F, ev.fitness)
     result = classify(archive, i, fitness)
     result.status == Rejected && return result
     threshold = next_threshold(archive.learning_rate, archive.thresholds[i], fitness, 1)
@@ -238,7 +238,8 @@ pass the threshold of a cell act on it together; see [`ThresholdArchive`](@ref).
 function add_batch!(archive::ThresholdArchive{G,F,D,P}, xs::AbstractVector, evs::AbstractVector) where {G,F,D,P}
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
-    foreach(ev -> stored_phenotype(P, ev.phenotype), evs)    # throws before the archive changes
+    # Throws before either archive changes.
+    foreach(ev -> (stored_fitness(F, ev.fitness); stored_phenotype(P, ev.phenotype)), evs)
     offer_batch!(archive.result, xs, evs)
     n = length(xs)
     results = Vector{AddResult{F}}(undef, n)
@@ -248,7 +249,7 @@ function add_batch!(archive::ThresholdArchive{G,F,D,P}, xs::AbstractVector, evs:
         i = cell_index(archive.inner, evs[k].descriptor)
         cells[k] = i
         results[k] = i == 0 ? AddResult(Rejected, zero(F)) :
-                     classify(archive, i, convert(F, evs[k].fitness))
+                     classify(archive, i, stored_fitness(F, evs[k].fitness))
         results[k].status == Rejected || push!(passing, k)
     end
     # Group the passing solutions by cell, keeping their order within a cell.
@@ -267,14 +268,14 @@ function add_batch!(archive::ThresholdArchive{G,F,D,P}, xs::AbstractVector, evs:
         total = zero(F)
         for p in run_start:run_end
             k = passing[p]
-            fitness = convert(F, evs[k].fitness)
+            fitness = stored_fitness(F, evs[k].fitness)
             total += fitness
-            fitness > convert(F, evs[winner].fitness) && (winner = k)
+            fitness > stored_fitness(F, evs[winner].fitness) && (winner = k)
         end
         count = run_end - run_start + 1
         push!(best, winner)
         push!(first_in_batch, passing[run_start])
-        push!(new_threshold, archive.threshold_min == -Inf ? convert(F, evs[winner].fitness) :
+        push!(new_threshold, archive.threshold_min == -Inf ? stored_fitness(F, evs[winner].fitness) :
                              next_threshold(archive.learning_rate, archive.thresholds[i], total, count))
         run_start = run_end + 1
     end
@@ -282,7 +283,7 @@ function add_batch!(archive::ThresholdArchive{G,F,D,P}, xs::AbstractVector, evs:
     # the order the elites are sampled in.
     for r in sortperm(first_in_batch)
         k = best[r]
-        place_threshold!(archive, cells[k], xs[k], evs[k].descriptor, convert(F, evs[k].fitness),
+        place_threshold!(archive, cells[k], xs[k], evs[k].descriptor, stored_fitness(F, evs[k].fitness),
                          stored_phenotype(P, evs[k].phenotype), new_threshold[r])
     end
     return results

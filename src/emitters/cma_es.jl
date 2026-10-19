@@ -47,9 +47,8 @@ the next, and none is allowed; the recombination weights `log(parents + 1/2) -
 log(i)` are normalized each time.
 
 `batch_size` defaults to `4 + floor(3 log(dim))`. With `lower` and `upper`, scalars
-or vectors, a sample is drawn again until it lies inside; it is an error if that
-takes more than $(RESAMPLE_LIMIT) draws, which means the distribution has left the
-bounds.
+or vectors, a sample is drawn again until it lies inside; after $(RESAMPLE_LIMIT) draws it
+moves to the nearest point inside the bounds, and the update uses the step to that point.
 
 `should_stop(es, keys)` reports the termination criteria of CMA-ES: a covariance
 matrix with a condition number above `1e14`, a distribution that has shrunk below
@@ -146,8 +145,10 @@ function sample!(rng::AbstractRNG, es::CMAES)
                 break
             end
             draws += 1
-            draws > RESAMPLE_LIMIT &&
-                throw(resample_error("the mean is $(es.mean) and the step size $(es.sigma)"))
+            if draws > RESAMPLE_LIMIT
+                clip_step!(es.x, es.y, k, es.mean, es.sigma, es.lower, es.upper)
+                break
+            end
         end
     end
     return es.x

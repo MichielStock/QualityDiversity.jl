@@ -51,9 +51,12 @@ end
     bounded = S(dim; sigma0=0.3, batch_size=S === QD.LMMAES ? 8 : 200, lower=0.0, upper=2.0)
     QD.reset!(bounded, fill(1.0, dim))
     @test all(0 .<= QD.sample!(Xoshiro(4), bounded) .<= 2)
+    # out of reach: after the tries a draw moves to the nearest point inside
     narrow = S(dim; sigma0=1.0, batch_size=4, lower=0.0, upper=1e-9)
     QD.reset!(narrow, fill(5.0, dim))
-    @test_throws "could not draw a solution inside the bounds in 1000 tries" QD.sample!(Xoshiro(1), narrow)
+    xs = QD.sample!(Xoshiro(1), narrow)
+    @test all(==(1e-9), xs)
+    hasproperty(narrow, :y) && @test narrow.y ≈ (xs .- narrow.mean) ./ narrow.sigma
 end
 
 @testset "update! with $(nameof(S))" for S in strategies
@@ -240,6 +243,25 @@ end
     @test es.mean ≈ cma_mean rtol = 1e-10
     @test es.sigma ≈ cma_sigma rtol = 1e-10
     @test vec(es.cov) ≈ cma_cov rtol = 1e-10
+end
+
+@testset "$(nameof(S)) follows the reference over a long run" for (S, ref) in
+        ((QD.CMAES, (x0=cmalong_x0, s0=cmalong_s0, X=cmalong_X, orders=cmalong_orders, parents=cmalong_parents,
+                     mean=cmalong_mean, sigma=cmalong_sigma, shape=cmalong_shape)),
+         (QD.SepCMAES, (x0=seplong_x0, s0=seplong_s0, X=seplong_X, orders=seplong_orders, parents=seplong_parents,
+                        mean=seplong_mean, sigma=seplong_sigma, shape=seplong_shape)))
+    # reference/strategies.jl: generations that switch hsig off and reach the cap of the
+    # step-size change
+    n = length(ref.x0)
+    es = S(n; sigma0=ref.s0, batch_size=length(ref.orders[1]))
+    QD.reset!(es, ref.x0)
+    for (g, flat) in enumerate(ref.X)
+        load_batch!(es, columns(flat, n))
+        QD.update!(es, ref.orders[g], ref.parents[g])
+    end
+    @test es.mean ≈ ref.mean rtol = 1e-10
+    @test es.sigma ≈ ref.sigma rtol = 1e-10
+    @test vec(S === QD.CMAES ? es.cov : es.variances) ≈ ref.shape rtol = 1e-10
 end
 
 @testset "PyribsCMAES weakens the rank-one term" begin

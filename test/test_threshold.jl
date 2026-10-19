@@ -1,3 +1,5 @@
+include("reference/threshold.jl")
+
 @testset "ThresholdArchive construction" begin
     grid = GridArchive((4, 4), ((0, 1), (0, 1)))
     a = ThresholdArchive(grid)
@@ -302,4 +304,33 @@ end
 
     wrong = ThresholdArchive(GridArchive((3,), ((0, 1),)))
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)
+end
+
+@testset "ThresholdArchive matches pyribs" begin
+    # reference/threshold.jl: the statuses, improvements, thresholds and elites of
+    # pyribs's GridArchive with a learning rate after each batch of a sequence
+    pyribs_status = Dict(0 => QD.Rejected, 1 => QD.Improved, 2 => QD.NewCell)
+    for case in threshold_cases
+        a = ThresholdArchive(GridArchive((case.cells,), ((0, 1),));
+                             learning_rate=case.learning_rate, threshold_min=case.threshold_min)
+        total = length(case.fitness)
+        statuses = QD.AddStatus[]
+        values = Float64[]
+        for b in 1:total÷case.batch
+            ids = (b-1)*case.batch+1:b*case.batch
+            rs = QD.add_batch!(a, [[Float64(i)] for i in ids],
+                               [Evaluation(case.fitness[i], SVector(case.descriptors[i])) for i in ids])
+            append!(statuses, [r.status for r in rs])
+            append!(values, [r.improvement for r in rs])
+            after = (b-1)*case.cells+1:b*case.cells
+            @test QD.thresholds(a) ≈ case.thresholds[after] rtol = 1e-12
+            kept = zeros(Int, case.cells)
+            for (x, ev) in QD.elites(a)
+                kept[QD.cell_index(a, ev.descriptor)] = Int(only(x))
+            end
+            @test kept == case.elites[after]
+        end
+        @test statuses == [pyribs_status[s] for s in case.statuses]
+        @test values ≈ case.values rtol = 1e-12
+    end
 end

@@ -104,7 +104,7 @@ uniformly.
 [`add_batch!`](@ref QualityDiversity.add_batch!) follows the rule of the host cell
 archives: every result is computed against the archive as it was before the batch, and of
 the solutions that enter a cell the best is kept, the first in the batch on a tie. A
-fitness value that is `NaN` throws an `ArgumentError`, as does a descriptor outside the
+fitness value that is `NaN` or infinite throws an `ArgumentError`, as does a descriptor outside the
 bounds with `ThrowOutside()` or a `NaN` component with `ClampOutside()`, before the
 archive changes.
 
@@ -143,7 +143,7 @@ function device_storage(device::Type, ::Type{T}, ::Type{F}, N::Integer, dim::Int
             best_key=fill!(similar(genotypes, UInt64, ncells), zero(UInt64)),
             winner=fill!(similar(genotypes, Int32, ncells), typemax(Int32)),
             # the first solution of a batch with a descriptor the archive refuses, the first
-            # with a NaN fitness (`typemax(Int32)` for none), and whether the batch fills a
+            # with a fitness that is not finite (`typemax(Int32)` for none), and whether the batch fills a
             # new cell (zero for no)
             flags=copyto!(similar(genotypes, Int32, 3), Int32[typemax(Int32), typemax(Int32), 0]))
 end

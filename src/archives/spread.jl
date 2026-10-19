@@ -175,8 +175,9 @@ end
 function spread_outcome(archive::SpreadArchive, i, fitness, spread)
     inner = archive.inner
     inner.occupied[i] || return AddResult(NewCell, fitness)
-    improvement = fitness - inner.fitness[i]
-    improvement > 0 && spread <= archive.spreads[i] && return AddResult(Improved, improvement)
+    previous = inner.fitness[i]
+    improvement = fitness_gain(fitness, previous)
+    fitness > previous && spread <= archive.spreads[i] && return AddResult(Improved, improvement)
     return AddResult(Rejected, min(improvement, zero(improvement)))
 end
 
@@ -197,7 +198,7 @@ add!(archive::SpreadArchive, x, ev::Evaluation) = add_samples!(archive, x, sprea
 
 function add_samples!(archive::SpreadArchive{G,F,N,P}, x, ev::Evaluation) where {G,F,N,P}
     phenotype = stored_phenotype(P, ev.phenotype)
-    fitness = convert(F, ev.fitness)
+    fitness = stored_fitness(F, ev.fitness)
     samples = ev.descriptor
     i = most_visited_cell!(archive, samples)
     s = spread(samples)
@@ -227,7 +228,8 @@ function add_batch!(archive::SpreadArchive{G,F,N,P}, xs::AbstractVector, evs::Ab
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
     Base.require_one_based_indexing(xs, evs)
-    foreach(ev -> stored_phenotype(P, ev.phenotype), evs)    # throws before the archive changes
+    # Throws before the archive changes.
+    foreach(ev -> (stored_fitness(F, ev.fitness); stored_phenotype(P, ev.phenotype)), evs)
     n = length(xs)
     results = Vector{AddResult{F}}(undef, n)
     cells = Vector{Int}(undef, n)
@@ -243,7 +245,7 @@ function add_batch!(archive::SpreadArchive{G,F,N,P}, xs::AbstractVector, evs::Ab
             results[k] = AddResult(Rejected, zero(F))
         else
             descriptors[k] = mean_in_cell(archive, ev.descriptor, i)
-            results[k] = spread_outcome(archive, i, convert(F, ev.fitness), s)
+            results[k] = spread_outcome(archive, i, stored_fitness(F, ev.fitness), s)
         end
     end
     # A solution that fails against the elite before the batch also fails against any
@@ -251,7 +253,7 @@ function add_batch!(archive::SpreadArchive{G,F,N,P}, xs::AbstractVector, evs::Ab
     for k in 1:n
         results[k].status == Rejected && continue
         i = cells[k]
-        fitness = convert(F, evs[k].fitness)
+        fitness = stored_fitness(F, evs[k].fitness)
         if spread_outcome(archive, i, fitness, sample_spreads[k]).status != Rejected
             place_spread!(archive, i, xs[k], descriptors[k], fitness,
                           stored_phenotype(P, evs[k].phenotype), sample_spreads[k])

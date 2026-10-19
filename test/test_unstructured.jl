@@ -168,3 +168,16 @@ end
     wrong = UnstructuredArchive(1; capacity=10, threshold=0.1)
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)
 end
+
+@testset "UnstructuredArchive replaces the first of equally weak solutions" begin
+    a = UnstructuredArchive(1; capacity=3, threshold=0.1)
+    for (x, f, d) in (([1.0], 1.0, 0.0), ([2.0], 0.0, 0.5), ([3.0], 0.0, 1.0))
+        QD.add!(a, x, Evaluation(f, SVector(d)))
+    end
+    # a novel solution no fitter than the weakest is rejected
+    @test QD.add!(a, [4.0], Evaluation(0.0, SVector(2.0))).status == QD.Rejected
+    # a fitter one takes the slot of the first of the two weakest
+    @test QD.add!(a, [5.0], Evaluation(0.5, SVector(3.0))).status == QD.NewCell
+    @test sort(first.(collect(QD.elites(a)))) == [[1.0], [3.0], [5.0]]
+    @test a.genotypes[2] == [5.0]
+end

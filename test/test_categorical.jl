@@ -16,6 +16,8 @@
     @test_throws "categories[2] is empty" CategoricalArchive((1:3, Int[]))
     @test_throws "categories[1] contains 2 more than once" CategoricalArchive(([2, 1, 2],))
     @test_throws "categories[1] contains a more than once" CategoricalArchive(([:a, :b, :a],))
+    # `0.0` and `-0.0` are one category, which would leave a cell unreachable
+    @test_throws "categories[1] contains -0.0 more than once" CategoricalArchive(([0.0, -0.0, 1.0],))
     @test_throws "categories[1] is [1.0, NaN] but its values must be finite" CategoricalArchive(([1.0, NaN],))
     @test_throws "categories[1] is [1.0, Inf] but its values must be finite" CategoricalArchive(([1.0, Inf],))
     @test_throws "ClampOutside() has no meaning for a CategoricalArchive" CategoricalArchive((1:3,); outside=ClampOutside())

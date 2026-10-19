@@ -167,13 +167,21 @@ end
 
 # ── Insertion ───────────────────────────────────────────────────────────────────────
 
-# An unsigned key that orders as the fitness values do.
-@inline fitness_key(f::Float64) =
-    (u = reinterpret(UInt64, f); signbit(f) ? ~u : u | 0x8000000000000000)
-@inline fitness_key(f::Float32) =
-    (u = reinterpret(UInt32, f); UInt64(signbit(f) ? ~u : u | 0x80000000))
+# An unsigned key that orders as the fitness values do. Adding a zero maps `-0.0` to `0.0`,
+# which the host compares as equal, so that a tie between them keeps the first solution.
+@inline function fitness_key(f::Float64)
+    g = f + zero(f)
+    u = reinterpret(UInt64, g)
+    return signbit(g) ? ~u : u | 0x8000000000000000
+end
+@inline function fitness_key(f::Float32)
+    g = f + zero(f)
+    u = reinterpret(UInt32, g)
+    return UInt64(signbit(g) ? ~u : u | 0x80000000)
+end
 @inline fitness_key(f::AbstractFloat) = fitness_key(Float32(f))
 @inline fitness_key(f::Integer) = (Int64(f) % UInt64) ⊻ 0x8000000000000000
+@inline fitness_key(f::Unsigned) = UInt64(f)
 
 # The cell of column `k` of `D` on the grid, as `grid_cell` computes it on the host, or
 # `0` for a descriptor that `RejectOutside()` discards and `-1` for one that the
@@ -263,13 +271,13 @@ end
 
 # Classifies solution `k`, whose cell is `c`, against the archive before the batch, and
 # raises the key of the cell it enters. `flags` collects the first solution with a refused
-# descriptor, the first with a NaN fitness, and whether a cell is new.
+# descriptor, the first with a fitness that is not finite, and whether a cell is new.
 @inline function classify_solution!(k, c, cells, status, improvement, best_key, flags, occupied, stored,
                                     batch_fitness)
     F = eltype(stored)
     f = convert(F, batch_fitness[k])
     cells[k] = c
-    isnan(f) && @atomic flags[2] min Int32(k)
+    isfinite(f) || @atomic flags[2] min Int32(k)
     if c < 0
         @atomic flags[1] min Int32(k)
         status[k] = REJECTED
@@ -278,9 +286,8 @@ end
         status[k] = REJECTED
         improvement[k] = zero(F)
     elseif occupied[c]
-        gain = f - stored[c]
-        improvement[k] = gain
-        if gain > 0
+        improvement[k] = QD.fitness_gain(f, stored[c])
+        if f > stored[c]
             status[k] = IMPROVED
             @atomic best_key[c] max fitness_key(f)
         else
@@ -385,8 +392,8 @@ function QD.device_add_batch!(archive::DeviceCellArchive{T,F,N}, X::AbstractMatr
     cells = similar(archive.occupied_idx, Int32, n)
     classify!(backend, archive, cells, status, improvement, batch_fitness, D)
     sync!(backend)
-    refused, nan, new_cell = Array(archive.flags)
-    if refused != NONE || nan != NONE
+    refused, infinite, new_cell = Array(archive.flags)
+    if refused != NONE || infinite != NONE
         reset_kernel!(backend)(archive.best_key, archive.winner, archive.flags, cells, status; ndrange=n)
         sync!(backend)
         if refused != NONE
@@ -394,7 +401,7 @@ function QD.device_add_batch!(archive::DeviceCellArchive{T,F,N}, X::AbstractMatr
             QD.cell_index(archive, SVector{N,Float64}(Array(view(D, :, Int(refused)))))
             throw(ArgumentError("the descriptor of solution $refused of the batch is outside the archive bounds"))
         end
-        throw(ArgumentError("the fitness of solution $nan of the batch is NaN"))
+        throw(ArgumentError("the fitness of solution $infinite of the batch is not finite"))
     end
     winner_kernel!(backend)(archive.winner, archive.best_key, cells, status, batch_fitness, F; ndrange=n)
     sync!(backend)

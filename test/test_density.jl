@@ -89,6 +89,23 @@ end
     @test sum(counts) == 20_000
     @test all(c -> abs(c - 5_000) < 300, counts)
 
+    # the same holds when batches replace several entries at once: 10_000 descriptors in
+    # batches of 100 into a buffer of 50, each quarter expecting 1_250 of 5_000 entries,
+    # with a standard deviation near 31
+    batched = zeros(Int, 4)
+    for seed in 1:100
+        a = DensityArchive(Xoshiro(seed), GridArchive((2,), ((0, 10_000),)); bandwidth=1, buffer_size=50)
+        for b in 1:100
+            ids = (b-1)*100+1:b*100
+            QD.add_batch!(a, [[0.0] for _ in ids], [Evaluation(0.0, SVector(Float64(i))) for i in ids])
+        end
+        for d in a.buffer
+            batched[clamp(ceil(Int, d[1] / 2_500), 1, 4)] += 1
+        end
+    end
+    @test sum(batched) == 5_000
+    @test all(c -> abs(c - 1_250) < 150, batched)
+
     # the same seed gives the same buffer
     fill_buffer(seed) = (a = DensityArchive(Xoshiro(seed), line_grid(); bandwidth=1, buffer_size=10);
                          QD.add_batch!(a, [[0.0] for _ in 1:500], [Evaluation(0.0, SVector(i / 500)) for i in 1:500]); a.buffer)

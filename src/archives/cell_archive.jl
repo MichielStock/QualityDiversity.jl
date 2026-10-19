@@ -67,6 +67,16 @@ end
 
 resolve_outside(::RejectOutside, i, x, lo, hi) = NaN
 
+# Checks the bounds of descriptor dimension `i`. The width must be finite too: cells are
+# found by dividing by it.
+function check_bound(i, lo, hi)
+    (isfinite(lo) && isfinite(hi) && lo < hi) ||
+        throw(ArgumentError("bounds[$i] is ($lo, $hi) but lo must be finite and less than hi"))
+    isfinite(hi - lo) ||
+        throw(ArgumentError("bounds[$i] is ($lo, $hi), whose width $(hi - lo) is not finite"))
+    return nothing
+end
+
 """
     add!(archive::CellArchive, x, ev::Evaluation) -> AddResult
 
@@ -81,7 +91,7 @@ add!(archive::CellArchive, x, ev::Evaluation{<:Real}) = add_to_cells!(archive, x
 
 function add_to_cells!(archive::CellArchive{G,F,D,P}, x, ev::Evaluation{<:Real}) where {G,F,D,P}
     i = cell_index(archive, ev.descriptor)
-    fitness = convert(F, ev.fitness)
+    fitness = stored_fitness(F, ev.fitness)
     phenotype = stored_phenotype(P, ev.phenotype)
     i == 0 && return AddResult(Rejected, zero(F))
     result = classify(archive, i, fitness)
@@ -93,8 +103,8 @@ end
 # changing the archive.
 function classify(archive::CellArchive, i, fitness)
     archive.occupied[i] || return AddResult(NewCell, fitness)
-    improvement = fitness - archive.fitness[i]
-    return AddResult(improvement > 0 ? Improved : Rejected, improvement)
+    previous = archive.fitness[i]
+    return AddResult(fitness > previous ? Improved : Rejected, fitness_gain(fitness, previous))
 end
 
 # Makes `x` the occupant of cell `i`, keeping the running totals up to date. It
@@ -139,17 +149,17 @@ function add_batch_to_cells!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, 
     cells = Vector{Int}(undef, n)
     for k in 1:n
         i = cell_index(archive, evs[k].descriptor)
-        stored_phenotype(P, evs[k].phenotype)    # throws before the archive changes
+        fitness = stored_fitness(F, evs[k].fitness)    # throws before the archive changes
+        stored_phenotype(P, evs[k].phenotype)
         cells[k] = i
-        results[k] = i == 0 ? AddResult(Rejected, zero(F)) :
-                     classify(archive, i, convert(F, evs[k].fitness))
+        results[k] = i == 0 ? AddResult(Rejected, zero(F)) : classify(archive, i, fitness)
     end
     # Every result is fixed; placing a solution only if it beats what is in its
     # cell by now leaves the best of the solutions that entered.
     for k in 1:n
         results[k].status == Rejected && continue
         i = cells[k]
-        fitness = convert(F, evs[k].fitness)
+        fitness = stored_fitness(F, evs[k].fitness)
         if !archive.occupied[i] || fitness > archive.fitness[i]
             place!(archive, i, xs[k], evs[k].descriptor, fitness, stored_phenotype(P, evs[k].phenotype))
         end

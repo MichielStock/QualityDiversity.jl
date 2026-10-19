@@ -11,6 +11,8 @@
     @test_throws "dims has 2 entries but bounds has 1" GridArchive((2, 2), ((0, 1),))
     @test_throws "dims[2] is 0" GridArchive((2, 0), ((0, 1), (0, 1)))
     @test_throws "bounds[1] is (1.0, 1.0)" GridArchive((2,), ((1, 1),))
+    # a width that overflows would put every descriptor in the first cell
+    @test_throws "bounds[1] is (-1.0e308, 1.0e308), whose width Inf is not finite" GridArchive((10,), ((-1e308, 1e308),))
     @test_throws "dims must have at least one entry" GridArchive((), ())
 end
 
@@ -78,6 +80,39 @@ end
     @test sort(first.(collect(QD.elites(a)))) == [[2.0], [3.0]]          # the better one stays
     @test_throws "got 1 solutions but 3 evaluations" QD.add_batch!(a, [[1.0]], evs)
     @test isempty(QD.add_batch!(a, Vector{Float64}[], Evaluation{Float64,SVector{1,Float64}}[]))
+    # of equally fit solutions for one cell, the first stays
+    b = GridArchive((2,), ((0, 1),))
+    QD.add_batch!(b, [[1.0], [2.0]], [Evaluation(1.0, SVector(0.1)), Evaluation(1.0, SVector(0.2))])
+    @test first.(collect(QD.elites(b))) == [[1.0]]
+end
+
+@testset "fitness values an archive takes" begin
+    ev(f) = Evaluation(f, SVector(0.1))
+    for bad in (NaN, Inf, -Inf, NaN32)
+        a = GridArchive((2,), ((0, 1),))
+        QD.add!(a, [1.0], ev(1.0))
+        @test_throws "fitness must be finite, got $bad" QD.add!(a, [2.0], ev(bad))
+        @test_throws "fitness must be finite, got $bad" QD.add_batch!(a, [[2.0], [3.0]], [ev(2.0), ev(bad)])
+        @test collect(QD.elites(a)) == [([1.0], ev(1.0))] && qd_score(a) == 1.0
+    end
+    # a fitness that overflows the fitness type of the archive
+    small = GridArchive{Vector{Float64},Float32}((2,), ((0, 1),))
+    @test_throws "fitness 1.0e300 is too large for the fitness type Float32 of the archive" QD.add!(small, [1.0], ev(1e300))
+    # a NaN fitness throws although the descriptor is discarded
+    rejecting = GridArchive((2,), ((0, 1),); outside=RejectOutside())
+    @test_throws "fitness must be finite" QD.add!(rejecting, [1.0], Evaluation(NaN, SVector(5.0)))
+
+    # unsigned fitness: a worse solution is rejected with zero improvement, not wrapped around
+    for archive in (GridArchive{Vector{Float64},UInt8}((2,), ((0, 1),)),
+                    UnstructuredArchive{Vector{Float64},UInt8}(1; capacity=4, threshold=0.5))
+        @test QD.add!(archive, [1.0], Evaluation(UInt8(5), SVector(0.1))) == AddResult(QD.NewCell, UInt8(5))
+        @test QD.add!(archive, [2.0], Evaluation(UInt8(3), SVector(0.1))) == AddResult(QD.Rejected, UInt8(0))
+        @test QD.add!(archive, [3.0], Evaluation(UInt8(9), SVector(0.1))) == AddResult(QD.Improved, UInt8(4))
+        @test max_fitness(archive) == 9
+    end
+    unsigned = GridArchive{Vector{Float64},UInt8}((2,), ((0, 1),))
+    QD.add!(unsigned, [1.0], Evaluation(UInt8(5), SVector(0.1)))
+    @test QD.add_batch!(unsigned, [[2.0]], [Evaluation(UInt8(3), SVector(0.1))]) == [AddResult(QD.Rejected, UInt8(0))]
 end
 
 # The results of a batch are against the archive before it; the archive after it
