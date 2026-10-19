@@ -32,6 +32,7 @@ include("hypervolume.jl")
 include("problems/qdproblem.jl")
 include("problems/stochastic.jl")
 include("problems/benchmarks.jl")
+include("gradients.jl")
 include("archives/cell_archive.jl")
 include("archives/grid.jl")
 include("archives/sliding.jl")
@@ -44,6 +45,7 @@ include("archives/density.jl")
 include("archives/threshold.jl")
 include("archives/spread.jl")
 include("archives/pareto.jl")
+include("archives/gradient.jl")
 include("archives/device_cell_archive.jl")
 include("archives/device_grid.jl")
 include("archives/device_cvt.jl")
@@ -60,6 +62,9 @@ include("emitters/openai_es.jl")
 include("emitters/rankers.jl")
 include("emitters/cma_emitter.jl")
 include("emitters/bandit_scheduler.jl")
+include("emitters/gradient_optimizers.jl")
+include("emitters/gradient_arborescence.jl")
+include("emitters/gradient_operator.jl")
 include("emitters/device_emitter.jl")
 include("emitters/device_cma_emitter.jl")
 include("solve.jl")
@@ -71,11 +76,12 @@ export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, Abstract
 export QDAlgorithm, QDState, QDResult
 export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, Rastrigin, Sphere, BiSphere
 export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, DNSArchive, DensityArchive, ThresholdArchive,
-    SpreadArchive, ParetoGridArchive, DeviceGridArchive, DeviceCVTArchive
+    SpreadArchive, ParetoGridArchive, GradientArchive, DeviceGridArchive, DeviceCVTArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
 export DuplicatePolicy, RejectDuplicates, KeepDuplicates, FullFrontPolicy, RejectNewcomer, ReplaceCrowded
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter, CMAEmitter, BanditScheduler, DeviceVariationEmitter, DeviceCMAEmitter
+export GradientArborescenceEmitter, GradientOperatorEmitter, AdamAscent, GradientAscent
 export AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES
 export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker,
     TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker,
@@ -83,13 +89,13 @@ export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRa
 export FilterSelection, MuSelection
 export ReselectTerminated, ReselectAll
 export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
-export MAPElites, CMAME, CMAMAE, MOME, MELS, DDS
+export MAPElites, CMAME, CMAMAE, CMAMEGA, CMAMAEGA, OMGMEGA, MOME, MELS, DDS
 export init, step!, solve!, solve
 export qd_score, coverage, max_fitness, mean_fitness, cqd_score, CQDScore
 export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scores
 
 @compat public Rejected, Improved, NewCell
-@compat public evaluate, evaluate_batch, evaluations_per_solution, Expectation, expectation, random_solution, descriptor_bounds,
+@compat public evaluate, evaluate_batch, evaluate_gradient, evaluate_gradient_batch, evaluations_per_solution, Expectation, expectation, random_solution, descriptor_bounds,
     descriptor_categories, fitness_offset, reference_point
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
@@ -98,6 +104,6 @@ export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scor
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop
 @compat public RankOneRule, TextbookRankOne, PyribsRankOne
-@compat public ask, tell!, batch_size, restarts, active, ReselectRule, rank_key, reset_ranker!, SelectionRule, RestartRule
+@compat public ask, tell!, ask_gradients, tell_gradients!, batch_size, restarts, active, ReselectRule, rank_key, reset_ranker!, SelectionRule, RestartRule, GradientOptimizer
 
 end

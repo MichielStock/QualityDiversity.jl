@@ -136,6 +136,8 @@ Fitness is **maximized**. Users who minimize return the negated value.
 | `descriptor_bounds(prob)` | required, unless categories | per-dimension `(lo, hi)` tuples |
 | `descriptor_categories(prob)` | alternative to bounds | per-dimension collections of discrete descriptor values; descriptors are then tuples such as `(3, :ring)` |
 | `evaluate_batch(prob, xs) -> Vector{Evaluation}` | optional | default: threaded loop over `evaluate` |
+| `evaluate_gradient(prob, x) -> (Evaluation, jacobian)` | optional | for differentiable QD: the `(N+1) × n` Jacobian of fitness and descriptor; default by ForwardDiff (extension) |
+| `evaluate_gradient_batch(prob, xs)` | optional | default: threaded loop over `evaluate_gradient` |
 
 `QDProblem(f; init, bounds)` (or `categories` instead of `bounds`) wraps a plain function `f(x) -> (fitness,
 descriptor)`, or `(fitness, descriptor, phenotype)`, so most users never subtype.
@@ -170,7 +172,8 @@ descriptors, numbers or labels), `ThresholdArchive` (CMA-MAE thresholds around
 a cell archive, with a result archive of the best solutions), `UnstructuredArchive` (novelty-style,
 distance threshold), `DNSArchive` (Dominated Novelty Search: a population chosen by
 distance to fitter neighbours), `DensityArchive` (Density Descent Search: the density of
-recent descriptors around a result archive), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
+recent descriptors around a result archive), `GradientArchive` (OMG-MEGA: the gradients of
+every elite next to a cell archive), `ParetoGridArchive` (MOME: a Pareto front of at most `max_front` solutions in every cell of a grid, for fitness vectors).
 
 Storage layout for cell-based archives (`GridArchive`, `SlidingBoundariesArchive`,
 `CVTArchive`, `CategoricalArchive`, subtypes of `CellArchive`, which holds the shared code) is struct-of-arrays:
@@ -200,12 +203,17 @@ bounded genotypes, and `UniformCrossover(proportion)`. A user with a custom geno
 | `tell!(emitter, xs, evs, results)` | optional | update internal state; default no-op |
 | `batch_size(emitter)` | required | |
 | `restarts(emitter)` | optional | number of times the emitter has restarted; default `nothing`, for an emitter that never restarts |
+| `ask_gradients(rng, emitter, archive)` | optional | points whose gradients the emitter needs before `ask`; default `nothing` |
+| `tell_gradients!(emitter, xs, evs, jacobians, results)` | required if `ask_gradients` returns points | |
 
 Concrete emitters: `VariationEmitter(op; batch_size)` (select parents
 uniformly, apply `op`) and `CMAEmitter` (a search distribution whose update
 is driven by a ranker, a selection rule and a restart rule, all types chosen by
 dispatch; the optimizer is an `AbstractEvolutionStrategy`: `CMAES`, `SepCMAES`,
-`LMMAES` or `OpenAIES`), and `BanditScheduler` (a pool of emitters of which a bandit
+`LMMAES` or `OpenAIES`), `GradientArborescenceEmitter` (CMA-MEGA: a CMA-ES search over
+the coefficients of the gradients at a point that moves by `AdamAscent` or `GradientAscent`),
+`GradientOperatorEmitter` (OMG-MEGA: a random gradient step from an elite of a
+`GradientArchive`), and `BanditScheduler` (a pool of emitters of which a bandit
 runs a few each round). An emitter with state may require `tell!` to follow the `ask` that
 produced the batch.
 
@@ -227,6 +235,7 @@ one iteration at a time is a supported use, not a debugging hack.
 ```julia
 function step!(state)
     for emitter in state.emitters          # tuple: unrolled, type-stable
+        # an emitter that needs gradients gets its points evaluated with them first
         xs  = ask(state.rng, emitter, state.archive)
         evs = evaluate_batch(state.problem, xs)
         rs  = add_batch!(state.archive, xs, evs)
@@ -283,6 +292,7 @@ QualityDiversity.jl/
 │   ├── interfaces.jl             # abstract types + documented function stubs
 │   ├── evaluation.jl             # Evaluation, AddStatus, AddResult
 │   ├── hypervolume.jl            # hypervolume of a set of points, any number of objectives
+│   ├── gradients.jl              # evaluate_gradient and evaluate_gradient_batch
 │   ├── problems/
 │   │   ├── qdproblem.jl          # QDProblem wrapper
 │   │   ├── stochastic.jl         # StochasticQDProblem, Sampled, SampledSpread
@@ -302,6 +312,7 @@ QualityDiversity.jl/
 │   │   ├── device_cvt.jl         # DeviceCVTArchive
 │   │   ├── dns.jl                # DNSArchive
 │   │   ├── density.jl            # DensityArchive for DDS
+│   │   ├── gradient.jl           # GradientArchive for OMG-MEGA
 │   │   └── unstructured.jl
 │   ├── variation/
 │   │   ├── gaussian.jl
@@ -318,6 +329,9 @@ QualityDiversity.jl/
 │   │   ├── rankers.jl
 │   │   ├── cma_emitter.jl
 │   │   ├── bandit_scheduler.jl   # BanditScheduler
+│   │   ├── gradient_optimizers.jl # AdamAscent, GradientAscent: how CMA-MEGA moves its point
+│   │   ├── gradient_arborescence.jl # GradientArborescenceEmitter (CMA-MEGA)
+│   │   ├── gradient_operator.jl  # GradientOperatorEmitter (OMG-MEGA)
 │   │   ├── device_emitter.jl     # DeviceVariationEmitter
 │   │   └── device_cma_emitter.jl # DeviceCMAEmitter
 │   ├── solve.jl                  # QDAlgorithm, QDState, QDResult, init/step!/solve!
@@ -327,7 +341,7 @@ QualityDiversity.jl/
 ├── ext/
 │   ├── QualityDiversityMakieExt.jl        # archive heatmaps, metric curves
 │   ├── QualityDiversityKernelAbstractionsExt.jl  # kernels of the device archive and emitter
-│   ├── QualityDiversityForwardDiffExt.jl  # differentiable QD
+│   ├── QualityDiversityForwardDiffExt.jl  # gradients of any problem for differentiable QD
 │   └── QualityDiversityPythonCallExt.jl   # batched evaluation through Python
 ├── test/
 │   ├── runtests.jl
@@ -338,6 +352,7 @@ QualityDiversity.jl/
 │   ├── test_conformance.jl       # runs Testing checks on every built-in type
 │   ├── test_inference.jl         # @inferred and allocation checks
 │   ├── test_device.jl            # device archive and emitter on the CPU backend and JLArrays
+│   ├── test_gradients.jl         # gradients, GradientArchive, the MEGA emitters and algorithms
 │   └── test_quality.jl           # Aqua, ExplicitImports, JET
 ├── benchmark/
 │   ├── Project.toml              # BenchmarkTools lives here, not in the package
@@ -441,8 +456,9 @@ Julia LTS and the current release.
         parallel over the cells, with the dominance checks of a cell in parallel too
   - [x] Documenter site with tutorials, deployed to GitHub Pages by
         `.github/workflows/Documentation.yml`
-  - [ ] ForwardDiff (CMA-MEGA, OMG-MEGA), PythonCall; Bayesian-optimization
-        emitter
+  - [x] Differentiable QD: `evaluate_gradient` with a ForwardDiff extension, CMA-MEGA,
+        CMA-MAEGA and OMG-MEGA
+  - [ ] PythonCall; Bayesian-optimization emitter
 
 GPU support is optional and never a dependency of the package. Scoring a batch
 on a device works through `evaluate_batch` (`examples/gpu_evaluation.jl`,
@@ -459,12 +475,9 @@ and distributed MAP-Elites.
 
 The open Phase 7 items differ in importance. Pursue these, in this order:
 
-1. **Differentiable QD.** CMA-MEGA and OMG-MEGA in
-   `QualityDiversityForwardDiffExt`: the one algorithm family named in section 1
-   that has no implementation.
-2. **First release.** Register version 0.1 in the General registry, after the
+1. **First release.** Register version 0.1 in the General registry, after the
    author confirms, and decide whether CLAUDE.md stays in the registered package.
-3. **PythonCall extension.** Batched evaluation through Python, for expensive
+2. **PythonCall extension.** Batched evaluation through Python, for expensive
    scoring with Python tools (ML models, chemistry toolkits).
 
 Device CMA-MAE, device MOME and the Bayesian-optimization emitter are add-ons;
@@ -719,6 +732,44 @@ Settled; change them only with the author's agreement.
   parameters, so the candidates are a smaller transfer than a sampling transform. A device
   pays off with many searches (hundreds); with the five of the paper it is slower than the
   host.
+- **Differentiable QD.** CMA-MEGA, CMA-MAEGA and OMG-MEGA (Fontaine and Nikolaidis, 2021,
+  "Differentiable Quality Diversity"; CMA-MAEGA from the CMA-MAE paper) take problems whose
+  fitness (a single real) and `SVector` descriptor have gradients.
+  `evaluate_gradient(prob, x)` returns the evaluation and the `(N+1) × n` Jacobian, fitness
+  first. The default differentiates `evaluate` with ForwardDiff, a weak dependency
+  (`QualityDiversityForwardDiffExt`); without ForwardDiff it throws, naming both ways out. This
+  works because problem code computes in the number type of the solution (see Julia style). A
+  problem may define the method itself (closed form, or another AD package); `Sphere` and
+  `Rastrigin` do, which is several times faster and needs no ForwardDiff. At a clipping limit
+  their derivative is the one from inside (ForwardDiff 1.x takes the one from outside). Stochastic problems, categorical descriptors and
+  device archives are refused at `init`. An evaluation with gradients counts as one evaluation,
+  as in the paper and pyribs. The loop gets gradients through an optional emitter phase,
+  `ask_gradients`/`tell_gradients!` (pyribs's `ask_dqd`/`tell_dqd`): before `ask`, the points an
+  emitter asks for are evaluated with gradients, added to the archive and counted; the default
+  `ask_gradients` returns `nothing`, which compiles away, so the other algorithms do not slow
+  down. A `BanditScheduler` cannot hold such an emitter.
+  `GradientArborescenceEmitter` (CMA-MEGA) follows the paper and pyribs, where QDax differs:
+  `θ` moves by `AdamAscent` (default, learning rate 0.002 as in every experiment of the paper)
+  or `GradientAscent` (QDax's plain step), a type passed as `optimizer`; the fitness coefficient
+  may take either sign (QDax forces it non-negative); `θ` starts at `x0` or a random elite
+  (QDax starts at zero); the gradients are normalized by default, with `1e-8` added to the
+  length, as pyribs. The coefficients come from any `AbstractEvolutionStrategy` over `N+1`
+  dimensions starting at zero, ranked, selected and restarted by the rules of `CMAEmitter`.
+  The step of `θ` is `J' Σᵢ wᵢ cᵢ` over the selected candidates with the weights of CMA-ES,
+  computed before the strategy updates; a round without parents does not move `θ` (pyribs then
+  steps toward zero). The point `θ` is offered to the archive but not ranked, as in pyribs.
+  `test/reference/mega.jl` holds the branches, rankings, parent counts and points of pyribs
+  0.12.0 over five scripted rounds, for Adam and for gradient ascent; ours match.
+  OMG-MEGA keeps the gradients of every elite, as QDax and the paper do (pyribs instead
+  evaluates the gradients of each drawn parent again, two evaluations per child):
+  `GradientArchive` wraps a cell archive or a `ThresholdArchive` around one (not a
+  `SlidingBoundariesArchive`, whose elites move) and keeps the Jacobian of the solution that the
+  wrapped archive keeps; its `add!` and `add_batch!` take the Jacobians as a fourth argument and
+  throw without them, and a run with it evaluates every solution with gradients.
+  `GradientOperatorEmitter` draws an elite uniformly and coefficients with standard deviation
+  `sigma` (pyribs; QDax takes the variance), the first in absolute value as in the paper, and
+  steps along the normalized gradients. `CMAMEGA` and `CMAMAEGA` run one emitter by default, as
+  Algorithm 1 of the paper; `sigma0` and `sigma` have no default.
 - **Sliding boundaries.** `SlidingBoundariesArchive` (pyribs; Fontaine et al., 2019) is a
   grid whose boundaries along each dimension move to the quantiles of the descriptors of
   the last `buffer_capacity` solutions offered to it (1000 by default), every

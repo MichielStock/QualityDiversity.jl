@@ -80,6 +80,23 @@ ConvergenceRestart
 PeriodicRestart
 ```
 
+## Gradient emitters
+
+Emitters for differentiable quality diversity, which step along the gradients of the
+fitness and the descriptor; see [`evaluate_gradient`](@ref QualityDiversity.evaluate_gradient).
+An emitter that needs the gradients at points of its own asks for them before every
+round.
+
+```@docs
+GradientArborescenceEmitter
+GradientOperatorEmitter
+QualityDiversity.ask_gradients
+QualityDiversity.tell_gradients!
+QualityDiversity.GradientOptimizer
+AdamAscent
+GradientAscent
+```
+
 ## Bandit scheduler
 
 ```@docs

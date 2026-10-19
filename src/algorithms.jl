@@ -248,6 +248,119 @@ function DDS(rng::AbstractRNG, prob::AbstractQDProblem; dims::Tuple, sigma0::Rea
                  restart, kwargs...)
 end
 
+"""
+    CMAMEGA(prob; dims, sigma0, optimizer=AdamAscent(), num_emitters=1,
+            batch_size=<CMA-ES default>, ranker=TwoStageImprovementRanker(),
+            selection=FilterSelection(), restart=NoImprovementRestart(), x0=nothing,
+            normalize=true, bounds=descriptor_bounds(prob), genotype=Vector{Float64},
+            fitness=Float64, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
+
+CMA-MEGA (Fontaine and Nikolaidis, 2021, "Differentiable Quality Diversity"): a
+[`GridArchive`](@ref) with `dims` cells along each descriptor dimension, as for
+[`MAPElites`](@ref), and `num_emitters` [`GradientArborescenceEmitter`](@ref)s, which step
+along the gradients of the fitness and the descriptor. The problem must provide them; see
+[`evaluate_gradient`](@ref QualityDiversity.evaluate_gradient). The defaults are those of
+CMA-MEGA (Adam) in the paper, which runs one emitter.
+
+`sigma0` is the initial step size of the distribution of the gradient coefficients and has
+no default; the paper uses `10` on the sphere and Rastrigin benchmarks. The other arguments
+are those of [`MAPElites`](@ref) and [`GradientArborescenceEmitter`](@ref).
+
+# Example
+
+```julia
+prob = Sphere(100)    # gradients in closed form
+result = solve(prob, CMAMEGA(prob; dims=(100, 100), sigma0=10.0); budget=20_000, rng=Xoshiro(1))
+coverage(result.archive)
+```
+"""
+function CMAMEGA(prob::AbstractQDProblem; dims::Tuple, sigma0::Real,
+                 bounds::Tuple=descriptor_bounds(prob),
+                 genotype::Type=Vector{Float64},
+                 fitness::Type{<:Real}=Float64,
+                 outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
+    archive = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+    return CMAMEGA(archive; sigma0, dim=solution_dim(prob), kwargs...)
+end
+
+"""
+    CMAMEGA(archive::AbstractArchive; sigma0, dim, num_emitters=1, kwargs...) -> QDAlgorithm
+
+CMA-MEGA over any archive with `SVector` descriptors, such as a [`CVTArchive`](@ref):
+`archive` with `num_emitters` [`GradientArborescenceEmitter`](@ref)s for solutions of length
+`dim`. The keyword arguments are those of [`GradientArborescenceEmitter`](@ref).
+"""
+function CMAMEGA(archive::AbstractArchive{G,F,SVector{N,Float64}}; sigma0::Real, dim::Integer,
+                 num_emitters::Integer=1, kwargs...) where {G,F,N}
+    num_emitters >= 1 || throw(ArgumentError("num_emitters must be at least 1, got $num_emitters"))
+    emitters = Tuple(GradientArborescenceEmitter(dim; num_descriptors=N, sigma0, kwargs...) for _ in 1:num_emitters)
+    return QDAlgorithm(archive, emitters)
+end
+
+function CMAMEGA(archive::AbstractArchive; kwargs...)
+    throw(ArgumentError("differentiable quality diversity needs an archive with SVector descriptors, not a $(nameof(typeof(archive)))"))
+end
+
+"""
+    CMAMAEGA(prob; dims, sigma0, threshold_min, learning_rate=0.01, optimizer=AdamAscent(),
+             num_emitters=1, batch_size=<CMA-ES default>, ranker=ImprovementRanker(),
+             selection=MuSelection(), restart=ConvergenceRestart(), x0=nothing,
+             normalize=true, bounds=descriptor_bounds(prob), genotype=Vector{Float64},
+             fitness=Float64, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
+
+CMA-MAEGA (Fontaine and Nikolaidis, 2023): [`CMAMEGA`](@ref) with the rules of
+[`CMAMAE`](@ref): candidates ranked by their improvement over the threshold of their cell,
+the best half recombined, restarts on convergence only, over a [`ThresholdArchive`](@ref)
+around a [`GridArchive`](@ref). `threshold_min` and `learning_rate` are those of the
+[`ThresholdArchive`](@ref); `optimizer`, the rule that moves the solution point, is that of
+the [`GradientArborescenceEmitter`](@ref)s. `solve` returns the result archive, which holds
+the best solution of every cell.
+"""
+function CMAMAEGA(prob::AbstractQDProblem; dims::Tuple, sigma0::Real, threshold_min::Real,
+                  learning_rate::Real=0.01,
+                  ranker::AbstractRanker=ImprovementRanker(),
+                  selection::SelectionRule=MuSelection(),
+                  restart::RestartRule=ConvergenceRestart(),
+                  bounds::Tuple=descriptor_bounds(prob),
+                  genotype::Type=Vector{Float64},
+                  fitness::Type{<:AbstractFloat}=Float64,
+                  outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
+    grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+    archive = ThresholdArchive(grid; learning_rate, threshold_min)
+    return CMAMEGA(archive; sigma0, dim=solution_dim(prob), ranker, selection, restart, kwargs...)
+end
+
+"""
+    OMGMEGA(prob; dims, sigma, batch_size=64, normalize=true, bounds=descriptor_bounds(prob),
+            genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside(),
+            phenotype=Nothing) -> QDAlgorithm
+
+OMG-MEGA (Fontaine and Nikolaidis, 2021, "Differentiable Quality Diversity"): MAP-Elites
+whose children are gradient steps from their parents, a [`GradientArchive`](@ref) around a
+[`GridArchive`](@ref) with `dims` cells along each descriptor dimension and a
+[`GradientOperatorEmitter`](@ref). Every solution of the run is evaluated with its
+gradients; see [`evaluate_gradient`](@ref QualityDiversity.evaluate_gradient). `sigma`, the
+standard deviation of the gradient coefficients, has no default; the paper uses `10` on the
+sphere and Rastrigin benchmarks. The other arguments are those of [`MAPElites`](@ref) and
+[`GradientOperatorEmitter`](@ref).
+"""
+function OMGMEGA(prob::AbstractQDProblem; dims::Tuple, sigma::Real,
+                 bounds::Tuple=descriptor_bounds(prob),
+                 genotype::Type=Vector{Float64},
+                 fitness::Type{<:Real}=Float64,
+                 outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
+    archive = GradientArchive(GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype))
+    return OMGMEGA(archive; sigma, kwargs...)
+end
+
+"""
+    OMGMEGA(archive::GradientArchive; sigma, batch_size=64, normalize=true) -> QDAlgorithm
+
+OMG-MEGA over any [`GradientArchive`](@ref), such as one around a [`CVTArchive`](@ref).
+"""
+OMGMEGA(archive::GradientArchive; sigma::Real, batch_size::Integer=64, normalize::Bool=true) =
+    QDAlgorithm(archive, (GradientOperatorEmitter(; sigma, batch_size, normalize),))
+
 # Length of the solutions of `prob`, from one random solution.
 solution_dim(prob::AbstractQDProblem) = length(random_solution(Random.Xoshiro(0), prob))
 

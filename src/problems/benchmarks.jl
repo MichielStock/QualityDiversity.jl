@@ -194,3 +194,34 @@ function reference_point(prob::BiSphere)
     lowest = -prob.dim * (BISPHERE_LIMIT + BISPHERE_CENTER)^2
     return SVector(lowest, lowest)
 end
+
+# The gradients in closed form, several times faster than ForwardDiff and available without
+# it. At a clipping limit the derivative is the one from inside; ForwardDiff 1 takes the one
+# from outside.
+function evaluate_gradient(prob::Rastrigin, x::AbstractVector{<:Real})
+    ev = evaluate(prob, x)
+    n = prob.dim
+    h = n ÷ 2
+    jacobian = zeros(3, n)
+    for (k, i) in enumerate(eachindex(x))
+        xi = Float64(x[i])
+        -RASTRIGIN_LIMIT <= xi <= RASTRIGIN_LIMIT || continue
+        jacobian[1, k] = -(2 * xi + 20π * sin(2π * xi))
+        jacobian[k <= h ? 2 : 3, k] = k <= h ? 1 / h : 1 / (n - h)
+    end
+    return ev, jacobian
+end
+
+function evaluate_gradient(prob::Sphere, x::AbstractVector{<:Real})
+    ev = evaluate(prob, x)
+    n = prob.dim
+    h = n ÷ 2
+    worst = (SPHERE_LIMIT + SPHERE_SHIFT)^2 * n
+    jacobian = zeros(3, n)
+    for (k, i) in enumerate(eachindex(x))
+        xi = Float64(x[i])
+        jacobian[1, k] = -200 * (xi - SPHERE_SHIFT) / worst
+        jacobian[k <= h ? 2 : 3, k] = -SPHERE_LIMIT <= xi <= SPHERE_LIMIT ? 1.0 : -SPHERE_LIMIT / xi^2
+    end
+    return ev, jacobian
+end

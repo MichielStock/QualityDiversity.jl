@@ -13,10 +13,12 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [weakdeps]
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
 [extensions]
+QualityDiversityForwardDiffExt = "ForwardDiff"
 QualityDiversityKernelAbstractionsExt = ["Atomix", "KernelAbstractions"]
 QualityDiversityMakieExt = "Makie"
 
@@ -24,6 +26,7 @@ QualityDiversityMakieExt = "Makie"
 Atomix = "1"
 CommonSolve = "0.2"
 Compat = "4.10"
+ForwardDiff = "0.10, 1"
 KernelAbstractions = "0.9"
 LinearAlgebra = "1"
 Makie = "0.24"

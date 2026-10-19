@@ -569,6 +569,18 @@ function test_variation(op::QD.AbstractVariation, parent;
     return nothing
 end
 
+# Evaluates a batch and adds it to `archive`, with the gradients that a `GradientArchive`
+# keeps.
+function evaluate_and_add(prob, archive, xs)
+    evs = QD.evaluate_batch(Xoshiro(2), prob, xs)
+    return evs, QD.add_batch!(archive, xs, evs)
+end
+
+function evaluate_and_add(prob, archive::QD.GradientArchive, xs)
+    evs, jacobians = QD.evaluate_gradient_batch(prob, xs)
+    return evs, QD.add_batch!(archive, xs, evs, jacobians)
+end
+
 # The type of the batches that the emitters of `archive` return.
 batch_type(::QD.AbstractArchive{G}) where {G} = Vector{G}
 batch_type(::QD.DeviceCellArchive) = QD.DeviceBatch
@@ -585,6 +597,12 @@ genotypes of the archive's genotype type, inferrably, as a `Vector`, or as a
 [`DeviceBatch`](@ref QualityDiversity.DeviceBatch) for a
 [`DeviceCellArchive`](@ref QualityDiversity.DeviceCellArchive). The batch must then pass
 through `evaluate_batch`, `add_batch!` and `tell!`.
+
+An emitter whose [`ask_gradients`](@ref QualityDiversity.ask_gradients) returns solutions
+first gets them back through `evaluate_gradient_batch`, `add_batch!` and
+`tell_gradients!`, as in `step!`. For a
+[`GradientArchive`](@ref QualityDiversity.GradientArchive) every batch is evaluated with
+its gradients.
 """
 function test_emitter(emitter::QD.AbstractEmitter, archive::QD.AbstractArchive{G},
                       prob::QD.AbstractQDProblem; rng::AbstractRNG=Xoshiro(1)) where {G}
@@ -593,13 +611,22 @@ function test_emitter(emitter::QD.AbstractEmitter, archive::QD.AbstractArchive{G
         @test QD.batch_size(emitter) isa Integer
         @test QD.batch_size(emitter) >= 1
 
+        points = QD.ask_gradients(Xoshiro(4), emitter, archive)
+        if points !== nothing
+            @testset "tell_gradients!" begin
+                @test points isa batch_type(archive)
+                evs, jacobians = QD.evaluate_gradient_batch(prob, points)
+                results = QD.add_evaluated!(archive, points, evs, jacobians)
+                @test QD.tell_gradients!(emitter, points, evs, jacobians, results) === nothing
+            end
+        end
+
         xs = @inferred QD.ask(Xoshiro(5), emitter, archive)
         @test xs isa batch_type(archive)
         @test length(xs) == QD.batch_size(emitter)
 
         @testset "tell!" begin
-            evs = QD.evaluate_batch(Xoshiro(2), prob, xs)
-            results = QD.add_batch!(archive, xs, evs)
+            evs, results = evaluate_and_add(prob, archive, xs)
             @test QD.tell!(emitter, xs, evs, results) === nothing
         end
     end

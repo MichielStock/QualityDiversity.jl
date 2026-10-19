@@ -91,13 +91,13 @@ works through a complete example.
 
 | | |
 |---|---|
-| Algorithms | MAP-Elites, CMA-ME, CMA-MAE, Density Descent Search, MOME, MAP-Elites with low spread |
-| Archives | grid, CVT, sliding boundaries, categorical, threshold (CMA-MAE), unstructured (novelty), dominated novelty, density, spread, Pareto grid |
-| Emitters | variation emitter, CMA emitter (CMA-ES, sep-CMA-ES, LM-MA-ES, OpenAI-ES, with the rankers and restart rules of pyribs), bandit scheduler |
+| Algorithms | MAP-Elites, CMA-ME, CMA-MAE, CMA-MEGA, CMA-MAEGA, OMG-MEGA, Density Descent Search, MOME, MAP-Elites with low spread |
+| Archives | grid, CVT, sliding boundaries, categorical, threshold (CMA-MAE), unstructured (novelty), dominated novelty, density, spread, gradient (OMG-MEGA), Pareto grid |
+| Emitters | variation emitter, CMA emitter (CMA-ES, sep-CMA-ES, LM-MA-ES, OpenAI-ES, with the rankers and restart rules of pyribs), gradient arborescence and gradient operator emitters, bandit scheduler |
 | Variation | Gaussian, iso-line, polynomial (bounded), uniform crossover; your own for any type |
 | Problems | function wrappers, noisy problems with averaged or spread-aware evaluation, benchmarks |
 | Metrics | QD score, coverage, continuous QD score, hypervolume and MOQD score |
-| Extensions | Makie plots (heatmaps, ECDF, CQD curve); MAP-Elites and CMA-ME with the archive on a GPU |
+| Extensions | Makie plots (heatmaps, ECDF, CQD curve); MAP-Elites and CMA-ME with the archive on a GPU; gradients by ForwardDiff |
 
 Every run is reproducible from its seed, also with threaded evaluation. Several archives
 and emitters are checked against pyribs and QDax on the same inputs.
