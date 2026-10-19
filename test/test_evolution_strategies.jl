@@ -51,9 +51,12 @@ end
     bounded = S(dim; sigma0=0.3, batch_size=S === QD.LMMAES ? 8 : 200, lower=0.0, upper=2.0)
     QD.reset!(bounded, fill(1.0, dim))
     @test all(0 .<= QD.sample!(Xoshiro(4), bounded) .<= 2)
+    # out of reach: after the tries a draw moves to the nearest point inside
     narrow = S(dim; sigma0=1.0, batch_size=4, lower=0.0, upper=1e-9)
     QD.reset!(narrow, fill(5.0, dim))
-    @test_throws "could not draw a solution inside the bounds in 1000 tries" QD.sample!(Xoshiro(1), narrow)
+    xs = QD.sample!(Xoshiro(1), narrow)
+    @test all(==(1e-9), xs)
+    hasproperty(narrow, :y) && @test narrow.y ≈ (xs .- narrow.mean) ./ narrow.sigma
 end
 
 @testset "update! with $(nameof(S))" for S in strategies

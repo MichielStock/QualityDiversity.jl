@@ -100,8 +100,7 @@ mutable struct SlidingBoundariesArchive{G,F<:Real,N,O<:OutsidePolicy,P} <: CellA
         for i in 1:N
             dims[i] >= 1 ||
                 throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))
-            (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
-                throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
+            check_bound(i, lower[i], upper[i])
         end
         remap_frequency >= 1 ||
             throw(ArgumentError("remap_frequency must be at least 1, got $remap_frequency"))
@@ -223,8 +222,9 @@ function add!(archive::SlidingBoundariesArchive{G,F,N,O,P}, x, ev::Evaluation{<:
     # The solution that triggers a remap is not placed in the old cells, where it could
     # evict an elite that is no longer in the buffer; the remap adds it from the buffer.
     i = cell_index(archive, ev.descriptor)
-    stored_phenotype(P, ev.phenotype)    # throws before the archive changes
-    result = i == 0 ? AddResult(Rejected, zero(F)) : classify(archive, i, convert(F, ev.fitness))
+    fitness = stored_fitness(F, ev.fitness)    # throws before the archive changes
+    stored_phenotype(P, ev.phenotype)
+    result = i == 0 ? AddResult(Rejected, zero(F)) : classify(archive, i, fitness)
     remember!(archive, x, ev)
     remap!(archive)
     return result
@@ -252,7 +252,7 @@ end
 function remember!(archive::SlidingBoundariesArchive{G,F,N,O,P}, x, ev) where {G,F,N,O,P}
     slot = archive.buffer_next
     archive.buffer_genotypes[slot] = x
-    archive.buffer_fitness[slot] = convert(F, ev.fitness)
+    archive.buffer_fitness[slot] = stored_fitness(F, ev.fitness)
     archive.buffer_descriptors[slot] = ev.descriptor
     store_phenotype!(archive.buffer_phenotypes, slot, stored_phenotype(P, ev.phenotype))
     slots = length(archive.buffer_fitness)

@@ -163,8 +163,9 @@ function sample_evaluations(rng::AbstractRNG, prob, x)
     first.descriptor isa SVector{<:Any,<:Real} ||
         throw(ArgumentError("$name needs a descriptor that is an SVector of real numbers, got a $(typeof(first.descriptor))"))
     n = prob.num_samples
-    fitness = Vector{typeof(first.fitness)}(undef, n)
-    descriptors = Vector{typeof(first.descriptor)}(undef, n)
+    # Floating-point containers: the samples of one solution can mix integers and floats.
+    fitness = Vector{float(typeof(first.fitness))}(undef, n)
+    descriptors = Vector{float_svector(first.descriptor)}(undef, n)
     phenotypes = phenotype_samples(first.phenotype, n)
     fitness[1] = first.fitness
     descriptors[1] = first.descriptor
@@ -176,6 +177,8 @@ function sample_evaluations(rng::AbstractRNG, prob, x)
     end
     return fitness, descriptors, phenotypes
 end
+
+float_svector(::SVector{N,T}) where {N,T} = SVector{N,float(T)}
 
 # The phenotypes of the evaluations of one solution; `nothing` when the problem returns
 # none, so that such a problem keeps no vector of them.

@@ -17,6 +17,8 @@ ev2(a, b, d=(0.2, 0.2)) = Evaluation(SVector(Float64(a), Float64(b)), SVector(Fl
     @test hypervolume(vcat(front, [[5.0, -1.0], [0.0, 9.0]]), [0.0, 0.0]) == hypervolume(front, [0.0, 0.0])
     # points that are not above the reference point in every objective add nothing
     @test hypervolume(front, [1.0, 1.0]) == 0.0
+    # a point below the reference point in one objective adds nothing to the others
+    @test hypervolume([[3.0, 1.0], [0.5, 5.0]], [1.0, 0.0]) == 2.0
     # the order of the points does not matter, and vectors of any kind work
     shuffled = [[1.0, 1.0, 3.0], [3.0, 1.0, 1.0], [1.0, 3.0, 1.0], [2.0, 2.0, 2.0]]
     @test hypervolume(shuffled, [0.0, 0.0, 0.0]) == hypervolume(reverse(shuffled), [0.0, 0.0, 0.0])
@@ -86,7 +88,9 @@ end
 
     @test_throws "the fitness of a solution must be a vector of 2 objectives for a ParetoGridArchive, got a Float64" QD.add!(a, [1.0], Evaluation(1.0, SVector(0.2, 0.2)))
     @test_throws "fitness has 3 objectives but the archive has 2" QD.add!(a, [1.0], Evaluation(SVector(1.0, 2.0, 3.0), SVector(0.2, 0.2)))
-    @test_throws "fitness has a NaN objective" QD.add!(a, [1.0], ev2(NaN, 1))
+    @test_throws "every objective must be finite, got [NaN, 1.0]" QD.add!(a, [1.0], ev2(NaN, 1))
+    @test_throws "every objective must be finite, got [Inf, 1.0]" QD.add!(a, [1.0], ev2(Inf, 1))
+    @test_throws "every objective must be finite" QD.add_batch!(a, [[1.0], [2.0]], [ev2(1, 1), ev2(1, -Inf)])
     @test_throws "descriptor has 3 dimensions but the archive has 2" QD.add!(a, [1.0], Evaluation(SVector(1.0, 2.0), SVector(0.1, 0.1, 0.1)))
     @test_throws "outside the archive bounds" QD.add!(a, [1.0], ev2(1, 1, (2.0, 0.5)))
     rejecting = pareto_archive(outside=RejectOutside())
@@ -358,4 +362,23 @@ end
     @test all(wide.volumes .>= narrow.volumes) && QD.qd_score(wide) > QD.qd_score(narrow)
     @test QD.num_solutions(narrow) <= 2 * length(narrow)
     @test QD.num_solutions(narrow) < QD.num_solutions(wide)
+end
+
+@testset "a batch leaves the fronts as adding one at a time does" begin
+    # C beats both stored solutions; D beats neither of them, so against the full front
+    # before the batch it is rejected, but after C took their place it enters.
+    for full_front in (RejectNewcomer(), ReplaceCrowded())
+        make() = (a = ParetoGridArchive((1,), ((0, 1),), [0.0, 0.0]; max_front=2, full_front);
+                  QD.add_batch!(a, [[1.0], [2.0]], [Evaluation([1.0, 3.0], SVector(0.5)), Evaluation([3.0, 1.0], SVector(0.5))]);
+                  a)
+        batch = [Evaluation([4.0, 4.0], SVector(0.5)), Evaluation([5.0, 0.5], SVector(0.5))]
+        together = make()
+        results = QD.add_batch!(together, [[3.0], [4.0]], batch)
+        one_by_one = make()
+        foreach((x, ev) -> QD.add!(one_by_one, x, ev), [[3.0], [4.0]], batch)
+        @test sort(first.(collect(QD.elites(together)))) == sort(first.(collect(QD.elites(one_by_one)))) == [[3.0], [4.0]]
+        @test results[1].status == QD.Improved
+        # the results are those against the front before the batch
+        @test results[2] == QD.add!(make(), [4.0], batch[2])
+    end
 end

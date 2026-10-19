@@ -165,8 +165,7 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P,U<:DuplicatePolicy,R<:
         for i in 1:N
             dims[i] >= 1 ||
                 throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))
-            (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
-                throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
+            check_bound(i, lower[i], upper[i])
         end
         M >= 2 || throw(ArgumentError("the reference point has $M entries but several objectives need at least 2"))
         all(isfinite, reference_point) || throw(ArgumentError("the reference point must be finite"))
@@ -254,8 +253,9 @@ function objectives(archive::ParetoGridArchive{G,M}, ev::Evaluation) where {G,M}
         throw(ArgumentError("the fitness of a solution must be a vector of $M objectives for a ParetoGridArchive, got a $(typeof(fitness))"))
     length(fitness) == M ||
         throw(ArgumentError("fitness has $(length(fitness)) objectives but the archive has $M"))
-    any(isnan, fitness) && throw(ArgumentError("fitness has a NaN objective"))
-    return SVector{M,Float64}(fitness)
+    f = SVector{M,Float64}(fitness)
+    all(isfinite, f) || throw(ArgumentError("every objective must be finite, got $fitness"))
+    return f
 end
 
 # Hypervolume of the `m` points in `scratch`.
@@ -429,8 +429,10 @@ end
 Insert every solution in `xs` with its evaluation from `evs`. The status and
 `improvement` of each solution are those it would have if it were added alone to the
 archive as it was before the batch, so they do not depend on the other solutions in the
-batch. The solutions are then added in order, so a solution that another solution of the
-batch beats is removed.
+batch. The solutions are then offered in order, each against the front of its cell as it
+is by then, so the archive afterwards is the one that adding them one at a time gives: a
+solution that another solution of the batch beats is removed, and one reported `Rejected`
+can still enter a front in which a solution before it in the batch made room.
 """
 function add_batch!(archive::ParetoGridArchive{G,M,N,O,P}, xs::AbstractVector,
                     evs::AbstractVector) where {G,M,N,O,P}
@@ -453,9 +455,9 @@ function add_batch!(archive::ParetoGridArchive{G,M,N,O,P}, xs::AbstractVector,
         end
     end
     for k in 1:n
-        results[k].status == Rejected && continue
         i = cells[k]
-        # Another solution of the batch may have made this one redundant by now.
+        i == 0 && continue
+        # The front may have changed since the result: offered by now, as `add!` would.
         outcome, remove = front_outcome(archive, i, fitness[k])
         outcome.status == Rejected && continue
         insert_front!(archive, i, xs[k], fitness[k], stored_descriptor(archive, evs[k].descriptor),

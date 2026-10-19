@@ -13,7 +13,7 @@ it.
 
 `batch_size` is even, and by default the default of [`CMAES`](@ref) rounded up to an
 even number. With bounds, a pair of mirrored solutions is drawn again if either lies
-outside. Unlike for the covariance matrix strategies, the number of `parents` of
+outside, and moved inside the bounds after $(RESAMPLE_LIMIT) draws. Unlike for the covariance matrix strategies, the number of `parents` of
 `update!` has no effect: the ranks of the whole batch make up the gradient. A
 restart resets `θ` and the state of Adam. `should_stop` also reports a last step of
 `θ` below `1e-9` times its norm.
@@ -84,8 +84,12 @@ function sample!(rng::AbstractRNG, es::OpenAIES)
             column_inside(es.x, k, es.lower, es.upper) &&
                 column_inside(es.x, k + half, es.lower, es.upper) && break
             draws += 1
-            draws > RESAMPLE_LIMIT &&
-                throw(resample_error("the center is $(es.theta) and the standard deviation $(es.sigma0)"))
+            if draws > RESAMPLE_LIMIT
+                # The noise stays as drawn: the gradient estimate follows the mirrored pair.
+                clip_column!(es.x, k, es.lower, es.upper)
+                clip_column!(es.x, k + half, es.lower, es.upper)
+                break
+            end
         end
     end
     return es.x

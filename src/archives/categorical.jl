@@ -126,7 +126,7 @@ function category_lookup(i, values::AbstractVector{T}) where {T}
     for (k, v) in enumerate(values)
         v isa Number && !isfinite(v) &&
             throw(ArgumentError("categories[$i] is $values but its values must be finite"))
-        haskey(lookup, v) && throw(ArgumentError("categories[$i] contains $v more than once"))
+        haskey(lookup, lookup_key(v)) && throw(ArgumentError("categories[$i] contains $v more than once"))
         lookup[lookup_key(v)] = k
     end
     return lookup

@@ -10,11 +10,12 @@ Crossover for real-valued vectors that moves along the line through two parents
 with `z` a vector of independent standard normal numbers and `u` one standard
 normal number. The first noise term spreads the child around `p1` in every
 direction (isotropic), the second stretches it along the line to `p2`. Both
-standard deviations must be non-negative; `σ_line = 0` leaves a Gaussian
+standard deviations must be non-negative and finite; `σ_line = 0` leaves a Gaussian
 mutation of `p1`, and both zero a copy of `p1`.
 
-The two parents must have the same length. `vary(rng, op, p1, p2)` returns a
-new `Vector` of floating-point numbers and leaves the parents unchanged.
+The two parents must have the same indices. `vary(rng, op, p1, p2)` returns a
+new array of floating-point numbers with those indices, made with `similar` from
+`p1` (a `Vector` for a `Vector`), and leaves the parents unchanged.
 
 # Example
 
@@ -27,8 +28,10 @@ struct IsoLineVariation{T<:Real} <: AbstractVariation
     σ_iso::T
     σ_line::T
     function IsoLineVariation{T}(σ_iso, σ_line) where {T<:Real}
-        σ_iso >= 0 || throw(ArgumentError("σ_iso must be non-negative, got $σ_iso"))
-        σ_line >= 0 || throw(ArgumentError("σ_line must be non-negative, got $σ_line"))
+        σ_iso >= 0 && isfinite(σ_iso) ||
+            throw(ArgumentError("σ_iso must be non-negative and finite, got $σ_iso"))
+        σ_line >= 0 && isfinite(σ_line) ||
+            throw(ArgumentError("σ_line must be non-negative and finite, got $σ_line"))
         return new{T}(σ_iso, σ_line)
     end
 end
@@ -39,14 +42,21 @@ IsoLineVariation(; σ_iso::Real=0.01, σ_line::Real=0.2) = IsoLineVariation(σ_i
 
 n_parents(::IsoLineVariation) = 2
 
-function vary(rng::AbstractRNG, op::IsoLineVariation,
-              p1::AbstractVector{<:Real}, p2::AbstractVector{<:Real})
+function check_parent_axes(p1, p2)
     length(p1) == length(p2) ||
         throw(ArgumentError("parents have $(length(p1)) and $(length(p2)) entries but must have the same number"))
+    axes(p1) == axes(p2) ||
+        throw(ArgumentError("parents have the indices $(firstindex(p1)):$(lastindex(p1)) and $(firstindex(p2)):$(lastindex(p2)) but must have the same"))
+    return nothing
+end
+
+function vary(rng::AbstractRNG, op::IsoLineVariation,
+              p1::AbstractVector{<:Real}, p2::AbstractVector{<:Real})
+    check_parent_axes(p1, p2)
     T = float(promote_type(eltype(p1), eltype(p2), typeof(op.σ_iso)))
     line = op.σ_line * randn(rng, T)
-    child = Vector{T}(undef, length(p1))
-    for i in eachindex(p1, p2)
+    child = similar(p1, T)
+    for i in eachindex(child, p1, p2)
         child[i] = p1[i] + op.σ_iso * randn(rng, T) + line * (p2[i] - p1[i])
     end
     return child

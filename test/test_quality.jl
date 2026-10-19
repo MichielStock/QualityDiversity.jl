@@ -15,7 +15,7 @@ end
 # `NewCell` are declared public with `@compat public`, which ExplicitImports only sees from
 # Julia 1.11 on; the extensions use them. The KernelAbstractions extension implements the device
 # kernels behind internal functions of the package (`device_add_batch!` to
-# `solution_length`), which are not part of its interface, and uses `@atomic` of Atomix,
+# `fitness_gain`), which are not part of its interface, and uses `@atomic` of Atomix,
 # the documented atomic operations of KernelAbstractions kernels. The ForwardDiff extension
 # implements `forwarddiff_evaluate_gradient` with `differentiable_values`, internal functions
 # behind `evaluate_gradient`, and calls `jacobian`, the documented interface of ForwardDiff,
@@ -25,7 +25,7 @@ const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :pr
                                :CellArchive, :cell_index, :result_archive, :elites, :evaluate,
                                :DeviceCellArchive, :AddResultBatch, :Rejected, :Improved, :NewCell,
                                :device_add_batch!, :device_evaluate, :device_evaluate!, :device_vary!,
-                               :refresh_occupied!, :solution_length, Symbol("@atomic"),
+                               :refresh_occupied!, :solution_length, :fitness_gain, Symbol("@atomic"),
                                :forwarddiff_evaluate_gradient, :differentiable_values, :jacobian)
 
 @testset "ExplicitImports" begin

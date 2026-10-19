@@ -18,7 +18,11 @@ defines
   `batch_size` has a default;
 - `reset!(es, x0)`: restart the search at `x0`;
 - `sample!(rng, es)`: draw a batch into `es.x` and return it, drawing a solution
-  again if it falls outside the bounds;
+  again if it falls outside the bounds. After $(RESAMPLE_LIMIT) draws outside, the last
+  one moves to the nearest point inside the bounds: with the mean on the boundary of the
+  box, a draw lands inside with a probability that halves with every dimension. A
+  strategy that moves its mean along the stored steps of its solutions computes the step
+  of a moved solution from where it lies;
 - `update!(es, order, parents)`: adapt to the last batch, where `order` ranks its
   solutions from best to worst and the first `parents` of them are recombined;
 - `should_stop(es, keys)`: whether the search has converged or broken down, given the
@@ -63,6 +67,15 @@ function check_start(x0, dim)
     return nothing
 end
 
+# Checks that a start of the search lies inside the bounds of the strategy.
+function check_inside(x0, lower, upper)
+    for (i, v) in zip(eachindex(lower), x0)
+        lower[i] <= v <= upper[i] ||
+            throw(ArgumentError("x0 has the entry $v, outside the bounds [$(lower[i]), $(upper[i])]"))
+    end
+    return nothing
+end
+
 # Whether column `k` of `x` lies inside the bounds.
 function column_inside(x, k, lower, upper)
     for i in axes(x, 1)
@@ -71,8 +84,23 @@ function column_inside(x, k, lower, upper)
     return true
 end
 
-resample_error(state) =
-    ErrorException("could not draw a solution inside the bounds in $RESAMPLE_LIMIT tries; $state")
+# Moves column `k` of `x` to the nearest point inside the bounds.
+function clip_column!(x, k, lower, upper)
+    for i in axes(x, 1)
+        x[i, k] = clamp(x[i, k], lower[i], upper[i])
+    end
+    return x
+end
+
+# Clips column `k` of `x` and sets column `k` of `y` to its step from `mean` in units of
+# `sigma`.
+function clip_step!(x, y, k, mean, sigma, lower, upper)
+    clip_column!(x, k, lower, upper)
+    for i in axes(x, 1)
+        y[i, k] = (x[i, k] - mean[i]) / sigma
+    end
+    return x
+end
 
 # Recombination weights `log(parents + 1/2) - log(i)`, normalized to sum to one.
 function recombination_weights(parents)

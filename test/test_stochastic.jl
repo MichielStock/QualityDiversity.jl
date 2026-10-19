@@ -85,6 +85,13 @@ end
     @test even.fitness ≈ (s4[2] + s4[3]) / 2
     @test QD.expectation(Average(), [1.0, 2.0, 6.0]) == 3.0 && QD.expectation(Median(), [5.0]) == 5.0
 
+    # the samples of one solution can mix integer and floating-point values
+    mixed = StochasticQDProblem((rng, x) -> rand(rng, Bool) ? (1, (0,)) : (2.5, (0.5,));
+                                init=rng -> [0.0], bounds=((0, 1),))
+    averaged = QD.evaluate(Xoshiro(3), Sampled(mixed; num_samples=8), [0.0])
+    @test averaged.fitness isa Float64 && averaged.descriptor isa SVector{1,Float64}
+    @test 1 <= averaged.fitness <= 2.5
+
     # the spread shrinks with the square root of the number of samples
     fitness(p, n) = [QD.evaluate(Xoshiro(s), Sampled(p; num_samples=n), x).fitness for s in 1:300]
     spread(v) = sqrt(sum(abs2, v .- sum(v) / length(v)) / length(v))

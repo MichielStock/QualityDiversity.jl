@@ -121,9 +121,20 @@ end
     outside = [good[1], Evaluation(3.0, SVector(0.2, 1.5)), good[3]]
     @test_throws "descriptor component 2 is 1.5, outside the archive bounds [0.0, 1.0]" QD.add_batch!(dev, xs, outside)
     @test unchanged()
-    nan = [good[1], good[2], Evaluation(NaN, SVector(0.7, 0.8))]
-    @test_throws "the fitness of solution 3 of the batch is NaN" QD.add_batch!(dev, xs, nan)
-    @test unchanged()
+    for bad in (NaN, Inf, -Inf)
+        @test_throws "the fitness of solution 3 of the batch is not finite" QD.add_batch!(dev, xs, [good[1], good[2], Evaluation(bad, SVector(0.7, 0.8))])
+        @test unchanged()
+    end
+    # -0.0 and 0.0 tie, so the first stays, as on the host
+    for (first_fitness, second_fitness) in ((-0.0, 0.0), (0.0, -0.0), (-0.0f0, 0.0f0))
+        T = typeof(first_fitness)
+        tie = DeviceGridArchive{T,T}(Array, (4, 4), ((0, 1), (0, 1)), 2)
+        host = GridArchive{Vector{T},T}((4, 4), ((0, 1), (0, 1)))
+        pair = [Evaluation(first_fitness, SVector(0.1, 0.1)), Evaluation(second_fitness, SVector(0.1, 0.1))]
+        QD.add_batch!(tie, [T[1, 1], T[2, 2]], pair)
+        QD.add_batch!(host, [T[1, 1], T[2, 2]], pair)
+        @test first.(collect(QD.elites(tie))) == first.(collect(QD.elites(host))) == [T[1, 1]]
+    end
     clamped = DeviceGridArchive{Float64,Float64}(Array, (4, 4), ((0, 1), (0, 1)), 2; outside=ClampOutside())
     @test_throws "descriptor component 1 is NaN and cannot be clamped" QD.add_batch!(clamped, xs[1:1], [Evaluation(1.0, SVector(NaN, 0.5))])
     @test length(clamped) == 0

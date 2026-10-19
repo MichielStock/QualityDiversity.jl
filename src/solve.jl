@@ -48,6 +48,12 @@ struct QDResult{A<:AbstractArchive,H<:NamedTuple}
     n_evals::Int
 end
 
+Base.show(io::IO, result::QDResult) =
+    print(io, "QDResult(", result.n_evals, " evaluations, ", length(result.archive), " cells occupied)")
+
+Base.show(io::IO, state::QDState) =
+    print(io, "QDState(", state.n_evals, " of ", state.budget, " evaluations, ", length(state.archive), " cells occupied)")
+
 function Base.show(io::IO, mime::MIME"text/plain", result::QDResult)
     print(io, "QDResult after ", result.n_evals, " evaluations\n  archive: ")
     show(io, mime, result.archive)
@@ -101,6 +107,8 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
     state = QDState(prob, archive, deepcopy(alg.emitters), rng, Int(budget), callback, 0, history)
     xs = initial_batch(state.archive, initial_solutions(rng, prob, state.archive, init_size))
     evaluate_and_add!(state, xs)
+    length(state.archive) > 0 ||
+        throw(ArgumentError("none of the $init_size initial solutions entered the archive; check that their descriptors lie inside its bounds (an archive with RejectOutside() discards the ones outside)"))
     record_metrics!(state)
     notify!(state.callback, state)
     return state

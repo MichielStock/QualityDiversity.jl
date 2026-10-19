@@ -7,8 +7,9 @@ The result of evaluating one solution.
 
 `fitness` is a `Real` for a single objective or an `AbstractVector` for
 several. Fitness is maximized; a problem that minimizes returns the negated
-value. `descriptor` locates the solution in descriptor space and is usually an
-`SVector{N,Float64}`.
+value. Archives take only finite fitness values: a problem that wants to mark a
+solution as infeasible returns a low finite value. `descriptor` locates the
+solution in descriptor space and is usually an `SVector{N,Float64}`.
 
 `phenotype` is what the problem computed from the genotype and described, when
 the two differ: the product of a reaction sequence, the shape that a set of
@@ -65,7 +66,8 @@ Result of [`add!`](@ref QualityDiversity.add!).
 
 `improvement` is the fitness gain over the previous occupant of the cell, or
 over the archive's threshold for a cell that was empty. It is zero or
-negative for a rejected solution. Emitters that rank
+negative for a rejected solution, and zero for an unsigned fitness type, which
+has no negative values. Emitters that rank
 candidates by improvement, such as CMA-ME, read this field.
 """
 struct AddResult{F}
@@ -73,9 +75,44 @@ struct AddResult{F}
     improvement::F
 end
 
+# The fitness of an evaluation as an archive with fitness type `F` stores it. A fitness that
+# is NaN or infinite, or becomes infinite in `F`, throws before the archive changes: it
+# would make a cell impossible to improve and the sums behind the metrics NaN.
+function stored_fitness(::Type{F}, fitness::Real) where {F}
+    isfinite(fitness) || fitness_error(F, fitness)
+    f = convert(F, fitness)
+    isfinite(f) || fitness_error(F, fitness)
+    return f
+end
+
+# Out of line, so that the checks of `stored_fitness` stay cheap enough to inline.
+@noinline function fitness_error(F, fitness)
+    isfinite(fitness) &&
+        throw(ArgumentError("fitness $fitness is too large for the fitness type $F of the archive"))
+    throw(ArgumentError("fitness must be finite, got $fitness"))
+end
+
+# Throws for a real fitness that `stored_fitness` refuses. Another kind of fitness, such as
+# a vector of objectives, is for its archive to check.
+check_fitness(::Type{F}, fitness::Real) where {F} = (stored_fitness(F, fitness); nothing)
+check_fitness(::Type{F}, fitness) where {F} = nothing
+
+# How much `new` improves on `old`, negative if it is worse. An unsigned type has no
+# negative values, so a worse fitness gains zero instead of wrapping around.
+fitness_gain(new, old) = new - old
+fitness_gain(new::Unsigned, old::Unsigned) = new >= old ? new - old : zero(new)
+
 # The phenotype of an evaluation as an archive with phenotype type `P` stores it. A
 # mismatch throws before the archive changes.
-stored_phenotype(::Type{P}, phenotype) where {P} = convert(P, phenotype)
+function stored_phenotype(::Type{P}, phenotype) where {P}
+    phenotype isa P && return phenotype
+    try
+        return convert(P, phenotype)
+    catch err
+        err isa MethodError && err.f === convert || rethrow()
+        throw(ArgumentError("the evaluation has a phenotype of type $(typeof(phenotype)), which does not convert to the phenotype type $P of the archive"))
+    end
+end
 
 function stored_phenotype(::Type{P}, ::Nothing) where {P}
     Nothing <: P && return nothing

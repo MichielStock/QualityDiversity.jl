@@ -191,7 +191,7 @@ function select_population!(archive::DNSArchive{G,F,N,P}, xs, evs) where {G,F,N,
     for j in 1:length(xs)
         ev = evs[j]
         archive.merged_descriptors[stored+j] = checked_descriptor(archive, ev.descriptor)
-        archive.merged_fitness[stored+j] = convert(F, ev.fitness)
+        archive.merged_fitness[stored+j] = stored_fitness(F, ev.fitness)
         stored_phenotype(P, ev.phenotype)    # throws before the archive changes
     end
     for m in 1:merged

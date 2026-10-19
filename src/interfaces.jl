@@ -246,8 +246,10 @@ abstract type AbstractArchive{G,F,D,P} end
 
 Try to insert the solution `x` with evaluation `ev` into `archive`. Required.
 
-Throws an `ArgumentError` if the dimension of `ev.descriptor` does not match
-the archive. Does not allocate for `isbits` genotypes.
+Throws an `ArgumentError`, before the archive changes, if the dimension of
+`ev.descriptor` does not match the archive or if the fitness is `NaN` or infinite, also
+after conversion to the fitness type of the archive. Does not allocate for `isbits`
+genotypes.
 """
 function add! end
 
@@ -268,7 +270,8 @@ function add_batch! end
 function add_batch!(archive::AbstractArchive{G,F,D,P}, xs::AbstractVector, evs::AbstractVector) where {G,F,D,P}
     length(xs) == length(evs) ||
         throw(ArgumentError("got $(length(xs)) solutions but $(length(evs)) evaluations"))
-    foreach(ev -> stored_phenotype(P, ev.phenotype), evs)    # throws before the archive changes
+    # Throws before the archive changes.
+    foreach(ev -> (check_fitness(F, ev.fitness); stored_phenotype(P, ev.phenotype)), evs)
     results = Vector{AddResult{F}}(undef, length(xs))
     for i in eachindex(xs, evs)
         results[i] = add!(archive, xs[i], evs[i])

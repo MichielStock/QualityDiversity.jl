@@ -86,8 +86,7 @@ end
 # CVT archives on the host and on a device share it.
 function check_centroids(centroids::Vector{SVector{N,Float64}}, lower, upper) where {N}
     for i in 1:N
-        (isfinite(lower[i]) && isfinite(upper[i]) && lower[i] < upper[i]) ||
-            throw(ArgumentError("bounds[$i] is ($(lower[i]), $(upper[i])) but lo must be finite and less than hi"))
+        check_bound(i, lower[i], upper[i])
     end
     isempty(centroids) && throw(ArgumentError("need at least one centroid"))
     for (j, c) in enumerate(centroids)

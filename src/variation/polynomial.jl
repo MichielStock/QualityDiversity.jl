@@ -15,9 +15,9 @@ non-negative and `proportion` between 0 and 1; the textbook value of
 `proportion` is `1 / n` for vectors of length `n`.
 
 `vary(rng, op, parent)` requires every entry of `parent` to lie inside the
-bounds, and throws an `ArgumentError` otherwise. It returns a new `Vector`
-with the element type of `parent` (`Float64` for integers) and leaves `parent`
-unchanged.
+bounds, and throws an `ArgumentError` otherwise. It returns a new array with the
+indices of `parent`, made with `similar` (a `Vector` for a `Vector`), with the
+element type of `parent` (`Float64` for integers), and leaves `parent` unchanged.
 
 Changing an entry takes two floating-point powers, about 50 ns, so a child of 20
 entries costs around 1 µs where a `GaussianMutation` takes under 100 ns; a
@@ -64,8 +64,9 @@ function PolynomialMutation(lower::Union{Real,AbstractVector{<:Real}},
     return PolynomialMutation{typeof(lower),typeof(upper)}(lower, upper, Float64(eta), Float64(proportion))
 end
 
-bound(b::Real, i) = b
-bound(b::AbstractVector, i) = b[i]
+# The bound of the `k`-th entry of a solution, counted from one.
+bound(b::Real, k) = b
+bound(b::AbstractVector, k) = b[firstindex(b)+k-1]
 
 # The step of Deb's bounded polynomial mutation for an entry `x` in `[lo, hi]`,
 # given a uniform number `u`. `x + step` stays inside `[lo, hi]` up to rounding.
@@ -89,11 +90,11 @@ function vary(rng::AbstractRNG, op::PolynomialMutation, parent::AbstractVector{<
     end
     T = float(eltype(parent))
     eta = T(op.eta)
-    child = Vector{T}(undef, n)
-    for i in 1:n
+    child = similar(parent, T)
+    for (k, i) in enumerate(eachindex(child, parent))
         x = T(parent[i])
-        lo = T(bound(op.lower, i))
-        hi = T(bound(op.upper, i))
+        lo = T(bound(op.lower, k))
+        hi = T(bound(op.upper, k))
         lo <= x <= hi ||
             throw(ArgumentError("parent entry $i is $x, outside the bounds [$lo, $hi]"))
         if rand(rng) < op.proportion

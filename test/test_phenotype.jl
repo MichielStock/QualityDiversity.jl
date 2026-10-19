@@ -117,6 +117,7 @@ end
         descriptor = make_plain() isa CategoricalArchive ? (0, 0) : with.descriptor
         @test_throws "the evaluation has a phenotype of type String but the archive stores none; build the archive with phenotype=String" QD.add!(make_plain(), x, Evaluation(with.fitness, descriptor, with.phenotype))
         @test_throws "the evaluation has no phenotype but the archive stores phenotypes of type String" QD.add!(make_labelled(), x, Evaluation(with.fitness, descriptor))
+        @test_throws "the evaluation has a phenotype of type $Int, which does not convert to the phenotype type String of the archive" QD.add!(make_labelled(), x, Evaluation(with.fitness, descriptor, 3))
         # a batch with one evaluation that does not fit leaves the archive unchanged
         a = make_labelled()
         @test_throws "the evaluation has no phenotype" QD.add_batch!(a, [x, x], [Evaluation(with.fitness, descriptor, "0.6"), Evaluation(with.fitness, descriptor)])

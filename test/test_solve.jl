@@ -51,6 +51,14 @@ end
     alg = MAPElites(prob; dims=(5, 5), batch_size=10)
     @test_throws "budget (5) is smaller than the initial population (10)" init(prob, alg; budget=5)
     @test_throws "init_size must be at least 1, got 0" init(prob, alg; budget=5, init_size=0)
+    # a budget of exactly the initial population is spent by init
+    state = init(prob, alg; budget=10, rng=Xoshiro(1))
+    @test state.n_evals == 10
+    @test solve!(state).n_evals == 10
+    # an initial population that the archive discards entirely
+    outside = QDProblem(x -> (1.0, (5.0,)); init=rng -> [0.0], bounds=((0, 1),))
+    discarding = MAPElites(GridArchive((4,), ((0, 1),); outside=RejectOutside()))
+    @test_throws "none of the 64 initial solutions entered the archive" init(outside, discarding; budget=1_000)
 end
 
 @testset "several emitters" begin
@@ -130,4 +138,7 @@ end
 
     state = init(prob, alg; budget=100, rng=Xoshiro(1))
     @test startswith(repr(MIME"text/plain"(), state), "QDState after 10 of 100 evaluations\n  archive: GridArchive with ")
+    # compact forms, for `print` and inside collections
+    @test repr(result) == "QDResult(100 evaluations, $n cells occupied)"
+    @test repr(state) == "QDState(10 of 100 evaluations, $(length(state.archive)) cells occupied)"
 end

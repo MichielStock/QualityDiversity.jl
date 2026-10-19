@@ -102,7 +102,8 @@ a vector of `Float64` converts to.
   mean is a random elite of the archive, so the archive must hold a solution when the
   emitter first asks. The second form takes `dim` and `x0` from a vector.
 - `lower`, `upper`: bounds of the solutions, scalars or vectors. A sample outside is
-  drawn again.
+  drawn again, and moved inside the bounds after $(RESAMPLE_LIMIT) draws. `x0` must lie
+  inside them.
 
 `ask` draws a batch, and the next call of `tell!` must be with the results for that
 batch. `tell!` ranks the candidates, adapts the distribution and decides on a
@@ -151,7 +152,7 @@ function CMAEmitter(dim::Integer; sigma0::Real, batch_size::Union{Nothing,Intege
     es = strategy(dim; sigma0, sizing..., lower, upper)
     es isa AbstractEvolutionStrategy ||
         throw(ArgumentError("strategy must construct an AbstractEvolutionStrategy, got a $(typeof(es))"))
-    x0 === nothing || check_start(x0, dim)
+    x0 === nothing || (check_start(x0, dim); check_inside(x0, es.lower, es.upper))
     start = x0 === nothing ? nothing : collect(Float64, x0)
     own_ranker = deepcopy(ranker)
     return CMAEmitter{typeof(own_ranker),typeof(selection),typeof(restart),typeof(es)}(

@@ -173,7 +173,7 @@ Insert `x` if it is novel or beats its nearest neighbour; see
 function add!(archive::UnstructuredArchive{G,F,N,P}, x,
               ev::Evaluation{<:Real,<:AbstractVector{<:Real}}) where {G,F,N,P}
     point = checked_descriptor(archive, ev.descriptor)
-    fitness = convert(F, ev.fitness)
+    fitness = stored_fitness(F, ev.fitness)
     phenotype = stored_phenotype(P, ev.phenotype)
     nearest, distance = nearest_stored(archive, point)
     if nearest == 0 || distance > archive.threshold^2
@@ -186,15 +186,15 @@ function add!(archive::UnstructuredArchive{G,F,N,P}, x,
         end
         weakest = weakest_stored(archive)
         previous = archive.fitness[weakest]
-        fitness > previous || return AddResult(Rejected, fitness - previous)
+        fitness > previous || return AddResult(Rejected, fitness_gain(fitness, previous))
         _store!(archive, weakest, x, fitness, point, phenotype)
         _add_to_sum!(archive, Float64(fitness) - Float64(previous))
         archive.fitness_max = max(archive.fitness_max, fitness)
         return AddResult(NewCell, fitness)
     end
     previous = archive.fitness[nearest]
-    improvement = fitness - previous
-    improvement > 0 || return AddResult(Rejected, improvement)
+    improvement = fitness_gain(fitness, previous)
+    fitness > previous || return AddResult(Rejected, improvement)
     _store!(archive, nearest, x, fitness, point, phenotype)
     _add_to_sum!(archive, Float64(fitness) - Float64(previous))
     archive.fitness_max = max(archive.fitness_max, fitness)
