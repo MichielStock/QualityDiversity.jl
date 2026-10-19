@@ -158,3 +158,19 @@ end
     wrong = CVTArchive(Xoshiro(1), 10, ((0, 1),); samples=100)
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)
 end
+
+@testset "nearest centroid ties go to the lowest index" begin
+    # Centroids on an integer lattice, numbered in a shuffled order, and queries halfway
+    # between them: distances are exact, so a query is often as near to centroids on both
+    # sides of a split plane, and the k-d tree must find the one a brute-force search finds.
+    lattice = [SVector(Float64(i), Float64(j)) for i in 0:5 for j in 0:5]
+    for seed in 1:5
+        points = lattice[randperm(Xoshiro(seed), length(lattice))]
+        tree = QD.CentroidTree(points)
+        for qx in 0:0.5:5, qy in 0:0.5:5
+            q = SVector(qx, qy)
+            distances = [sum(abs2, p - q) for p in points]
+            @test QD.nearest(tree, q) == argmin(distances)
+        end
+    end
+end

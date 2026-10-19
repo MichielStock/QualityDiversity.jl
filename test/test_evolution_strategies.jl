@@ -245,6 +245,25 @@ end
     @test vec(es.cov) ≈ cma_cov rtol = 1e-10
 end
 
+@testset "$(nameof(S)) follows the reference over a long run" for (S, ref) in
+        ((QD.CMAES, (x0=cmalong_x0, s0=cmalong_s0, X=cmalong_X, orders=cmalong_orders, parents=cmalong_parents,
+                     mean=cmalong_mean, sigma=cmalong_sigma, shape=cmalong_shape)),
+         (QD.SepCMAES, (x0=seplong_x0, s0=seplong_s0, X=seplong_X, orders=seplong_orders, parents=seplong_parents,
+                        mean=seplong_mean, sigma=seplong_sigma, shape=seplong_shape)))
+    # reference/strategies.jl: generations that switch hsig off and reach the cap of the
+    # step-size change
+    n = length(ref.x0)
+    es = S(n; sigma0=ref.s0, batch_size=length(ref.orders[1]))
+    QD.reset!(es, ref.x0)
+    for (g, flat) in enumerate(ref.X)
+        load_batch!(es, columns(flat, n))
+        QD.update!(es, ref.orders[g], ref.parents[g])
+    end
+    @test es.mean ≈ ref.mean rtol = 1e-10
+    @test es.sigma ≈ ref.sigma rtol = 1e-10
+    @test vec(S === QD.CMAES ? es.cov : es.variances) ≈ ref.shape rtol = 1e-10
+end
+
 @testset "PyribsCMAES weakens the rank-one term" begin
     n = length(cma_x0)
     textbook = QD.CMAES(n; sigma0=cma_s0, batch_size=8)

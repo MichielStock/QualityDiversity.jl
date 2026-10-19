@@ -71,6 +71,18 @@ end
     bandit_round!(greedy, archive, [R, R])
     @test greedy.selections == [2, 4] && greedy.successes == [0, 1]
     @test QD.active(greedy) == [false, true]
+
+    # The bonus takes the log of the total selections, as Algorithm 1 of the paper does.
+    # Here that choice decides: with the log of the total successes, as pyribs takes it,
+    # the first emitter would win.
+    explorer = BanditScheduler((mutation(8), mutation(2)); num_active=1, zeta=1.5)
+    bandit_round!(explorer, archive, [N, N, N, N, N, N, R, R])
+    bandit_round!(explorer, archive, [R, R])
+    @test explorer.selections == [8, 2] && explorer.successes == [6, 0]
+    bonus(succ, sel, total) = succ / sel + 1.5 * sqrt(log(total) / sel)
+    @test bonus(0, 2, 10) > bonus(6, 8, 10)
+    @test bonus(0, 2, 6) < bonus(6, 8, 6)
+    @test QD.active(explorer) == [false, true]
 end
 
 @testset "BanditScheduler window" begin
