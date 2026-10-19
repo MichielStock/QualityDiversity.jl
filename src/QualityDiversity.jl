@@ -73,6 +73,7 @@ export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, 
 export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, DNSArchive, DensityArchive, ThresholdArchive,
     SpreadArchive, ParetoGridArchive, DeviceGridArchive, DeviceCVTArchive
 export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
+export DuplicatePolicy, RejectDuplicates, KeepDuplicates, FullFrontPolicy, RejectNewcomer, ReplaceCrowded
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
 export VariationEmitter, CMAEmitter, BanditScheduler, DeviceVariationEmitter, DeviceCMAEmitter
 export AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES

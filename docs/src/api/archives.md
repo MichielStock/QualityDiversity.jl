@@ -65,4 +65,10 @@ DNSArchive
 ```@docs
 ParetoGridArchive
 num_solutions
+DuplicatePolicy
+RejectDuplicates
+KeepDuplicates
+FullFrontPolicy
+RejectNewcomer
+ReplaceCrowded
 ```

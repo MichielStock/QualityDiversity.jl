@@ -454,12 +454,13 @@ function test_front_archive(make_archive, prob::QD.AbstractQDProblem; rng::Abstr
             @test r.status == QD.NewCell && r.improvement > 0
             @test length(a) == 1 && QD.num_solutions(a) == 1
 
-            r = QD.add!(a, xs[1], ev)
-            @test r.status == QD.Rejected && r.improvement == 0
+            # a copy adds no hypervolume, whether or not the archive keeps it
+            copy = QD.add!(a, xs[1], ev)
+            @test copy.improvement == 0
             worse = QD.Evaluation(_shift_fitness(ev.fitness, -1), ev.descriptor, ev.phenotype)
             r = QD.add!(a, xs[2], worse)
             @test r.status == QD.Rejected && r.improvement == 0
-            @test QD.num_solutions(a) == 1
+            @test QD.num_solutions(a) == (copy.status == QD.Rejected ? 1 : 2)
 
             better = QD.Evaluation(_shift_fitness(ev.fitness, 1), ev.descriptor, ev.phenotype)
             r = QD.add!(a, xs[3], better)

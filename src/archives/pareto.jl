@@ -1,9 +1,77 @@
 """
+    DuplicatePolicy
+
+Supertype of the rules that decide whether a [`ParetoGridArchive`](@ref) takes a solution
+whose objectives equal those of a solution in the front of its cell:
+[`RejectDuplicates`](@ref) and [`KeepDuplicates`](@ref).
+"""
+abstract type DuplicatePolicy end
+
+"""
+    RejectDuplicates()
+
+Reject a solution whose objectives equal those of a solution in the front of its cell, so
+that a front holds every objective vector once. The default of [`ParetoGridArchive`](@ref).
+The MOME paper and QDax's `MOMERepertoire` keep both; see [`KeepDuplicates`](@ref).
+"""
+struct RejectDuplicates <: DuplicatePolicy end
+
+"""
+    KeepDuplicates()
+
+Take a solution whose objectives equal those of a solution in the front of its cell, as the
+MOME paper and QDax's `MOMERepertoire` do: only a solution that is at least as good in every
+objective and better in one keeps it out. Different genotypes with equal objectives then all
+stay, in slots of the front that add no hypervolume.
+"""
+struct KeepDuplicates <: DuplicatePolicy end
+
+"""
+    FullFrontPolicy
+
+Supertype of the rules that decide what a [`ParetoGridArchive`](@ref) does with a solution
+for a full front, one that holds `max_front` solutions of which the new one beats none in
+every objective: [`RejectNewcomer`](@ref) and [`ReplaceCrowded`](@ref).
+"""
+abstract type FullFrontPolicy end
+
+"""
+    RejectNewcomer()
+
+Reject the solution, so that a full front changes only when a new solution beats one of its
+solutions in every objective. The default of [`ParetoGridArchive`](@ref), as in QDax's
+`MOMERepertoire`; the text of the MOME paper replaces a random solution of the front instead.
+"""
+struct RejectNewcomer <: FullFrontPolicy end
+
+"""
+    ReplaceCrowded()
+
+Of the solutions of the front and the new one, remove the one with the smallest crowding
+distance, so that the front stays spread out, as MOME-PGX does (Janmohamed, Pierrot and
+Cully, 2023, "Improving the Data Efficiency of Multi-Objective Quality-Diversity through
+Gradient Assistance and Crowding Exploration").
+
+The crowding distance is that of NSGA-II: for each objective, the gap between the two
+neighbours of a solution in that objective divided by the range of the objective over these
+solutions, summed over the objectives. The solutions with the smallest and the largest value
+of an objective have an infinite distance, so the ends of the front are never removed. An
+objective in which all of them are equal adds nothing. On a tie the new solution is removed,
+and otherwise the one stored first among those tied.
+
+When the new solution stays, its result is `Improved` and its `improvement` is the change in
+the hypervolume of the cell, which is negative when the removed solution covered more.
+"""
+struct ReplaceCrowded <: FullFrontPolicy end
+
+"""
     ParetoGridArchive{G}(dims, bounds, reference_point; max_front=50, outside=ThrowOutside(),
+                         duplicates=RejectDuplicates(), full_front=RejectNewcomer(),
                          phenotype=Nothing)
     ParetoGridArchive(prob::AbstractQDProblem; dims, reference_point, max_front=50,
                       bounds=descriptor_bounds(prob), genotype=Vector{Float64},
-                      outside=ThrowOutside(), phenotype=Nothing)
+                      outside=ThrowOutside(), duplicates=RejectDuplicates(),
+                      full_front=RejectNewcomer(), phenotype=Nothing)
 
 Archive for several objectives, the one of MOME (Pierrot et al., 2022): the cells are those
 of a [`GridArchive`](@ref), and every cell keeps a Pareto front, the solutions of the cell
@@ -19,10 +87,14 @@ fitness values as `SVector{M,Float64}`. `phenotype` is the type of the phenotype
 archive stores, `Nothing` for none; see [`Evaluation`](@ref).
 
 [`add!`](@ref QualityDiversity.add!) puts a solution into the front of its cell unless a
-solution there is at least as good in every objective; it removes the solutions that the new
-one beats in every objective. A solution that no one beats is rejected all the same when the
-front is full. The result is `NewCell` for a cell that was empty and `Improved` otherwise,
-and its `improvement` is the hypervolume that the cell gains, a `Float64`; a rejected
+solution there is at least as good in every objective and better in one; it removes the
+solutions that the new one beats in every objective. `duplicates` decides about a solution
+whose objectives equal those of a stored one: [`RejectDuplicates`](@ref) (the default) or
+[`KeepDuplicates`](@ref). `full_front` decides about a solution that beats none of a full
+front: [`RejectNewcomer`](@ref) (the default, as in QDax) rejects it and
+[`ReplaceCrowded`](@ref) removes the most crowded of the front and the new solution. The
+result is `NewCell` for a cell that was empty and `Improved` otherwise, and its
+`improvement` is the hypervolume that the cell gains, a `Float64`; a rejected
 solution has an `improvement` of zero. The results of [`add_batch!`](@ref
 QualityDiversity.add_batch!) are those of each solution against the archive as it was
 before the batch, and the solutions are then added in order.
@@ -60,11 +132,13 @@ julia> length(archive), num_solutions(archive), qd_score(archive)
 (1, 2, 5.0)
 ```
 """
-mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P} <: AbstractArchive{G,SVector{M,Float64},SVector{N,Float64},P}
+mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P,U<:DuplicatePolicy,R<:FullFrontPolicy} <: AbstractArchive{G,SVector{M,Float64},SVector{N,Float64},P}
     const dims::NTuple{N,Int}
     const lower::SVector{N,Float64}
     const upper::SVector{N,Float64}
     const outside::O
+    const duplicates::U
+    const full_front::R
     const max_front::Int
     const reference_point::SVector{M,Float64}
     # Slot `(i - 1) * max_front + k` holds the `k`-th solution of the front of cell `i`,
@@ -81,10 +155,13 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P} <: AbstractArchive{G,
     volume_sum::Float64
     volume_sum_error::Float64
     num_solutions::Int
-    # Workspace for the hypervolume of one front.
+    # Workspace for the hypervolume and the crowding distances of one front.
     const scratch::Vector{SVector{M,Float64}}
+    const crowding::Vector{Float64}
+    const order::Vector{Int}
 
-    function ParetoGridArchive{G,M,N,O,P}(dims, lower, upper, reference_point, max_front, outside) where {G,M,N,O<:OutsidePolicy,P}
+    function ParetoGridArchive{G,M,N,O,P,U,R}(dims, lower, upper, reference_point, max_front, outside,
+                                              duplicates, full_front) where {G,M,N,O<:OutsidePolicy,P,U<:DuplicatePolicy,R<:FullFrontPolicy}
         for i in 1:N
             dims[i] >= 1 ||
                 throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))
@@ -96,20 +173,22 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P} <: AbstractArchive{G,
         max_front >= 1 || throw(ArgumentError("max_front must be at least 1, got $max_front"))
         ncells = prod(dims)
         slots = ncells * max_front
-        return new{G,M,N,O,P}(dims, lower, upper, outside, max_front, reference_point,
+        return new{G,M,N,O,P,U,R}(dims, lower, upper, outside, duplicates, full_front, max_front, reference_point,
                               zeros(Int, ncells),
                               Vector{G}(undef, slots),
                               Vector{P}(undef, slots),
                               Vector{SVector{M,Float64}}(undef, slots),
                               Vector{SVector{N,Float64}}(undef, slots),
                               zeros(ncells), Int[], 0.0, 0.0, 0,
-                              Vector{SVector{M,Float64}}(undef, max_front + 1))
+                              Vector{SVector{M,Float64}}(undef, max_front + 1),
+                              Vector{Float64}(undef, max_front + 1), Vector{Int}(undef, max_front + 1))
     end
 end
 
 function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::AbstractVector{<:Real};
                               max_front::Integer=50, outside::OutsidePolicy=ThrowOutside(),
-                              phenotype::Type=Nothing) where {G}
+                              duplicates::DuplicatePolicy=RejectDuplicates(),
+                              full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing) where {G}
     N = length(dims)
     length(bounds) == N ||
         throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
@@ -117,8 +196,9 @@ function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::Abstr
     M = length(reference_point)
     lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
     upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return ParetoGridArchive{G,M,N,typeof(outside),phenotype}(map(Int, dims), lower, upper,
-                                    SVector{M,Float64}(reference_point), Int(max_front), outside)
+    return ParetoGridArchive{G,M,N,typeof(outside),phenotype,typeof(duplicates),typeof(full_front)}(
+        map(Int, dims), lower, upper, SVector{M,Float64}(reference_point), Int(max_front), outside,
+        duplicates, full_front)
 end
 
 function ParetoGridArchive(dims::Tuple, bounds::Tuple, reference_point::AbstractVector{<:Real}; kwargs...)
@@ -128,8 +208,10 @@ end
 function ParetoGridArchive(prob::AbstractQDProblem; dims::Tuple, reference_point::AbstractVector{<:Real},
                            max_front::Integer=50, bounds::Tuple=descriptor_bounds(prob),
                            genotype::Type=Vector{Float64}, outside::OutsidePolicy=ThrowOutside(),
-                           phenotype::Type=Nothing)
-    return ParetoGridArchive{genotype}(dims, bounds, reference_point; max_front, outside, phenotype)
+                           duplicates::DuplicatePolicy=RejectDuplicates(),
+                           full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing)
+    return ParetoGridArchive{genotype}(dims, bounds, reference_point; max_front, outside, duplicates,
+                                       full_front, phenotype)
 end
 
 Base.length(archive::ParetoGridArchive) = length(archive.occupied_idx)
@@ -206,35 +288,91 @@ function scratch_volume(archive::ParetoGridArchive, m)
     return hypervolume((archive.scratch[k] for k in 1:m), archive.reference_point)
 end
 
+# A stored solution with objectives `g` keeps out a new one with objectives `f`.
+blocks(::RejectDuplicates, g, f) = weakly_dominates(g, f)
+blocks(::KeepDuplicates, g, f) = dominates(g, f)
+
 # What adding a solution with objectives `f` to cell `i` does, without changing the
-# archive: the status and the hypervolume that the cell gains.
+# archive: the status and the hypervolume that the cell gains, and the position in the
+# front of the solution removed to make room for it (`0` for none).
 function front_outcome(archive::ParetoGridArchive, i, f)
     n = archive.counts[i]
     base = (i - 1) * archive.max_front
     kept = 0
     for k in 1:n
         g = archive.fitness[base+k]
-        weakly_dominates(g, f) && return AddResult(Rejected, 0.0)
+        blocks(archive.duplicates, g, f) && return AddResult(Rejected, 0.0), 0
         if !dominates(f, g)
             kept += 1
             archive.scratch[kept] = g
         end
     end
-    kept == archive.max_front && return AddResult(Rejected, 0.0)
     archive.scratch[kept+1] = f
-    gain = scratch_volume(archive, kept + 1) - archive.volumes[i]
-    return AddResult(n == 0 ? NewCell : Improved, gain)
+    remove = 0
+    if kept == archive.max_front
+        # The front is full and the new solution beats none of it, so `scratch[k]` holds
+        # the objectives of its `k`-th solution.
+        remove = make_room(archive.full_front, archive, kept + 1)
+        remove == kept + 1 && return AddResult(Rejected, 0.0), 0
+        archive.scratch[remove] = f
+    end
+    gain = scratch_volume(archive, remove == 0 ? kept + 1 : kept) - archive.volumes[i]
+    return AddResult(n == 0 ? NewCell : Improved, gain), remove
 end
 
-# Puts a solution that `front_outcome` accepted into cell `i` and returns the change in
-# the hypervolume of the cell.
-function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor, phenotype)
+# Which of the `m` points in `scratch` leaves a full front; the last of them is the new
+# solution.
+make_room(::RejectNewcomer, archive, m) = m
+
+function make_room(::ReplaceCrowded, archive::ParetoGridArchive, m)
+    crowding_distances!(archive, m)
+    distances = archive.crowding
+    remove = m
+    for k in 1:m-1
+        distances[k] < distances[remove] && (remove = k)
+    end
+    return remove
+end
+
+# NSGA-II crowding distance of each of the `m` points in `scratch`, into `crowding`.
+function crowding_distances!(archive::ParetoGridArchive{G,M}, m) where {G,M}
+    points, distances, order = archive.scratch, archive.crowding, archive.order
+    for k in 1:m
+        distances[k] = 0.0
+    end
+    for j in 1:M
+        # Insertion sort of the points by objective `j`, stable, so the ends of the order
+        # do not depend on how the sort breaks ties.
+        for a in 1:m
+            value = points[a][j]
+            b = a - 1
+            while b >= 1 && points[order[b]][j] > value
+                order[b+1] = order[b]
+                b -= 1
+            end
+            order[b+1] = a
+        end
+        range = points[order[m]][j] - points[order[1]][j]
+        range > 0 || continue
+        distances[order[1]] = Inf
+        distances[order[m]] = Inf
+        for a in 2:m-1
+            distances[order[a]] += (points[order[a+1]][j] - points[order[a-1]][j]) / range
+        end
+    end
+    return distances
+end
+
+# Puts a solution that `front_outcome` accepted into cell `i`, removing the solution at
+# position `remove` of the front (none for `0`), and returns the change in the
+# hypervolume of the cell.
+function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor, phenotype, remove)
     n = archive.counts[i]
     base = (i - 1) * archive.max_front
     kept = 0
     for k in 1:n
         g = archive.fitness[base+k]
-        dominates(f, g) && continue
+        (k == remove || dominates(f, g)) && continue
         kept += 1
         if kept != k
             archive.genotypes[base+kept] = archive.genotypes[base+k]
@@ -279,9 +417,9 @@ function add!(archive::ParetoGridArchive{G,M,N,O,P}, x, ev::Evaluation) where {G
     i = cell_index(archive, ev.descriptor)
     i == 0 && return AddResult(Rejected, 0.0)
     f = objectives(archive, ev)
-    result = front_outcome(archive, i, f)
+    result, remove = front_outcome(archive, i, f)
     result.status == Rejected && return result
-    insert_front!(archive, i, x, f, stored_descriptor(archive, ev.descriptor), phenotype)
+    insert_front!(archive, i, x, f, stored_descriptor(archive, ev.descriptor), phenotype, remove)
     return result
 end
 
@@ -311,16 +449,17 @@ function add_batch!(archive::ParetoGridArchive{G,M,N,O,P}, xs::AbstractVector,
             results[k] = AddResult(Rejected, 0.0)
         else
             fitness[k] = objectives(archive, evs[k])
-            results[k] = front_outcome(archive, i, fitness[k])
+            results[k] = first(front_outcome(archive, i, fitness[k]))
         end
     end
     for k in 1:n
         results[k].status == Rejected && continue
         i = cells[k]
         # Another solution of the batch may have made this one redundant by now.
-        front_outcome(archive, i, fitness[k]).status == Rejected && continue
+        outcome, remove = front_outcome(archive, i, fitness[k])
+        outcome.status == Rejected && continue
         insert_front!(archive, i, xs[k], fitness[k], stored_descriptor(archive, evs[k].descriptor),
-                      stored_phenotype(P, evs[k].phenotype))
+                      stored_phenotype(P, evs[k].phenotype), remove)
     end
     return results
 end
