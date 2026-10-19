@@ -97,6 +97,8 @@ function BanditScheduler(pool::Tuple; num_active::Integer, zeta::Real=0.05, wind
     for (i, e) in enumerate(pool)
         e isa AbstractEmitter ||
             throw(ArgumentError("pool[$i] is a $(typeof(e)), not an AbstractEmitter"))
+        uses_gradients(e) &&
+            throw(ArgumentError("pool[$i] is a $(nameof(typeof(e))), which needs gradients before it asks; a BanditScheduler cannot hold it"))
         for j in 1:i-1
             ismutable(e) && e === pool[j] &&
                 throw(ArgumentError("pool[$j] and pool[$i] are the same $(nameof(typeof(e))); every emitter with state must be a separate instance, e.g. built with a comprehension"))

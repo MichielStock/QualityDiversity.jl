@@ -15,6 +15,9 @@ gives every keyword.
 | [`MAPElites`](@ref) | MAP-Elites (Mouret and Clune, 2015) | [`GridArchive`](@ref), or [`CategoricalArchive`](@ref) for discrete descriptors | one [`VariationEmitter`](@ref) | any genotype; the first thing to try |
 | [`CMAME`](@ref) | CMA-ME (Fontaine et al., 2020) | [`GridArchive`](@ref) | five [`CMAEmitter`](@ref)s | real-vector genotypes, especially many parameters |
 | [`CMAMAE`](@ref) | CMA-MAE (Fontaine and Nikolaidis, 2023) | [`ThresholdArchive`](@ref) around a grid | five [`CMAEmitter`](@ref)s | as CMA-ME, when fitness should count for more |
+| [`CMAMEGA`](@ref) | CMA-MEGA (Fontaine and Nikolaidis, 2021) | [`GridArchive`](@ref) | one [`GradientArborescenceEmitter`](@ref) | the fitness and descriptor have gradients |
+| [`CMAMAEGA`](@ref) | CMA-MAEGA (Fontaine and Nikolaidis, 2023) | [`ThresholdArchive`](@ref) around a grid | one [`GradientArborescenceEmitter`](@ref) | as CMA-MEGA, when fitness should count for more |
+| [`OMGMEGA`](@ref) | OMG-MEGA (Fontaine and Nikolaidis, 2021) | [`GradientArchive`](@ref) around a grid | one [`GradientOperatorEmitter`](@ref) | gradients, and a simpler search than CMA-MEGA |
 | [`DDS`](@ref) | Density Descent Search (Lee et al., 2024) | [`DensityArchive`](@ref) around a grid | fifteen [`CMAEmitter`](@ref)s | exploring descriptor space with little regard for fitness |
 | [`MOME`](@ref) | Multi-objective MAP-Elites (Pierrot et al., 2022) | [`ParetoGridArchive`](@ref) | one [`VariationEmitter`](@ref) | several objectives |
 | [`MELS`](@ref) | MAP-Elites with low spread (Mace et al., 2023) | [`SpreadArchive`](@ref) around a grid | one [`VariationEmitter`](@ref) | noisy descriptors |
@@ -31,6 +34,13 @@ A few rules of thumb:
 - **CMA-ME or CMA-MAE:** CMA-MAE keeps searching where it has already found good
   solutions, which CMA-ME abandons once a region is covered. It needs `threshold_min`,
   the lowest fitness the problem can produce.
+- **Gradients:** when the fitness and the descriptor are differentiable functions of a
+  real vector, the algorithms of differentiable quality diversity step along their
+  gradients and fill an archive in far fewer evaluations than the others. Load
+  ForwardDiff.jl (`using ForwardDiff`) to compute the gradients of a [`QDProblem`](@ref),
+  or define [`evaluate_gradient`](@ref QualityDiversity.evaluate_gradient) for the problem.
+  CMA-MEGA computes the gradients once per round, at one point; OMG-MEGA computes them for
+  every solution, which costs more when a gradient is expensive.
 - **Noisy problems:** wrap the problem in [`Sampled`](@ref) to average several
   evaluations; use MELS when the descriptor is noisy too. See the
   [noisy problems tutorial](../tutorials/noisy.md).
@@ -56,6 +66,7 @@ alg = MAPElites(archive; batch_size=100)
 | [`ThresholdArchive`](@ref) | those of the archive it wraps | CMA-MAE |
 | [`SpreadArchive`](@ref) | those of the grid or CVT archive it wraps | MELS |
 | [`DensityArchive`](@ref) | those of the archive it wraps | DDS |
+| [`GradientArchive`](@ref) | those of the archive it wraps | OMG-MEGA |
 | [`ParetoGridArchive`](@ref) | a grid, with a Pareto front in each cell | several objectives |
 
 A descriptor outside the bounds of a grid is an error by default, which catches a

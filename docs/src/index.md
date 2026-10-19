@@ -58,19 +58,20 @@ With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
 
 ## What is included
 
-- **Algorithms:** MAP-Elites, CMA-ME, CMA-MAE, Density Descent Search, MOME (several
+- **Algorithms:** MAP-Elites, CMA-ME, CMA-MAE, CMA-MEGA, CMA-MAEGA and OMG-MEGA
+  (differentiable quality diversity), Density Descent Search, MOME (several
   objectives), MAP-Elites with low spread (noisy problems), novelty-style archives and
   Dominated Novelty Search, and a bandit scheduler to choose among emitters.
 - **Archives:** grid, CVT, sliding-boundaries, categorical, threshold, unstructured,
-  dominated-novelty, density, spread and Pareto archives.
+  dominated-novelty, density, spread, gradient and Pareto archives.
 - **Evolution strategies** for the CMA emitters: CMA-ES, sep-CMA-ES, LM-MA-ES and
   OpenAI-ES, with the rankers, selection and restart rules of pyribs.
 - **Noisy problems,** evaluated with a generator of their own so that runs stay
   reproducible on any number of threads.
 - **Metrics:** QD score, coverage, continuous QD score, and hypervolume for several
   objectives.
-- **Plots** through a Makie extension, and **GPU** archives through a
-  KernelAbstractions extension.
+- **Plots** through a Makie extension, **GPU** archives through a
+  KernelAbstractions extension, and **gradients** through a ForwardDiff extension.
 - **Conformance checks** in `QualityDiversity.Testing` for the types you define.
 
 ## Where to go next

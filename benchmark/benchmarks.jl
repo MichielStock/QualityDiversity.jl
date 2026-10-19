@@ -250,3 +250,25 @@ SUITE["algorithm"]["MOME/step!"] = let alg = MOME(bisphere; dims=(100, 100))
     state = init(bisphere, alg; budget=10^9, rng=Xoshiro(1))
     @benchmarkable step!($state)
 end
+
+
+# ── differentiable quality diversity ──────────────────────
+SUITE["problem"]["Sphere/evaluate_gradient"] = @benchmarkable QD.evaluate_gradient($sphere, $(QD.random_solution(rng, sphere)))
+const gradient_archive = let a = GradientArchive(GridArchive(sphere; dims=(100, 100)))
+    xs = [QD.random_solution(rng, sphere) for _ in 1:5_000]
+    QD.add_batch!(a, xs, QD.evaluate_gradient_batch(sphere, xs)...)
+    a
+end
+SUITE["emitter"]["GradientOperatorEmitter/ask/batch=100"] =
+    @benchmarkable QD.ask($rng, $(GradientOperatorEmitter(; sigma=10.0, batch_size=BATCH)), $gradient_archive)
+SUITE["archive"]["GradientArchive/add_batch!/n=100"] = let xs = [QD.random_solution(rng, sphere) for _ in 1:BATCH]
+    evs, jacobians = QD.evaluate_gradient_batch(sphere, xs)
+    @benchmarkable QD.add_batch!(a, $xs, $evs, $jacobians) setup = (a = deepcopy($gradient_archive)) evals = 1
+end
+for (name, alg) in (("CMAMEGA", CMAMEGA(sphere; dims=(100, 100), sigma0=10.0)),
+                    ("CMAMAEGA", CMAMAEGA(sphere; dims=(100, 100), sigma0=10.0, threshold_min=0.0)),
+                    ("OMGMEGA", OMGMEGA(sphere; dims=(100, 100), sigma=10.0, batch_size=BATCH)))
+    SUITE["algorithm"]["$name/step!"] = let state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
+        @benchmarkable step!($state)
+    end
+end

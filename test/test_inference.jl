@@ -334,3 +334,20 @@ end
     @test allocated(QD.add!, crowded, 5, on_line(0.65)) == 0
     @test allocated(QD.add!, crowded, 6, on_line(0.15)) == 0
 end
+
+@testset "differentiable QD inference and allocations" begin
+    prob = Rastrigin(4)
+    xs = [QD.random_solution(Xoshiro(k), prob) for k in 1:20]
+    evs, jacobians = QD.evaluate_gradient_batch(prob, xs)
+    @inferred QD.evaluate_gradient(prob, xs[1])
+    @inferred QD.evaluate_gradient_batch(prob, xs)
+    archive = GradientArchive(GridArchive(prob; dims=(5, 5)))
+    @inferred QD.add_batch!(archive, xs, evs, jacobians)
+    @inferred QD.add!(archive, xs[1], evs[1], jacobians[1])
+    @test allocated(QD.cell_index, archive, evs[1].descriptor) == 0
+    @inferred QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma=1.0), archive)
+    for alg in (CMAMEGA(prob; dims=(5, 5), sigma0=1.0), OMGMEGA(prob; dims=(5, 5), sigma=1.0))
+        state = init(prob, alg; budget=10_000, rng=Xoshiro(1))
+        @inferred step!(state)
+    end
+end

@@ -8,7 +8,9 @@ problem whose phenotype an archive should store; see [`Evaluation`](@ref).
 `init(rng)` returns one random solution.
 
 With `bounds`, a tuple with one `(lo, hi)` pair per descriptor dimension, the
-descriptor is real-valued and `evaluate` returns it as an `SVector{N,Float64}`.
+descriptor is real-valued and `evaluate` returns it as an `SVector{N,Float64}`, or with
+the number type of its components when that is wider, so that ForwardDiff can
+differentiate `evaluate`.
 With `categories`, a tuple with one collection of allowed values per dimension,
 for example `(0:5, [:alkane, :aromatic, :ring])`, the descriptor is discrete and
 `evaluate` returns it as a tuple, which a [`CategoricalArchive`](@ref) takes as
@@ -71,8 +73,12 @@ function make_evaluation(space::Tuple, fitness, descriptor, phenotype=nothing)
     N = length(space)
     length(descriptor) == N ||
         throw(ArgumentError("descriptor has $(length(descriptor)) dimensions but the problem bounds have $N"))
-    return Evaluation(fitness, SVector{N,Float64}(descriptor), phenotype)
+    return Evaluation(fitness, SVector{N,descriptor_type(descriptor)}(descriptor), phenotype)
 end
+
+# The number type of a real descriptor: `Float64`, or the type of its components when that
+# carries more, such as the dual numbers of ForwardDiff.
+descriptor_type(descriptor) = promote_type(Float64, map(typeof, Tuple(descriptor))...)
 
 function make_evaluation(space::DescriptorCategories, fitness, descriptor, phenotype=nothing)
     N = length(space.values)

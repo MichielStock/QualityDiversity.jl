@@ -1,5 +1,9 @@
 const RASTRIGIN_LIMIT = 5.12
 
+# The number type a benchmark computes in: `Float64`, or the element type of the solution
+# when that carries more, such as the dual numbers of ForwardDiff or `BigFloat`.
+compute_type(x::AbstractVector) = promote_type(Float64, eltype(x))
+
 """
     Rastrigin(dim)
 
@@ -33,11 +37,12 @@ end
 function device_evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
     n = prob.dim
     h = n ÷ 2
-    total = 0.0
-    first_half = 0.0
-    second_half = 0.0
+    T = compute_type(x)
+    total = zero(T)
+    first_half = zero(T)
+    second_half = zero(T)
     for i in 1:n
-        xi = clamp(Float64(x[i]), -RASTRIGIN_LIMIT, RASTRIGIN_LIMIT)
+        xi = clamp(convert(T, x[i]), -RASTRIGIN_LIMIT, RASTRIGIN_LIMIT)
         total += xi^2 - 10 * cos(2π * xi)
         if i <= h
             first_half += xi
@@ -103,11 +108,12 @@ end
 function device_evaluate(prob::Sphere, x::AbstractVector{<:Real})
     n = prob.dim
     h = n ÷ 2
-    distance = 0.0
-    first_half = 0.0
-    second_half = 0.0
+    T = compute_type(x)
+    distance = zero(T)
+    first_half = zero(T)
+    second_half = zero(T)
     for i in 1:n
-        xi = Float64(x[i])
+        xi = convert(T, x[i])
         distance += (xi - SPHERE_SHIFT)^2
         i <= h ? (first_half += sphere_clip(xi)) : (second_half += sphere_clip(xi))
     end
@@ -156,12 +162,13 @@ function evaluate(prob::BiSphere, x::AbstractVector{<:Real})
     length(x) == n ||
         throw(ArgumentError("solution has $(length(x)) entries but BiSphere has dimension $n"))
     h = n ÷ 2
-    near = 0.0
-    far = 0.0
-    first_half = 0.0
-    second_half = 0.0
+    T = compute_type(x)
+    near = zero(T)
+    far = zero(T)
+    first_half = zero(T)
+    second_half = zero(T)
     for i in 1:n
-        xi = clamp(Float64(x[i]), -BISPHERE_LIMIT, BISPHERE_LIMIT)
+        xi = clamp(convert(T, x[i]), -BISPHERE_LIMIT, BISPHERE_LIMIT)
         near += (xi - BISPHERE_CENTER)^2
         far += (xi + BISPHERE_CENTER)^2
         if i <= h
@@ -186,4 +193,35 @@ end
 function reference_point(prob::BiSphere)
     lowest = -prob.dim * (BISPHERE_LIMIT + BISPHERE_CENTER)^2
     return SVector(lowest, lowest)
+end
+
+# The gradients in closed form, several times faster than ForwardDiff and available without
+# it. At a clipping limit the derivative is the one from inside; ForwardDiff 1 takes the one
+# from outside.
+function evaluate_gradient(prob::Rastrigin, x::AbstractVector{<:Real})
+    ev = evaluate(prob, x)
+    n = prob.dim
+    h = n ÷ 2
+    jacobian = zeros(3, n)
+    for (k, i) in enumerate(eachindex(x))
+        xi = Float64(x[i])
+        -RASTRIGIN_LIMIT <= xi <= RASTRIGIN_LIMIT || continue
+        jacobian[1, k] = -(2 * xi + 20π * sin(2π * xi))
+        jacobian[k <= h ? 2 : 3, k] = k <= h ? 1 / h : 1 / (n - h)
+    end
+    return ev, jacobian
+end
+
+function evaluate_gradient(prob::Sphere, x::AbstractVector{<:Real})
+    ev = evaluate(prob, x)
+    n = prob.dim
+    h = n ÷ 2
+    worst = (SPHERE_LIMIT + SPHERE_SHIFT)^2 * n
+    jacobian = zeros(3, n)
+    for (k, i) in enumerate(eachindex(x))
+        xi = Float64(x[i])
+        jacobian[1, k] = -200 * (xi - SPHERE_SHIFT) / worst
+        jacobian[k <= h ? 2 : 3, k] = -SPHERE_LIMIT <= xi <= SPHERE_LIMIT ? 1.0 : -SPHERE_LIMIT / xi^2
+    end
+    return ev, jacobian
 end

@@ -25,6 +25,18 @@ QualityDiversity.reference_point
 QualityDiversity.evaluations_per_solution
 ```
 
+## Gradients
+
+The algorithms of differentiable quality diversity ([`CMAMEGA`](@ref),
+[`CMAMAEGA`](@ref), [`OMGMEGA`](@ref)) need the gradients of the fitness and the
+descriptor. Loading ForwardDiff.jl computes them for most problems; a problem can also
+give them itself.
+
+```@docs
+QualityDiversity.evaluate_gradient
+QualityDiversity.evaluate_gradient_batch
+```
+
 ## Wrappers
 
 ```@docs

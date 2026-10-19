@@ -10,19 +10,23 @@ end
 # public: the CommonSolve verbs are the interface this package extends, and the
 # others are stable, documented Base, Random and Makie functions (`require_one_based_indexing`
 # is declared public from Julia 1.11 on; `plottype` is how an extension tells Makie which
-# plot `plot(x)` draws for its own type). `CellArchive`, `cell_index`, `result_archive`, `elites`,
+# plot `plot(x)` draws for its own type). `CellArchive`, `cell_index`, `result_archive`, `elites`, `evaluate`,
 # `DeviceCellArchive`, `AddResultBatch` and the statuses `Rejected`, `Improved` and
 # `NewCell` are declared public with `@compat public`, which ExplicitImports only sees from
 # Julia 1.11 on; the extensions use them. The KernelAbstractions extension implements the device
 # kernels behind internal functions of the package (`device_add_batch!` to
 # `solution_length`), which are not part of its interface, and uses `@atomic` of Atomix,
-# the documented atomic operations of KernelAbstractions kernels.
+# the documented atomic operations of KernelAbstractions kernels. The ForwardDiff extension
+# implements `forwarddiff_evaluate_gradient` with `differentiable_values`, internal functions
+# behind `evaluate_gradient`, and calls `jacobian`, the documented interface of ForwardDiff,
+# which does not declare it public.
 const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail,
                                :require_one_based_indexing, :plottype,
-                               :CellArchive, :cell_index, :result_archive, :elites,
+                               :CellArchive, :cell_index, :result_archive, :elites, :evaluate,
                                :DeviceCellArchive, :AddResultBatch, :Rejected, :Improved, :NewCell,
                                :device_add_batch!, :device_evaluate, :device_evaluate!, :device_vary!,
-                               :refresh_occupied!, :solution_length, Symbol("@atomic"))
+                               :refresh_occupied!, :solution_length, Symbol("@atomic"),
+                               :forwarddiff_evaluate_gradient, :differentiable_values, :jacobian)
 
 @testset "ExplicitImports" begin
     @test ExplicitImports.check_no_implicit_imports(QualityDiversity) === nothing
@@ -94,4 +98,12 @@ end
     mae = CMAMAE(prob; dims=(5, 5), sigma0=1.0, threshold_min=-500.0, learning_rate=0.1, num_emitters=2)
     mae_state = init(prob, mae; budget=200, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(mae_state)
+    for alg in (CMAMEGA(prob; dims=(5, 5), sigma0=1.0, num_emitters=2),
+                CMAMEGA(prob; dims=(5, 5), sigma0=1.0, optimizer=GradientAscent(1.0)),
+                CMAMAEGA(prob; dims=(5, 5), sigma0=1.0, threshold_min=-500.0),
+                OMGMEGA(prob; dims=(5, 5), sigma=1.0, batch_size=8))
+        mega_state = init(prob, alg; budget=200, rng=Xoshiro(1))
+        JET.@test_opt target_modules = (QualityDiversity,) step!(mega_state)
+        JET.@test_opt target_modules = (QualityDiversity,) QD.ask(Xoshiro(1), mega_state.emitters[1], mega_state.archive)
+    end
 end

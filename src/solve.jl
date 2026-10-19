@@ -95,6 +95,7 @@ function CommonSolve.init(prob::AbstractQDProblem, alg::QDAlgorithm;
     check_compatible(prob, alg.archive)
     check_spread_pairing(prob, alg.archive)
     check_device_pairing(prob, alg.archive)
+    check_gradient_pairing(prob, alg)
     archive = deepcopy(alg.archive)
     history = metrics_record_type(typeof(result_archive(archive)))[]
     state = QDState(prob, archive, deepcopy(alg.emitters), rng, Int(budget), callback, 0, history)
@@ -147,6 +148,18 @@ function check_device_pairing(prob::AbstractStochasticQDProblem, archive::Device
     throw(ArgumentError("a $(nameof(typeof(archive))) takes deterministic problems; run $(nameof(typeof(prob))) on the host"))
 end
 
+# Gradients are computed on the host for deterministic problems with real descriptors.
+function check_gradient_pairing(prob, alg::QDAlgorithm)
+    alg.archive isa GradientArchive || any(uses_gradients, alg.emitters) || return nothing
+    prob isa AbstractStochasticQDProblem &&
+        throw(ArgumentError("differentiable quality diversity takes deterministic problems, but $(nameof(typeof(prob))) is stochastic"))
+    alg.archive isa DeviceCellArchive &&
+        throw(ArgumentError("differentiable quality diversity runs on the host, not on a $(nameof(typeof(alg.archive)))"))
+    hasmethod(descriptor_categories, Tuple{typeof(prob)}) &&
+        throw(ArgumentError("differentiable quality diversity needs real descriptors, but $(nameof(typeof(prob))) has descriptor_categories"))
+    return nothing
+end
+
 function check_ndims(prob, N)
     n = descriptor_ndims(prob)
     n == N || throw(ArgumentError("the problem has $n descriptor dimensions but the archive has $N"))
@@ -165,11 +178,32 @@ end
 # evaluated where later batches are.
 initial_batch(archive, xs) = xs
 
-function evaluate_and_add!(state::QDState, xs)
+evaluate_and_add!(state::QDState, xs) = evaluate_and_add!(state, state.archive, xs)
+
+function evaluate_and_add!(state::QDState, ::AbstractArchive, xs)
     evs = evaluate_batch(state.rng, state.problem, xs)
     results = add_batch!(state.archive, xs, evs)
     state.n_evals += length(xs) * evaluations_per_solution(state.problem)
     return evs, results
+end
+
+# A `GradientArchive` keeps the gradients of its elites, so every solution of the run is
+# evaluated with them.
+function evaluate_and_add!(state::QDState, ::GradientArchive, xs)
+    evs, _, results = evaluate_gradients_and_add!(state, xs)
+    return evs, results
+end
+
+function evaluate_gradients_and_add!(state::QDState, xs)
+    evs, jacobians = evaluate_gradient_batch(state.problem, xs)
+    length(evs) == length(jacobians) == length(xs) ||
+        throw(ArgumentError("evaluate_gradient_batch returned $(length(evs)) evaluations and $(length(jacobians)) Jacobians for $(length(xs)) solutions"))
+    for (x, ev, jacobian) in zip(xs, evs, jacobians)
+        check_jacobian(jacobian, length(ev.descriptor), length(x))
+    end
+    results = add_evaluated!(state.archive, xs, evs, jacobians)
+    state.n_evals += length(xs) * evaluations_per_solution(state.problem)
+    return evs, jacobians, results
 end
 
 function record_metrics!(state::QDState)
@@ -186,7 +220,9 @@ notify!(callback, state) = (callback(state); nothing)
 
 One round: for each emitter in turn, ask for candidates, evaluate them, add
 them to the archive, and tell the emitter the outcome. Then record the
-metrics and call the callback.
+metrics and call the callback. An emitter that needs gradients first gets the
+points it asks for with [`ask_gradients`](@ref QualityDiversity.ask_gradients)
+evaluated with their gradients and added to the archive.
 """
 function CommonSolve.step!(state::QDState)
     step_emitters!(state, state.emitters)
@@ -200,10 +236,19 @@ end
 step_emitters!(state::QDState, ::Tuple{}) = nothing
 function step_emitters!(state::QDState, emitters::Tuple)
     emitter = first(emitters)
+    gradient_round!(state, emitter, ask_gradients(state.rng, emitter, state.archive))
     xs = ask(state.rng, emitter, state.archive)
     evs, results = evaluate_and_add!(state, xs)
     tell!(emitter, xs, evs, results)
     step_emitters!(state, Base.tail(emitters))
+end
+
+gradient_round!(state::QDState, emitter, ::Nothing) = nothing
+
+function gradient_round!(state::QDState, emitter, xs)
+    evs, jacobians, results = evaluate_gradients_and_add!(state, xs)
+    tell_gradients!(emitter, xs, evs, jacobians, results)
+    return nothing
 end
 
 """

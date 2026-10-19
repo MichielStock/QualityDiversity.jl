@@ -51,6 +51,7 @@ SpreadArchive
 QualityDiversity.spreads
 DensityArchive
 QualityDiversity.density
+GradientArchive
 ```
 
 ## Archives without cells

@@ -410,6 +410,36 @@ function tell! end
 tell!(::AbstractEmitter, xs, evs, results) = nothing
 
 """
+    ask_gradients(rng::AbstractRNG, emitter::AbstractEmitter, archive::AbstractArchive) -> Union{Nothing,Vector{G}}
+
+Solutions whose gradients the emitter needs before it can [`ask`](@ref QualityDiversity.ask),
+or `nothing`. Optional: the default returns `nothing`, and an emitter that steps along
+gradients, such as a [`GradientArborescenceEmitter`](@ref), returns its points. Every
+round, [`step!`](@ref) evaluates them with
+[`evaluate_gradient_batch`](@ref QualityDiversity.evaluate_gradient_batch), adds them to
+the archive, counts them against the budget, and calls
+[`tell_gradients!`](@ref QualityDiversity.tell_gradients!) before it calls `ask`.
+"""
+function ask_gradients end
+
+ask_gradients(::AbstractRNG, ::AbstractEmitter, ::AbstractArchive) = nothing
+
+"""
+    tell_gradients!(emitter::AbstractEmitter, xs, evs, jacobians, results)
+
+Report the solutions `xs` that [`ask_gradients`](@ref QualityDiversity.ask_gradients)
+returned, their evaluations, their Jacobians (see
+[`evaluate_gradient`](@ref QualityDiversity.evaluate_gradient)) and the
+[`AddResult`](@ref)s from the archive. Required for an emitter whose `ask_gradients`
+returns solutions.
+"""
+function tell_gradients! end
+
+# Whether the emitter takes gradients through `ask_gradients`; a `BanditScheduler` cannot
+# hold such an emitter.
+uses_gradients(::AbstractEmitter) = false
+
+"""
     batch_size(emitter::AbstractEmitter)
 
 Number of candidates `ask` returns per call. Required.
