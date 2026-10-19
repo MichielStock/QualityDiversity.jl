@@ -1,5 +1,9 @@
 const RASTRIGIN_LIMIT = 5.12
 
+# The number type a benchmark computes in: `Float64`, or the element type of the solution
+# when that carries more, such as the dual numbers of ForwardDiff or `BigFloat`.
+compute_type(x::AbstractVector) = promote_type(Float64, eltype(x))
+
 """
     Rastrigin(dim)
 
@@ -33,11 +37,12 @@ end
 function device_evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
     n = prob.dim
     h = n ÷ 2
-    total = 0.0
-    first_half = 0.0
-    second_half = 0.0
+    T = compute_type(x)
+    total = zero(T)
+    first_half = zero(T)
+    second_half = zero(T)
     for i in 1:n
-        xi = clamp(Float64(x[i]), -RASTRIGIN_LIMIT, RASTRIGIN_LIMIT)
+        xi = clamp(convert(T, x[i]), -RASTRIGIN_LIMIT, RASTRIGIN_LIMIT)
         total += xi^2 - 10 * cos(2π * xi)
         if i <= h
             first_half += xi
@@ -103,11 +108,12 @@ end
 function device_evaluate(prob::Sphere, x::AbstractVector{<:Real})
     n = prob.dim
     h = n ÷ 2
-    distance = 0.0
-    first_half = 0.0
-    second_half = 0.0
+    T = compute_type(x)
+    distance = zero(T)
+    first_half = zero(T)
+    second_half = zero(T)
     for i in 1:n
-        xi = Float64(x[i])
+        xi = convert(T, x[i])
         distance += (xi - SPHERE_SHIFT)^2
         i <= h ? (first_half += sphere_clip(xi)) : (second_half += sphere_clip(xi))
     end
@@ -156,12 +162,13 @@ function evaluate(prob::BiSphere, x::AbstractVector{<:Real})
     length(x) == n ||
         throw(ArgumentError("solution has $(length(x)) entries but BiSphere has dimension $n"))
     h = n ÷ 2
-    near = 0.0
-    far = 0.0
-    first_half = 0.0
-    second_half = 0.0
+    T = compute_type(x)
+    near = zero(T)
+    far = zero(T)
+    first_half = zero(T)
+    second_half = zero(T)
     for i in 1:n
-        xi = clamp(Float64(x[i]), -BISPHERE_LIMIT, BISPHERE_LIMIT)
+        xi = clamp(convert(T, x[i]), -BISPHERE_LIMIT, BISPHERE_LIMIT)
         near += (xi - BISPHERE_CENTER)^2
         far += (xi + BISPHERE_CENTER)^2
         if i <= h

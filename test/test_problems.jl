@@ -67,3 +67,20 @@ end
     @test_throws "Sphere needs at least 2 dimensions" Sphere(1)
 end
 
+@testset "evaluations in the number type of the solution" begin
+    x = [0.3, -1.2, 2.0, 0.7]
+    for prob in (Sphere(4), Rastrigin(4), BiSphere(4))
+        ev = QD.evaluate(prob, x)
+        @test ev.descriptor isa SVector{2,Float64}
+        @test QD.evaluate(prob, Float32.(x)).descriptor isa SVector{2,Float64}
+        precise = QD.evaluate(prob, big.(x))
+        @test precise.descriptor isa SVector{2,BigFloat}
+        @test Float64.(precise.descriptor) ≈ ev.descriptor
+        @inferred QD.evaluate(prob, x)
+    end
+    prob = QDProblem(x -> (sum(x), (x[1], 2)); init=rng -> rand(rng, 2), bounds=((0, 1), (0, 3)))
+    @test QD.evaluate(prob, [0.5, 0.2]).descriptor === SVector(0.5, 2.0)
+    @test QD.evaluate(prob, Float32[0.5, 0.2]).descriptor isa SVector{2,Float64}
+    @test QD.evaluate(prob, big.([0.5, 0.2])).descriptor isa SVector{2,BigFloat}
+    @inferred QD.evaluate(prob, [0.5, 0.2])
+end

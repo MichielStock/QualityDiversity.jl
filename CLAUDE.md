@@ -806,6 +806,12 @@ None at present.
   dispatch, not to document intent. An `AbstractArray` annotation promises
   that the code works for offset axes, views and GPU arrays; see
   `.claude/rules/julia-generic-indexing.md`.
+- Problem code computes in the number type of the solution, never converting entries to
+  `Float64`: the benchmarks use `promote_type(Float64, eltype(x))`, and `QDProblem` gives a
+  real descriptor that type too, so ForwardDiff's dual numbers and `BigFloat` pass through
+  `evaluate` while ordinary input keeps `Float64`. Archives and optimizer states keep their
+  concrete storage types (`SVector{N,Float64}` descriptors, `Float64` CMA-ES state), which is
+  what keeps them fast; nothing is differentiated through them.
 - Use American spelling. Avoid jargon that experts in the field do not widely
   accept, and do not let technical prose read like a pitch deck.
 - Parametric constructors: inner constructor with unconstrained value
