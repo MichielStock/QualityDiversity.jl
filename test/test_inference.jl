@@ -322,4 +322,15 @@ end
     @test allocated(QD.cell_index, archive, ev.descriptor) == 0
     @test allocated(QD.add!, archive, x, ev) == 0
     @test allocated(QD.add!, archive, x, Evaluation(ev.fitness .- 1, ev.descriptor)) == 0
+    # nor does replacing the most crowded solution of a full front, with an isbits genotype
+    crowded = ParetoGridArchive{Int}((1,), ((0, 1),), [0.0, 0.0]; max_front=3, duplicates=KeepDuplicates(),
+                                     full_front=ReplaceCrowded())
+    on_line(t) = Evaluation(SVector(t, 1 - t), SVector(0.5))
+    for (k, t) in enumerate((0.1, 0.2, 0.9))
+        QD.add!(crowded, k, on_line(t))
+    end
+    r = @inferred QD.add!(crowded, 4, on_line(0.6))
+    @test r.status == QD.Improved && QD.num_solutions(crowded) == 3
+    @test allocated(QD.add!, crowded, 5, on_line(0.65)) == 0
+    @test allocated(QD.add!, crowded, 6, on_line(0.15)) == 0
 end

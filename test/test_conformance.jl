@@ -159,6 +159,10 @@ end
     test_front_archive(() -> ParetoGridArchive(prob; dims=(3, 3), reference_point=reference, max_front=4), prob)
     test_front_archive(() -> ParetoGridArchive(prob; dims=(4, 4), reference_point=reference, genotype=SVector{4,Float64}), prob)
     test_front_archive(() -> ParetoGridArchive(prob; dims=(4, 4), reference_point=reference, outside=ClampOutside()), prob)
+    test_front_archive(() -> ParetoGridArchive(prob; dims=(3, 3), reference_point=reference, max_front=4,
+                                               duplicates=KeepDuplicates(), full_front=ReplaceCrowded()), prob)
+    test_front_archive(() -> ParetoGridArchive(prob; dims=(3, 3), reference_point=reference, max_front=4,
+                                               genotype=SVector{4,Float64}, full_front=ReplaceCrowded()), prob)
     three = QDProblem(x -> (SVector(-sum(abs2, x .- 1), -sum(abs2, x .+ 1), -sum(abs2, x)), (x[1], x[2]));
                       init=rng -> 4 .* rand(rng, 3) .- 2, bounds=((-2, 2), (-2, 2)))
     test_front_archive(() -> ParetoGridArchive(three; dims=(4, 4), reference_point=[-100.0, -100.0, -100.0]), three;

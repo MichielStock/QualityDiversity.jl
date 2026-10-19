@@ -455,6 +455,21 @@ neural-policy methods in QDax (PGA-ME, QD-PG, DCRL, ME-ES on policies, DIAYN,
 DADS, SMERL, PBT, TD3/SAC), AURORA (descriptors from a trained autoencoder),
 and distributed MAP-Elites.
 
+### Next priorities
+
+The open Phase 7 items differ in importance. Pursue these, in this order:
+
+1. **Differentiable QD.** CMA-MEGA and OMG-MEGA in
+   `QualityDiversityForwardDiffExt`: the one algorithm family named in section 1
+   that has no implementation.
+2. **First release.** Register version 0.1 in the General registry, after the
+   author confirms, and decide whether CLAUDE.md stays in the registered package.
+3. **PythonCall extension.** Batched evaluation through Python, for expensive
+   scoring with Python tools (ML models, chemistry toolkits).
+
+Device CMA-MAE, device MOME and the Bayesian-optimization emitter are add-ons;
+take them up after these.
+
 ---
 
 ## Decisions
@@ -590,12 +605,25 @@ Settled; change them only with the author's agreement.
   front of at most `max_front` solutions (50 by default) in each. The fitness is a vector, all
   objectives maximized, and the archive stores it as `SVector{M,Float64}`; it needs a
   `reference_point`, below the values of interest, for hypervolume (a problem can supply it with
-  `reference_point(prob)`). `add!` rejects a solution that a stored one matches in every
-  objective, so equal fitness vectors are not kept twice (QDax keeps both); it removes the
-  stored solutions that the new one beats in every objective; a full front rejects a solution
-  that beats none of it, as QDax does. The result is `NewCell` for an empty cell and `Improved`
+  `reference_point(prob)`). `add!` removes the stored solutions that the new one beats in every
+  objective. Two rules are types chosen by keyword, as `outside` is. `duplicates`:
+  `RejectDuplicates()` (default) rejects a solution that a stored one matches in every
+  objective, so equal fitness vectors are not kept twice; `KeepDuplicates()` keeps both, as the
+  MOME paper (Pierrot et al., 2022, §4: only a strictly dominating solution drops the offspring)
+  and QDax do. `full_front`, for a solution that beats none of a full front:
+  `RejectNewcomer()` (default) rejects it, as QDax's code does; `ReplaceCrowded()` removes the
+  one of the front and the new solution with the smallest NSGA-II crowding distance (per
+  objective the gap between neighbours over the range of the objective, summed; the ends of
+  every objective infinite, so never removed; an objective with zero range adds nothing; on a
+  tie the new solution, else the one stored first), as MOME-PGX does (Janmohamed, Pierrot and
+  Cully, 2023, §4.2). The text of the MOME paper replaces a random solution instead, which
+  neither QDax nor MOME-PGX does. The result is `NewCell` for an empty cell and `Improved`
   otherwise, with the hypervolume that the cell gains as its `improvement` (`AddResult{Float64}`,
-  zero when rejected). `length` is the number of occupied cells and `num_solutions` the
+  zero when rejected; negative when `ReplaceCrowded` removes a solution that covered more).
+  `MOME()` takes both keywords; the crowding-based parent selection and policy gradients of
+  MOME-PGX are not offered. `test/reference/crowding.jl` holds the fronts that the MOME-PGX code
+  (commit 58c34b7) keeps for eight insertion sequences; ours, with `KeepDuplicates` and
+  `ReplaceCrowded`, match. `length` is the number of occupied cells and `num_solutions` the
   number of solutions. `sample_elites` draws an occupied cell, then a solution of its front,
   both uniformly. `qd_score` is the MOQD score, the sum of the hypervolumes of the fronts, and
   takes no offset; `max_fitness` and `mean_fitness` are not defined. The record of a run of such
@@ -762,15 +790,7 @@ None at present.
 
 Small follow-ups that do not block anything. Take them up when convenient.
 
-- **MOME duplicates.** `ParetoGridArchive` rejects a solution whose objective vector equals
-  that of a stored solution; QDax's `MOMERepertoire` keeps both. Decide whether to keep our
-  rule (it stops a front from filling with identical points) or match QDax.
-- **MOME full front.** A full front rejects a new solution that beats none of it, which is what
-  QDax's code does (checked against `MOMERepertoire` on test sequences, `test/reference`).
-  The MOME paper (Pierrot et al., 2022, "Multi-Objective Quality Diversity Optimization")
-  has not been read: check what it says about a full front, for example whether it removes the
-  solution with the smallest crowding distance instead, and change the rule or document the
-  difference.
+None at present.
 
 ---
 

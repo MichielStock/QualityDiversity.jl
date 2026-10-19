@@ -254,7 +254,8 @@ solution_dim(prob::AbstractQDProblem) = length(random_solution(Random.Xoshiro(0)
 """
     MOME(prob; dims, reference_point=reference_point(prob), max_front=50, batch_size=64,
          variation=GaussianMutation(0.1), bounds=descriptor_bounds(prob),
-         genotype=Vector{Float64}, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
+         genotype=Vector{Float64}, outside=ThrowOutside(), duplicates=RejectDuplicates(),
+         full_front=RejectNewcomer(), phenotype=Nothing) -> QDAlgorithm
 
 Multi-objective MAP-Elites (Pierrot et al., 2022): a [`ParetoGridArchive`](@ref), which keeps a
 Pareto front of at most `max_front` solutions in each cell of a grid with `dims` cells along
@@ -262,7 +263,11 @@ each descriptor dimension, and one [`VariationEmitter`](@ref) that applies `vari
 `batch_size` children per round. A parent is a solution drawn uniformly from the front of a
 cell drawn uniformly among the occupied ones. The problem returns a vector of objectives as
 its fitness. `reference_point` is the corner from which hypervolume is measured; a problem
-can supply it with [`reference_point`](@ref QualityDiversity.reference_point).
+can supply it with [`reference_point`](@ref QualityDiversity.reference_point). `duplicates` and
+`full_front` decide about a solution whose objectives equal those of a stored one and about
+one for a full front; see [`ParetoGridArchive`](@ref). With `full_front=ReplaceCrowded()` the
+archive keeps fronts as MOME-PGX does (Janmohamed et al., 2023), whose crowding-based
+selection of parents and policy-gradient variation are not part of this constructor.
 
 `solve` returns the archive, and a run records its MOQD score, coverage, the largest
 hypervolume of a cell and the number of solutions.
@@ -283,8 +288,10 @@ function MOME(prob::AbstractQDProblem; dims::Tuple,
               max_front::Integer=50, batch_size::Integer=64,
               variation::AbstractVariation=GaussianMutation(0.1),
               bounds::Tuple=descriptor_bounds(prob), genotype::Type=Vector{Float64},
-              outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing)
-    archive = ParetoGridArchive(prob; dims, reference_point, max_front, bounds, genotype, outside, phenotype)
+              outside::OutsidePolicy=ThrowOutside(), duplicates::DuplicatePolicy=RejectDuplicates(),
+              full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing)
+    archive = ParetoGridArchive(prob; dims, reference_point, max_front, bounds, genotype, outside,
+                                duplicates, full_front, phenotype)
     return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
 end
 
