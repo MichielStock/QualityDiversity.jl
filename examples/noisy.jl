@@ -10,9 +10,13 @@
 # averaging several evaluations with `Sampled`, and MAP-Elites with low spread
 # (`MELS`), which also prefers solutions whose descriptor varies little.
 #
-# Run it from the repository root:
+# Set up once, from the repository root:
 #
-#     julia --project examples/noisy.jl
+#     julia --project=examples -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+#
+# Run:
+#
+#     julia --project=examples examples/noisy.jl
 
 using QualityDiversity
 using Random: AbstractRNG, Xoshiro
@@ -41,27 +45,24 @@ function noisy_score(rng::AbstractRNG, x)
 end
 
 noisy = StochasticQDProblem(noisy_score; init=rng -> randn(rng, 6), bounds=((-2, 2), (-2, 2)))
+nothing #hide
 
 # ## How good are the elites really?
 #
 # To judge an archive, every elite is evaluated without noise: its expected
 # fitness is compared with the fitness the archive stored, and its expected
-# descriptor with the cell it is stored in.
+# descriptor with the cell it is stored in. `judge` returns the number of elites,
+# their mean stored and mean expected fitness, and the fraction of elites in the
+# wrong cell.
 
-function report(name, archive)
-    stored = Float64[]
-    expected = Float64[]
-    misplaced = 0
-    for (x, ev) in QualityDiversity.elites(archive)
-        push!(stored, ev.fitness)
-        push!(expected, expected_fitness(x))
-        misplaced += QualityDiversity.cell_index(archive, expected_descriptor(x)) !=
-                     QualityDiversity.cell_index(archive, ev.descriptor)
-    end
-    println(rpad(name, 22), "elites ", lpad(length(stored), 4),
-            "   stored fitness ", lpad(round(mean(stored); digits=2), 6),
-            "   expected fitness ", lpad(round(mean(expected); digits=2), 6),
-            "   in the wrong cell ", lpad(round(Int, 100 * misplaced / length(stored)), 3), "%")
+function judge(archive)
+    elites = collect(QualityDiversity.elites(archive))
+    stored = [ev.fitness for (x, ev) in elites]
+    expected = [expected_fitness(x) for (x, ev) in elites]
+    misplaced = count(((x, ev),) -> QualityDiversity.cell_index(archive, expected_descriptor(x)) !=
+                                    QualityDiversity.cell_index(archive, ev.descriptor), elites)
+    return (elites=length(elites), stored_fitness=mean(stored), expected_fitness=mean(expected),
+            wrong_cell=misplaced / length(elites))
 end
 
 # ## One evaluation per solution
@@ -73,7 +74,7 @@ budget = 200_000
 dims = (10, 10)
 
 plain = solve(noisy, MAPElites(noisy; dims); budget, rng=Xoshiro(1))
-report("one evaluation", plain.archive)
+judge(plain.archive)
 
 # The stored fitness is far above the expected one: of many solutions with similar
 # expected fitness, the archive keeps the one with the luckiest evaluation. And
@@ -88,7 +89,7 @@ report("one evaluation", plain.archive)
 
 averaged = Sampled(noisy; num_samples=10)
 mean_run = solve(averaged, MAPElites(averaged; dims); budget, rng=Xoshiro(1))
-report("mean of 10", mean_run.archive)
+judge(mean_run.archive)
 
 # The stored fitness is now much closer to the expected fitness, and fewer elites
 # are in the wrong cell. The expected fitness is lower than with one evaluation,
@@ -106,12 +107,11 @@ report("mean of 10", mean_run.archive)
 
 spread_prob = SampledSpread(noisy; num_samples=10)
 mels = solve(spread_prob, MELS(spread_prob; dims); budget, rng=Xoshiro(1))
-report("MELS", mels.archive)
+judge(mels.archive)
 
 # Still fewer elites of MELS are in the wrong cell, at some cost in fitness. Its
 # elites have reliable descriptors: their third entry, which sets the descriptor
 # noise, is smaller.
 
-third = [abs(x[3]) for (x, _) in QualityDiversity.elites(mels.archive)]
-println("mean |x[3]| of the elites: MELS ", round(mean(third); digits=3), ", mean of 10 ",
-        round(mean([abs(x[3]) for (x, _) in QualityDiversity.elites(mean_run.archive)]); digits=3))
+mean_abs_x3(archive) = mean([abs(x[3]) for (x, _) in QualityDiversity.elites(archive)])
+(MELS=mean_abs_x3(mels.archive), mean_of_10=mean_abs_x3(mean_run.archive))

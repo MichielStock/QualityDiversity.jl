@@ -15,9 +15,10 @@ const GENERATED = joinpath(@__DIR__, "src", "tutorials")
 # The tutorials are the scripts in examples/, turned into pages by Literate, so the code
 # in the documentation is the code that runs.
 const TUTORIALS = ["rastrigin_tutorial.jl", "graphs.jl", "noisy.jl", "mome.jl", "heatmap.jl"]
+const EXTRA_EXAMPLES = ["colours.jl"]
 
 rm(GENERATED; force=true, recursive=true)
-for file in TUTORIALS
+for file in [TUTORIALS; EXTRA_EXAMPLES]
     Literate.markdown(joinpath(EXAMPLES, file), GENERATED; documenter=true, credit=false)
 end
 
@@ -37,6 +38,7 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "Tutorials" => ["tutorials/$(splitext(file)[1]).md" for file in TUTORIALS],
+        "Extra examples" => ["tutorials/$(splitext(file)[1]).md" for file in EXTRA_EXAMPLES],
         "Guide" => [
             "guide/concepts.md",
             "guide/algorithms.md",

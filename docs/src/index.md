@@ -78,6 +78,8 @@ With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
 
 - The [MAP-Elites tutorial](tutorials/rastrigin_tutorial.md) walks through a first run.
 - [A custom genotype](tutorials/graphs.md) evolves graphs.
+- [Colour pairs and emotions](tutorials/colours.md), an extra example, evolves pairs of colours
+  from calm to arousing and from sad to happy.
 - [Concepts](guide/concepts.md) explains the parts of the package and how a run proceeds.
 - [Choosing an algorithm](guide/algorithms.md) compares the algorithms and archives.
 - [Coming from pyribs or QDax](guide/comparison.md) maps their names to this package.
