@@ -46,6 +46,43 @@ end
     @test_throws "pixels must be at least 1, got 0" convert_heatmap(archive; pixels=0)
 end
 
+# A category value that has no order.
+struct Unsorted end
+
+# The category labels of the axes of `ax`, from left to right and bottom to top.
+function category_labels(ax)
+    labels(conversion) = Makie.get_ticks(conversion, Makie.automatic, identity, Makie.automatic, 0, 10)[2]
+    return labels(ax.dim1_conversion[]), labels(ax.dim2_conversion[])
+end
+
+@testset "CategoricalArchive" begin
+    # categories in an order that is not sorted, so that the plot has to sort them
+    archive = CategoricalArchive(([:ring, :alkane, :aromatic], [20, 10]))
+    QD.add!(archive, [0.0], Evaluation(1.5, (:ring, 20)))
+    QD.add!(archive, [0.0], Evaluation(-2.0, (:alkane, 10)))
+    @test Makie.plottype(archive) === Heatmap
+    xs, ys, values = convert_heatmap(archive)
+    @test xs isa Makie.Categorical && ys isa Makie.Categorical
+    @test xs.values == [:alkane, :aromatic, :ring]
+    @test ys.values == [10, 20]
+    @test size(values) == (3, 2)
+    @test values[3, 2] == 1.5          # (:ring, 20)
+    @test values[1, 1] == -2.0         # (:alkane, 10)
+    @test count(isnan, values) == 4
+
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plot = heatmap!(ax, archive)
+    @test plot isa Heatmap
+    Makie.update_state_before_display!(fig)
+    @test category_labels(ax) == (["alkane", "aromatic", "ring"], ["10", "20"])
+    @test plot[1][] == [0.5, 1.5, 2.5, 3.5] && plot[2][] == [0.5, 1.5, 2.5]
+    @test heatmap(archive) isa Makie.FigureAxisPlot
+
+    @test_throws "but this CategoricalArchive has 3" convert_heatmap(CategoricalArchive((1:2, 1:2, 1:2)))
+    @test_throws "categories[2] has values of type" convert_heatmap(CategoricalArchive((1:2, [Unsorted()])))
+end
+
 @testset "ParetoGridArchive" begin
     archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)), [0.0, 0.0])
     QD.add!(archive, [0.0], Evaluation(SVector(1.0, 3.0), SVector(0.2, 0.7)))   # cell (1, 2)

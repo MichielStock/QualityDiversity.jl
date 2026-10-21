@@ -9,6 +9,9 @@ cells left transparent.
 - [`GridArchive`](@ref QualityDiversity.GridArchive): one rectangle per cell.
 - [`CVTArchive`](@ref QualityDiversity.CVTArchive): the Voronoi cells, sampled on a
   `pixels` by `pixels` grid (200 by default; pass `pixels=...`).
+- [`CategoricalArchive`](@ref QualityDiversity.CategoricalArchive): one square per
+  combination of categories, on categorical axes that are labelled with the category
+  values. Makie sorts the values of each axis, so they need `isless`.
 - [`ParetoGridArchive`](@ref QualityDiversity.ParetoGridArchive): the hypervolume of the
   front of each cell.
 - [`ThresholdArchive`](@ref QualityDiversity.ThresholdArchive): the result archive, as
@@ -30,13 +33,14 @@ module QualityDiversityMakieExt
 
 using Makie: Makie, ECDFPlot, Heatmap, Lines
 using QualityDiversity: QualityDiversity, AbstractArchive, CellArchive, CQDScore, GridArchive, CVTArchive,
-    ParetoGridArchive, ThresholdArchive, SpreadArchive, DensityArchive
+    CategoricalArchive, ParetoGridArchive, ThresholdArchive, SpreadArchive, DensityArchive
 using StaticArrays: SVector
 
 const DEFAULT_PIXELS = 200
 
 Makie.plottype(::GridArchive) = Heatmap
 Makie.plottype(::CVTArchive) = Heatmap
+Makie.plottype(::CategoricalArchive) = Heatmap
 Makie.plottype(::ParetoGridArchive) = Heatmap
 Makie.plottype(::ThresholdArchive) = Heatmap
 Makie.plottype(::SpreadArchive) = Heatmap
@@ -73,6 +77,23 @@ function Makie.convert_arguments(::Type{<:Heatmap}, archive::ParetoGridArchive{G
     return (edges(archive.lower[1], archive.upper[1], archive.dims[1]),
             edges(archive.lower[2], archive.upper[2], archive.dims[2]),
             reshape(values, archive.dims))
+end
+
+function Makie.convert_arguments(::Type{<:Heatmap}, archive::CategoricalArchive)
+    require_two_dimensions(archive, length(archive.categories))
+    xs, ys = archive.categories
+    # Makie places the values of a categorical axis in sorted order, and a heatmap
+    # needs its rows and columns in the order of their positions.
+    px, py = sorted_order(xs, 1), sorted_order(ys, 2)
+    values = reshape(cell_fitness(archive), length(xs), length(ys))[px, py]
+    return (Makie.Categorical(xs[px]), Makie.Categorical(ys[py]), values)
+end
+
+function sorted_order(values, i)
+    applicable(isless, first(values), first(values)) || throw(ArgumentError(
+        "a heatmap of a CategoricalArchive sorts the categories of each axis, but categories[$i] " *
+        "has values of type $(eltype(values)), which define no isless"))
+    return sortperm(values)
 end
 
 Makie.used_attributes(::Type{<:Heatmap}, ::CVTArchive) = (:pixels,)
