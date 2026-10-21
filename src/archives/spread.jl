@@ -3,8 +3,9 @@
 
 Archive for MAP-Elites with low spread (Mace et al., 2023, "The Quality-Diversity
 Transformer"), the archive of [`MELS`](@ref): a cell archive that prefers, among
-solutions of a noisy problem, those whose evaluations land close together. `archive` decides which cell a descriptor
-belongs to; it must be empty, and the new archive uses it without copying.
+solutions of a noisy problem, those whose evaluations land close together. `archive`
+decides which cell a descriptor belongs to; it must be empty, and the new archive uses
+it without copying.
 
 The archive takes the evaluations of a [`SampledSpread`](@ref) problem, whose descriptor
 holds the descriptors of all the evaluations of a solution. From them it finds
