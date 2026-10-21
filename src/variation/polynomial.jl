@@ -2,7 +2,7 @@
     PolynomialMutation(lower, upper; eta=20.0, proportion=1.0)
 
 Mutation for real-valued vectors in a box, the bounded polynomial mutation of
-Deb and Agrawal (1996) used in NSGA-II. Each entry is changed with probability
+Deb and Goyal (1996) used in NSGA-II. Each entry is changed with probability
 `proportion`. A changed entry moves by a random step whose density falls off
 polynomially with the distance, and the step is drawn so that the result never
 leaves `[lower, upper]`: near a bound the steps shrink on that side, and an

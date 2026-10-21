@@ -38,8 +38,9 @@ cvt = solve(prob, MAPElites(CVTArchive(Xoshiro(1), 1_000, bounds); batch_size=10
 #
 # `heatmap!(ax, archive)` draws the fitness of every cell; empty cells are
 # transparent. A grid shows one rectangle per cell, a CVT archive its Voronoi
-# cells. Archives that wrap another, such as a `ThresholdArchive`, show the archive
-# of their best solutions.
+# cells, and a `CategoricalArchive` one square per pair of categories, with the
+# category values as the axis labels. Archives that wrap another, such as a
+# `ThresholdArchive`, show the archive of their best solutions.
 
 fig = Figure(size=(1000, 420))
 for (column, (title, result)) in enumerate(("GridArchive" => grid, "CVTArchive" => cvt))
