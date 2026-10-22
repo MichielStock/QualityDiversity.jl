@@ -158,7 +158,7 @@ end
     # a descriptor the archive discards does not stop the others
     r = GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside())
     rs = QD.add_batch!(r, [[1.0], [2.0]], [ev(1.0, SVector(5.0, 0.5)), ev(2.0, SVector(0.1, 0.1))])
-    @test [x.status for x in rs] == [QD.Rejected, QD.NewCell] && rs[1].improvement == 0.0
+    @test [x.status for x in rs] == [QD.Rejected, QD.NewCell] && rs[1].improvement == -Inf
     @test_throws "descriptor component 1 is 5.0" QD.add_batch!(GridArchive((2, 2), ((0, 1), (0, 1))),
                                                         [[1.0]], [ev(1.0, SVector(5.0, 0.5))])
     c = CategoricalArchive((1:3, [:a, :b]))
@@ -210,7 +210,7 @@ end
     @test QD.cell_index(rejecting, [0.5, NaN]) == 0
     r = QD.add!(rejecting, [1.0], ev(1.0, (1.5, 0.5)))
     @test r.status == QD.Rejected
-    @test r.improvement === 0.0f0
+    @test r.improvement === -Inf32    # below the improvement of any solution with a cell
     @test length(rejecting) == 0
     @test QD.add!(rejecting, [1.0], ev(1.0, (0.5, 0.5))).status == QD.NewCell
 

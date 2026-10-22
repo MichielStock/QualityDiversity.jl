@@ -203,7 +203,8 @@ function add_samples!(archive::SpreadArchive{G,F,N,P}, x, ev::Evaluation) where 
     samples = ev.descriptor
     i = most_visited_cell!(archive, samples)
     s = spread(samples)
-    (i == 0 || !isfinite(s)) && return AddResult(Rejected, zero(F))
+    i == 0 && return outside_result(F)
+    isfinite(s) || return AddResult(Rejected, zero(F))
     result = spread_outcome(archive, i, fitness, s)
     result.status == Rejected ||
         place_spread!(archive, i, x, mean_in_cell(archive, samples, i), fitness, phenotype, s)
@@ -242,7 +243,9 @@ function add_batch!(archive::SpreadArchive{G,F,N,P}, xs::AbstractVector, evs::Ab
         s = spread(ev.descriptor)
         cells[k] = i
         sample_spreads[k] = s
-        if i == 0 || !isfinite(s)
+        if i == 0
+            results[k] = outside_result(F)
+        elseif !isfinite(s)
             results[k] = AddResult(Rejected, zero(F))
         else
             descriptors[k] = mean_in_cell(archive, ev.descriptor, i)

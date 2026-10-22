@@ -2,7 +2,7 @@
     DNSArchive{G,F}(ndims; capacity, k, phenotype=Nothing)
     DNSArchive{G}(ndims; capacity, k, phenotype=Nothing)
     DNSArchive(ndims; capacity, k, phenotype=Nothing)
-    DNSArchive(prob::AbstractQDProblem; capacity, k, genotype=Vector{Float64},
+    DNSArchive(prob::AbstractQDProblem; capacity, k, genotype=default_genotype(prob),
                fitness=Float64, phenotype=Nothing)
 
 Archive of Dominated Novelty Search (Bahlous-Boldi, Faldor et al., 2025, "Dominated
@@ -97,7 +97,7 @@ DNSArchive{G}(ndims::Integer; kwargs...) where {G} = DNSArchive{G,Float64}(ndims
 DNSArchive(ndims::Integer; kwargs...) = DNSArchive{Vector{Float64}}(ndims; kwargs...)
 
 function DNSArchive(prob::AbstractQDProblem; capacity::Integer, k::Integer,
-                    genotype::Type=Vector{Float64}, fitness::Type{<:AbstractFloat}=Float64,
+                    genotype::Type=default_genotype(prob), fitness::Type{<:AbstractFloat}=Float64,
                     phenotype::Type=Nothing)
     return DNSArchive{genotype,fitness}(length(descriptor_bounds(prob)); capacity, k, phenotype)
 end

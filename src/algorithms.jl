@@ -1,6 +1,6 @@
 """
     MAPElites(prob; dims, bounds=descriptor_bounds(prob), batch_size=64,
-              variation=GaussianMutation(0.1), genotype=Vector{Float64},
+              variation=GaussianMutation(0.1), genotype=default_genotype(prob),
               fitness=Float64, outside=ThrowOutside(), phenotype=Nothing,
               device=nothing) -> QDAlgorithm
 
@@ -17,7 +17,9 @@ is required. For a problem with
 [`CategoricalArchive`](@ref) with one cell for each combination of categories;
 `dims` and `bounds` do not apply and are an error. `outside` and `phenotype` are
 passed to the archive; see [`GridArchive`](@ref) and [`CategoricalArchive`](@ref).
-A problem that returns a phenotype needs `phenotype` set to its type.
+A problem that returns a phenotype needs `phenotype` set to its type. The archive
+stores genotypes of the type that `random_solution` returns, see
+[`default_genotype`](@ref QualityDiversity.default_genotype); `genotype` overrides it.
 
 Everything runs on the host unless `device` names an array type, such as `CuArray`:
 then the archive is a [`DeviceGridArchive`](@ref) in arrays of that type and the
@@ -37,7 +39,7 @@ function MAPElites(prob::AbstractQDProblem; dims::Union{Tuple,Nothing}=nothing,
                    bounds::Union{Tuple,Nothing}=nothing,
                    batch_size::Integer=64,
                    variation::AbstractVariation=GaussianMutation(0.1),
-                   genotype::Type=Vector{Float64},
+                   genotype::Type=default_genotype(prob),
                    fitness::Type{<:Real}=Float64,
                    outside::OutsidePolicy=ThrowOutside(),
                    phenotype::Type=Nothing,
@@ -108,7 +110,7 @@ end
     CMAME(prob; dims, sigma0, num_emitters=5, batch_size=<CMA-ES default>,
           ranker=TwoStageImprovementRanker(), selection=FilterSelection(),
           restart=NoImprovementRestart(), x0=nothing, lower=-Inf, upper=Inf,
-          bounds=descriptor_bounds(prob), genotype=Vector{Float64}, fitness=Float64,
+          bounds=descriptor_bounds(prob), genotype=default_genotype(prob), fitness=Float64,
           outside=ThrowOutside(), phenotype=Nothing, device=nothing) -> QDAlgorithm
 
 CMA-ME (Fontaine et al., 2020): a [`GridArchive`](@ref) with `dims` cells along each
@@ -141,7 +143,7 @@ qd_score(result.archive; offset=fitness_offset(prob))
 """
 function CMAME(prob::AbstractQDProblem; dims::Tuple, sigma0::Real,
                bounds::Tuple=descriptor_bounds(prob),
-               genotype::Type=Vector{Float64},
+               genotype::Type=default_genotype(prob),
                fitness::Type{<:Real}=Float64,
                outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing,
                device::Union{Type,Nothing}=nothing, kwargs...)
@@ -181,7 +183,7 @@ end
            batch_size=<CMA-ES default>, ranker=ImprovementRanker(),
            selection=MuSelection(), restart=ConvergenceRestart(), x0=nothing,
            lower=-Inf, upper=Inf, bounds=descriptor_bounds(prob),
-           genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside(),
+           genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside(),
            phenotype=Nothing) -> QDAlgorithm
 
 CMA-MAE (Fontaine and Nikolaidis, 2023): [`CMAEmitter`](@ref)s as for [`CMAME`](@ref)
@@ -198,7 +200,7 @@ function CMAMAE(prob::AbstractQDProblem; dims::Tuple, sigma0::Real, threshold_mi
                 selection::SelectionRule=MuSelection(),
                 restart::RestartRule=ConvergenceRestart(),
                 bounds::Tuple=descriptor_bounds(prob),
-                genotype::Type=Vector{Float64},
+                genotype::Type=default_genotype(prob),
                 fitness::Type{<:AbstractFloat}=Float64,
                 outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
     grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
@@ -210,7 +212,7 @@ end
     DDS(rng::AbstractRNG, prob; dims, sigma0, bandwidth, buffer_size=10_000, num_emitters=15,
         batch_size=36, ranker=ImprovementRanker(), selection=MuSelection(),
         restart=ConvergenceRestart(), x0=nothing, lower=-Inf, upper=Inf,
-        bounds=descriptor_bounds(prob), genotype=Vector{Float64}, fitness=Float64,
+        bounds=descriptor_bounds(prob), genotype=default_genotype(prob), fitness=Float64,
         outside=ClampOutside(), phenotype=Nothing) -> QDAlgorithm
 
 Density Descent Search with a kernel density estimate (DDS-KDE; Lee et al., 2024): a
@@ -239,7 +241,7 @@ function DDS(rng::AbstractRNG, prob::AbstractQDProblem; dims::Tuple, sigma0::Rea
              selection::SelectionRule=MuSelection(),
              restart::RestartRule=ConvergenceRestart(),
              bounds::Tuple=descriptor_bounds(prob),
-             genotype::Type=Vector{Float64},
+             genotype::Type=default_genotype(prob),
              fitness::Type{<:AbstractFloat}=Float64,
              outside::OutsidePolicy=ClampOutside(), phenotype::Type=Nothing, kwargs...)
     grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
@@ -252,7 +254,7 @@ end
     CMAMEGA(prob; dims, sigma0, optimizer=AdamAscent(), num_emitters=1,
             batch_size=<CMA-ES default>, ranker=TwoStageImprovementRanker(),
             selection=FilterSelection(), restart=NoImprovementRestart(), x0=nothing,
-            normalize=true, bounds=descriptor_bounds(prob), genotype=Vector{Float64},
+            normalize=true, bounds=descriptor_bounds(prob), genotype=default_genotype(prob),
             fitness=Float64, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
 
 CMA-MEGA (Fontaine and Nikolaidis, 2021, "Differentiable Quality Diversity"): a
@@ -276,7 +278,7 @@ coverage(result.archive)
 """
 function CMAMEGA(prob::AbstractQDProblem; dims::Tuple, sigma0::Real,
                  bounds::Tuple=descriptor_bounds(prob),
-                 genotype::Type=Vector{Float64},
+                 genotype::Type=default_genotype(prob),
                  fitness::Type{<:Real}=Float64,
                  outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
     archive = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
@@ -305,7 +307,7 @@ end
     CMAMAEGA(prob; dims, sigma0, threshold_min, learning_rate=0.01, optimizer=AdamAscent(),
              num_emitters=1, batch_size=<CMA-ES default>, ranker=ImprovementRanker(),
              selection=MuSelection(), restart=ConvergenceRestart(), x0=nothing,
-             normalize=true, bounds=descriptor_bounds(prob), genotype=Vector{Float64},
+             normalize=true, bounds=descriptor_bounds(prob), genotype=default_genotype(prob),
              fitness=Float64, outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
 
 CMA-MAEGA (Fontaine and Nikolaidis, 2023): [`CMAMEGA`](@ref) with the rules of
@@ -322,7 +324,7 @@ function CMAMAEGA(prob::AbstractQDProblem; dims::Tuple, sigma0::Real, threshold_
                   selection::SelectionRule=MuSelection(),
                   restart::RestartRule=ConvergenceRestart(),
                   bounds::Tuple=descriptor_bounds(prob),
-                  genotype::Type=Vector{Float64},
+                  genotype::Type=default_genotype(prob),
                   fitness::Type{<:AbstractFloat}=Float64,
                   outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
     grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
@@ -332,7 +334,7 @@ end
 
 """
     OMGMEGA(prob; dims, sigma, batch_size=64, normalize=true, bounds=descriptor_bounds(prob),
-            genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside(),
+            genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside(),
             phenotype=Nothing) -> QDAlgorithm
 
 OMG-MEGA (Fontaine and Nikolaidis, 2021, "Differentiable Quality Diversity"): MAP-Elites
@@ -346,7 +348,7 @@ sphere and Rastrigin benchmarks. The other arguments are those of [`MAPElites`](
 """
 function OMGMEGA(prob::AbstractQDProblem; dims::Tuple, sigma::Real,
                  bounds::Tuple=descriptor_bounds(prob),
-                 genotype::Type=Vector{Float64},
+                 genotype::Type=default_genotype(prob),
                  fitness::Type{<:Real}=Float64,
                  outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
     archive = GradientArchive(GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype))
@@ -361,13 +363,17 @@ OMG-MEGA over any [`GradientArchive`](@ref), such as one around a [`CVTArchive`]
 OMGMEGA(archive::GradientArchive; sigma::Real, batch_size::Integer=64, normalize::Bool=true) =
     QDAlgorithm(archive, (GradientOperatorEmitter(; sigma, batch_size, normalize),))
 
-# Length of the solutions of `prob`, from one random solution.
+# Length of the solutions of `prob`, from one random solution, drawn as `default_genotype`
+# draws it.
 solution_dim(prob::AbstractQDProblem) = length(random_solution(Random.Xoshiro(0), prob))
+
+# The reference point of the problem, as a default for the keyword of the same name.
+problem_reference_point(prob) = reference_point(prob)
 
 """
     MOME(prob; dims, reference_point=reference_point(prob), max_front=50, batch_size=64,
          variation=GaussianMutation(0.1), bounds=descriptor_bounds(prob),
-         genotype=Vector{Float64}, outside=ThrowOutside(), duplicates=RejectDuplicates(),
+         genotype=default_genotype(prob), outside=ThrowOutside(), duplicates=RejectDuplicates(),
          full_front=RejectNewcomer(), phenotype=Nothing) -> QDAlgorithm
 
 Multi-objective MAP-Elites (Pierrot et al., 2022): a [`ParetoGridArchive`](@ref), which keeps a
@@ -393,14 +399,11 @@ result = solve(prob, MOME(prob; dims=(20, 20)); budget=50_000, rng=Xoshiro(1))
 qd_score(result.archive), global_hypervolume(result.archive)
 ```
 """
-# The reference point of the problem, as a default for the keyword of the same name.
-problem_reference_point(prob) = reference_point(prob)
-
 function MOME(prob::AbstractQDProblem; dims::Tuple,
               reference_point::AbstractVector{<:Real}=problem_reference_point(prob),
               max_front::Integer=50, batch_size::Integer=64,
               variation::AbstractVariation=GaussianMutation(0.1),
-              bounds::Tuple=descriptor_bounds(prob), genotype::Type=Vector{Float64},
+              bounds::Tuple=descriptor_bounds(prob), genotype::Type=default_genotype(prob),
               outside::OutsidePolicy=ThrowOutside(), duplicates::DuplicatePolicy=RejectDuplicates(),
               full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing)
     archive = ParetoGridArchive(prob; dims, reference_point, max_front, bounds, genotype, outside,
@@ -420,7 +423,7 @@ end
 
 """
     MELS(prob::SampledSpread; dims, batch_size=64, variation=GaussianMutation(0.1),
-         bounds=descriptor_bounds(prob), genotype=Vector{Float64}, fitness=Float64,
+         bounds=descriptor_bounds(prob), genotype=default_genotype(prob), fitness=Float64,
          outside=ThrowOutside(), phenotype=Nothing) -> QDAlgorithm
 
 MAP-Elites with low spread (Mace et al., 2023): MAP-Elites for a noisy problem in which an
@@ -445,7 +448,7 @@ result = solve(prob, MELS(prob; dims=(20, 20)); budget=200_000, rng=Xoshiro(1))
 """
 function MELS(prob::SampledSpread; dims::Tuple, batch_size::Integer=64,
               variation::AbstractVariation=GaussianMutation(0.1),
-              bounds::Tuple=descriptor_bounds(prob), genotype::Type=Vector{Float64},
+              bounds::Tuple=descriptor_bounds(prob), genotype::Type=default_genotype(prob),
               fitness::Type{<:Real}=Float64, outside::OutsidePolicy=ThrowOutside(),
               phenotype::Type=Nothing)
     archive = SpreadArchive(GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype))

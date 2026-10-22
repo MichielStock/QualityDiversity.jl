@@ -18,6 +18,7 @@ Evaluation
 QualityDiversity.evaluate
 QualityDiversity.evaluate_batch
 QualityDiversity.random_solution
+QualityDiversity.default_genotype
 QualityDiversity.descriptor_bounds
 QualityDiversity.descriptor_categories
 QualityDiversity.fitness_offset

@@ -88,15 +88,50 @@ end
 end
 
 @testset "SlidingBoundariesArchive outside the boundaries" begin
-    # rejected solutions enter the buffer, so the boundaries grow toward them
-    a = SlidingBoundariesArchive((2,), ((0, 1),); outside=RejectOutside(), remap_frequency=4)
+    # with ClampOutside every solution enters the buffer, so the boundaries grow toward them
+    a = SlidingBoundariesArchive((2,), ((0, 1),); outside=ClampOutside(), remap_frequency=4)
     @test offer!(a, 1, (0.5,)).status == QD.NewCell
-    @test offer!(a, 2, (3.0,)) == AddResult(QD.Rejected, 0.0)
-    @test offer!(a, 3, (-2.0,)).status == QD.Rejected
+    @test offer!(a, 2, (3.0,)).status == QD.Improved     # clamped into the upper cell
+    @test offer!(a, 3, (-2.0,)).status == QD.NewCell
     offer!(a, 4, (0.6,))
     @test QD.descriptor_bounds(a) == ((-2.0, 3.0),)
     @test QD.boundaries(a) == ([-2.0, 0.6, 3.0],)
     @test Dict(only(ev.descriptor) => only(x) for (x, ev) in QD.elites(a)) == Dict(-2.0 => 3.0, 0.6 => 4.0)
+
+    # with RejectOutside a solution outside is discarded for good: its result says so, it
+    # does not enter the buffer, and a remap neither moves toward it nor adds it
+    r = SlidingBoundariesArchive((2,), ((0, 1),); outside=RejectOutside(), remap_frequency=4)
+    @test offer!(r, 1, (0.5,)).status == QD.NewCell
+    @test offer!(r, 2, (3.0,)) == AddResult(QD.Rejected, -Inf)
+    @test offer!(r, 3, (-2.0,)) == AddResult(QD.Rejected, -Inf)
+    @test r.offered == 1 && r.buffer_size == 1
+    @test offer!(r, 4, (0.6,)).status == QD.Improved
+    @test offer!(r, 5, (0.2,)).status == QD.NewCell
+    @test offer!(r, 6, (0.9,)).status == QD.Improved    # the fourth offered solution remaps
+    @test r.offered == 4
+    @test QD.descriptor_bounds(r) == ((0.2, 0.9),)
+    @test QD.boundaries(r) == ([0.2, 0.6, 0.9],)
+    @test Dict(only(ev.descriptor) => only(x) for (x, ev) in QD.elites(r)) == Dict(0.2 => 5.0, 0.9 => 6.0)
+    rs = QD.add_batch!(r, [[7.0], [8.0]], [Evaluation(7.0, SVector(4.0)), Evaluation(8.0, SVector(0.3))])
+    @test rs == [AddResult(QD.Rejected, -Inf), AddResult(QD.Improved, 3.0)]
+    @test r.offered == 5 && all(d -> 0 <= only(d) <= 1, r.buffer_descriptors[1:r.buffer_size])
+    # also when the discarded solution would have triggered the remap
+    s = SlidingBoundariesArchive((2,), ((0, 1),); outside=RejectOutside(), remap_frequency=2)
+    offer!(s, 1, (0.5,))
+    @test offer!(s, 2, (3.0,)) == AddResult(QD.Rejected, -Inf)
+    @test s.offered == 1 && QD.boundaries(s) == ([0.0, 0.5, 1.0],)
+
+    # a non-finite component is refused before any policy can discard the descriptor, so
+    # it never reaches the buffer, where a remap would sort it
+    n = SlidingBoundariesArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside(), remap_frequency=2)
+    @test_throws "descriptor component 2 is NaN" QD.add!(n, [1.0], Evaluation(1.0, SVector(2.0, NaN)))
+    @test_throws "descriptor component 2 is Inf" QD.add_batch!(n, [[1.0]], [Evaluation(1.0, SVector(2.0, Inf))])
+    @test_throws "descriptor component 2 is NaN" QD.cell_index(n, SVector(2.0, NaN))
+    @test n.offered == 0 && length(n) == 0
+    for k in 1:6    # remaps without trouble; the boundaries shrink to the buffer, so later points fall outside
+        QD.add!(n, [Float64(k)], Evaluation(Float64(k), SVector(0.1 * k, 0.1 * k)))
+    end
+    @test n.offered >= 2 && length(n) >= 1
 
     # the archive does not change when a descriptor throws
     t = SlidingBoundariesArchive((2,), ((0, 1),); outside=ThrowOutside(), remap_frequency=1)

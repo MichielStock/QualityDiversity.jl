@@ -82,7 +82,7 @@ end
 
 Insert `x` into the cell of `ev.descriptor`. A descriptor outside the bounds is
 handled by the archive's `outside` policy; `RejectOutside()` gives a `Rejected` result
-with zero `improvement`. An empty cell takes any solution
+with the lowest `improvement`, `-Inf` for a floating-point fitness type. An empty cell takes any solution
 (`NewCell`, with `improvement` equal to the fitness); an occupied cell takes it
 only if the fitness is strictly higher (`Improved`, otherwise `Rejected`).
 For an occupied cell, `improvement` is the fitness minus the occupant's.
@@ -93,7 +93,7 @@ function add_to_cells!(archive::CellArchive{G,F,D,P}, x, ev::Evaluation{<:Real})
     i = cell_index(archive, ev.descriptor)
     fitness = stored_fitness(F, ev.fitness)
     phenotype = stored_phenotype(P, ev.phenotype)
-    i == 0 && return AddResult(Rejected, zero(F))
+    i == 0 && return outside_result(F)
     result = classify(archive, i, fitness)
     result.status == Rejected || place!(archive, i, x, ev.descriptor, fitness, phenotype)
     return result
@@ -152,7 +152,7 @@ function add_batch_to_cells!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, 
         fitness = stored_fitness(F, evs[k].fitness)    # throws before the archive changes
         stored_phenotype(P, evs[k].phenotype)
         cells[k] = i
-        results[k] = i == 0 ? AddResult(Rejected, zero(F)) : classify(archive, i, fitness)
+        results[k] = i == 0 ? outside_result(F) : classify(archive, i, fitness)
     end
     # Every result is fixed; placing a solution only if it beats what is in its
     # cell by now leaves the best of the solutions that entered.

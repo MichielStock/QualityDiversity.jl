@@ -80,6 +80,36 @@ end
     @test length(result.archive) >= 1
 end
 
+@testset "the genotype type is that of the random solutions" begin
+    f(x) = (-sum(abs2, x), clamp.((x[1], x[2]), -3, 3))
+    bounds = ((-3, 3), (-3, 3))
+    static = QDProblem(f; init=rng -> SVector{3,Float64}(randn(rng, 3)), bounds)
+    @test QD.default_genotype(static) == SVector{3,Float64}
+    @test QD.default_genotype(Rastrigin(4)) == Vector{Float64}
+    result = solve(static, MAPElites(static; dims=(4, 4), batch_size=8); budget=80, rng=Xoshiro(1))
+    @test result.archive isa GridArchive{SVector{3,Float64}}
+    single = QDProblem(f; init=rng -> randn(rng, Float32, 3), bounds)
+    state = init(single, MAPElites(single; dims=(4, 4), batch_size=8, variation=GaussianMutation(0.1f0));
+                 budget=80, rng=Xoshiro(1))
+    @test state.archive isa GridArchive{Vector{Float32}}
+    @test eltype(QD.ask(Xoshiro(1), state.emitters[1], state.archive)[1]) == Float32
+    # a genotype that is not a real vector needs only a variation operator
+    struct Shuffle <: AbstractVariation end
+    QD.vary(rng, ::Shuffle, parent::String) = String(parent[randperm(rng, length(parent))])
+    words = QDProblem(s -> (-Float64(count('a', s)), (clamp(count('b', s), 0, 5), 1.0));
+                      init=rng -> String(rand(rng, 'a':'c', 6)), bounds=((0, 5), (0, 2)))
+    alg = MAPElites(words; dims=(6, 2), variation=Shuffle(), batch_size=8)
+    @test alg.archive isa GridArchive{String}
+    @test solve(words, alg; budget=80, rng=Xoshiro(1)).archive isa GridArchive{String}
+    # every constructor that takes a problem agrees, and `genotype` still overrides
+    for a in (GridArchive(static; dims=(4, 4)), SlidingBoundariesArchive(static; dims=(4, 4)),
+              CVTArchive(Xoshiro(1), static; cells=5), UnstructuredArchive(static; capacity=5, threshold=0.1),
+              DNSArchive(static; capacity=5, k=2), CMAME(static; dims=(4, 4), sigma0=1.0).archive)
+        @test a isa QD.AbstractArchive{SVector{3,Float64}}
+    end
+    @test GridArchive(static; dims=(4, 4), genotype=Vector{Float64}) isa GridArchive{Vector{Float64}}
+end
+
 @testset "type stability" begin
     prob = Rastrigin(4)
     alg = MAPElites(prob; dims=(5, 5), batch_size=10)

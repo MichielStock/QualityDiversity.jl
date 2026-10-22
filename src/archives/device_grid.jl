@@ -1,7 +1,7 @@
 """
     DeviceGridArchive{T,F}(device, dims, bounds, dim; outside=ThrowOutside())
     DeviceGridArchive(prob::AbstractQDProblem; dims, device, bounds=descriptor_bounds(prob),
-                      genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside())
+                      genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside())
 
 A [`GridArchive`](@ref) held in the arrays of a device, for MAP-Elites on a GPU: the same
 cells and rules, for solutions that are real vectors of length `dim` with entries of a
@@ -71,7 +71,7 @@ end
 
 function DeviceGridArchive(prob::AbstractQDProblem; dims::Tuple, device::Type,
                            bounds::Tuple=descriptor_bounds(prob),
-                           genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
+                           genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                            outside::OutsidePolicy=ThrowOutside())
     T = device_eltype(genotype)
     return DeviceGridArchive{T,fitness}(device, dims, bounds, solution_dim(prob); outside)

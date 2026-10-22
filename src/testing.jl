@@ -628,8 +628,9 @@ check modifies both `emitter` and `archive`.
 `batch_size` must be a positive integer, and `ask` must return that many
 genotypes of the archive's genotype type, inferrably, as a `Vector`, or as a
 [`DeviceBatch`](@ref QualityDiversity.DeviceBatch) for a
-[`DeviceCellArchive`](@ref QualityDiversity.DeviceCellArchive). The batch must then pass
-through `evaluate_batch`, `add_batch!` and `tell!`.
+[`DeviceCellArchive`](@ref QualityDiversity.DeviceCellArchive), none of them an object
+the archive stores. The batch must then pass through `evaluate_batch`, `add_batch!` and
+`tell!`.
 
 An emitter whose [`ask_gradients`](@ref QualityDiversity.ask_gradients) returns solutions
 first gets them back through `evaluate_gradient_batch`, `add_batch!` and
@@ -657,6 +658,11 @@ function test_emitter(emitter::QD.AbstractEmitter, archive::QD.AbstractArchive{G
         xs = @inferred QD.ask(Xoshiro(5), emitter, archive)
         @test xs isa batch_type(archive)
         @test length(xs) == QD.batch_size(emitter)
+        if ismutabletype(G) && xs isa Vector
+            # The archive stores by reference, so a candidate must be a new object.
+            stored = Set{UInt}(objectid(g) for (g, _) in QD.elites(archive))
+            @test !any(x -> objectid(x) in stored, xs)
+        end
 
         @testset "tell!" begin
             evs, results = evaluate_and_add(prob, archive, xs)

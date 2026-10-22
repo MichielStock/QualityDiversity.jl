@@ -116,7 +116,7 @@ end
     @test QD.cell_index(rejecting, [-5.0, 0.0, 15.0]) == 0
     @test QD.cell_index(rejecting, [0.5, NaN, 15.0]) == 0
     r = QD.add!(rejecting, [1.0], Evaluation(1.0, SVector(5.0, 0.0, 15.0)))
-    @test r.status == QD.Rejected && r.improvement === 0.0f0 && length(rejecting) == 0
+    @test r.status == QD.Rejected && r.improvement === -Inf32 && length(rejecting) == 0
 end
 
 @testset "CVTArchive stores and reports like any cell archive" begin

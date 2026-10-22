@@ -94,7 +94,11 @@ end
     @test_throws "descriptor has 3 dimensions but the archive has 2" QD.add!(a, [1.0], Evaluation(SVector(1.0, 2.0), SVector(0.1, 0.1, 0.1)))
     @test_throws "outside the archive bounds" QD.add!(a, [1.0], ev2(1, 1, (2.0, 0.5)))
     rejecting = pareto_archive(outside=RejectOutside())
-    @test QD.add!(rejecting, [1.0], ev2(1, 1, (2.0, 0.5))) == QD.AddResult(QD.Rejected, 0.0)
+    @test QD.add!(rejecting, [1.0], ev2(1, 1, (2.0, 0.5))) == QD.AddResult(QD.Rejected, -Inf)
+    # the objectives are checked also for a solution the archive discards
+    @test_throws "every objective must be finite" QD.add!(rejecting, [1.0], ev2(NaN, 1, (2.0, 0.5)))
+    @test_throws "every objective must be finite" QD.add_batch!(rejecting, [[1.0]], [ev2(NaN, 1, (2.0, 0.5))])
+    @test length(rejecting) == 0
 end
 
 @testset "a full front rejects what beats none of it" begin

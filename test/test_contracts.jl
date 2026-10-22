@@ -44,6 +44,14 @@ end
     end
 end
 
+@testset "the docstrings of the algorithms are on the algorithms" begin
+    for (name, phrase) in ((:MOME, "Pierrot"), (:MAPElites, "MAP-Elites"), (:CMAME, "Fontaine"), (:MELS, "Mace"),
+                           (:DDS, "Lee"), (:CMAMAE, "Nikolaidis"))
+        multidoc = Base.Docs.meta(QD)[Base.Docs.Binding(QD, name)]
+        @test any(sig -> occursin(phrase, string(multidoc.docs[sig].text...)), multidoc.order)
+    end
+end
+
 @testset "every public name is documented" begin
     for name in names(QD)
         name === :QualityDiversity && continue

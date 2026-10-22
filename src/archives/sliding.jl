@@ -4,7 +4,7 @@
     SlidingBoundariesArchive{G}(dims, bounds; kwargs...)
     SlidingBoundariesArchive(dims, bounds; kwargs...)
     SlidingBoundariesArchive(prob::AbstractQDProblem; dims, bounds=descriptor_bounds(prob),
-                             genotype=Vector{Float64}, fitness=Float64, remap_frequency=100,
+                             genotype=default_genotype(prob), fitness=Float64, remap_frequency=100,
                              buffer_capacity=1000, outside=ClampOutside(), phenotype=Nothing)
 
 A grid archive whose cell boundaries follow the distribution of the descriptors found
@@ -28,9 +28,13 @@ value on a boundary belongs to the cell above it, and a value on the upper bound
 the last cell. A descriptor outside the boundaries is handled by `outside`, as for a
 [`GridArchive`](@ref), but the default is `ClampOutside()`: after a remap the outer
 boundaries are the extremes of the buffer, so new solutions often land outside them.
-Old elites are always clamped during a remap. Since every offered solution enters the
-buffer, the boundaries grow toward descriptors outside them. A descriptor with a
-non-finite component throws an `ArgumentError` whatever the policy.
+Old elites are always clamped during a remap. Every solution that has a cell enters the
+buffer, so with `ClampOutside()` the boundaries grow toward descriptors outside them;
+with `RejectOutside()` a solution outside the boundaries is discarded for good and never
+enters the buffer. A descriptor with a non-finite component throws an `ArgumentError`
+whatever the policy. The solution that triggers a remap gets its result against the
+cells before the remap and is then added back from the buffer, so it is not in the
+archive afterwards if an old elite with a higher fitness lands in its new cell.
 
 `add_batch!` computes every result against the archive as it was before the batch, as
 for the other [`CellArchive`](@ref)s. If the number of offered solutions passes a
@@ -146,7 +150,7 @@ end
 
 function SlidingBoundariesArchive(prob::AbstractQDProblem; dims::Tuple,
                                   bounds::Tuple=descriptor_bounds(prob),
-                                  genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
+                                  genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                                   remap_frequency::Integer=100, buffer_capacity::Integer=1000,
                                   outside::OutsidePolicy=ClampOutside(), phenotype::Type=Nothing)
     return SlidingBoundariesArchive{genotype,fitness}(dims, bounds; remap_frequency, buffer_capacity,
@@ -179,12 +183,16 @@ end
 function sliding_cell(archive::SlidingBoundariesArchive{G,F,N}, outside, d::AbstractVector{<:Real}) where {G,F,N}
     length(d) == N ||
         throw(ArgumentError("descriptor has $(length(d)) dimensions but the archive has $N"))
+    # Every component is checked before the policy can discard the descriptor: a
+    # non-finite component must never reach the buffer, where a remap would sort it.
+    for i in 1:N
+        isfinite(d[i]) ||
+            throw(ArgumentError("descriptor component $i is $(d[i]), but a SlidingBoundariesArchive needs finite descriptors"))
+    end
     index = 0
     stride = 1
     for i in 1:N
         x = d[i]
-        isfinite(x) ||
-            throw(ArgumentError("descriptor component $i is $x, but a SlidingBoundariesArchive needs finite descriptors"))
         b = archive.boundaries[i]
         n = archive.dims[i]
         lo = b[1]
@@ -216,7 +224,7 @@ end
 function add!(archive::SlidingBoundariesArchive{G,F,N,O,P}, x, ev::Evaluation{<:Real}) where {G,F,N,O,P}
     if (archive.offered + 1) % archive.remap_frequency != 0
         result = add_to_cells!(archive, x, ev)
-        remember!(archive, x, ev)
+        discarded(archive, result, ev) || remember!(archive, x, ev)
         return result
     end
     # The solution that triggers a remap is not placed in the old cells, where it could
@@ -224,25 +232,33 @@ function add!(archive::SlidingBoundariesArchive{G,F,N,O,P}, x, ev::Evaluation{<:
     i = cell_index(archive, ev.descriptor)
     fitness = stored_fitness(F, ev.fitness)    # throws before the archive changes
     stored_phenotype(P, ev.phenotype)
-    result = i == 0 ? AddResult(Rejected, zero(F)) : classify(archive, i, fitness)
+    i == 0 && return outside_result(F)
+    result = classify(archive, i, fitness)
     remember!(archive, x, ev)
     remap!(archive)
     return result
 end
 
+# Whether `result` says that the archive has no cell for the solution, which then does not
+# enter the buffer: only `RejectOutside()` discards solutions, and only those outside the
+# boundaries.
+discarded(archive::SlidingBoundariesArchive, result, ev) = discarded(archive.outside, archive, result, ev)
+discarded(::OutsidePolicy, archive, result, ev) = false
+discarded(::RejectOutside, archive, result, ev) = result.status == Rejected && cell_index(archive, ev.descriptor) == 0
+
 """
     add_batch!(archive::SlidingBoundariesArchive, xs, evs) -> Vector{AddResult}
 
 Insert every solution as for any [`CellArchive`](@ref): each result is computed against
-the archive as it was before the batch. Every solution then enters the buffer, and the
-archive remaps once if the number of offered solutions passed a multiple of
-`remap_frequency` during the batch.
+the archive as it was before the batch. Every solution that has a cell then enters the
+buffer, and the archive remaps once if the number of offered solutions passed a multiple
+of `remap_frequency` during the batch.
 """
 function add_batch!(archive::SlidingBoundariesArchive, xs::AbstractVector, evs::AbstractVector)
     results = add_batch_to_cells!(archive, xs, evs)
     before = archive.offered
     for k in eachindex(xs, evs)
-        remember!(archive, xs[k], evs[k])
+        discarded(archive, results[k], evs[k]) || remember!(archive, xs[k], evs[k])
     end
     remap_if_due!(archive, before)
     return results

@@ -3,7 +3,7 @@
     UnstructuredArchive{G}(ndims; capacity, threshold, phenotype=Nothing)
     UnstructuredArchive(ndims; capacity, threshold, phenotype=Nothing)
     UnstructuredArchive(prob::AbstractQDProblem; capacity, threshold,
-                        genotype=Vector{Float64}, fitness=Float64, phenotype=Nothing)
+                        genotype=default_genotype(prob), fitness=Float64, phenotype=Nothing)
 
 Archive without a fixed partition of descriptor space. It stores up to
 `capacity` solutions, each at its own descriptor, and a solution enters if it
@@ -97,7 +97,7 @@ function UnstructuredArchive(ndims::Integer; kwargs...)
 end
 
 function UnstructuredArchive(prob::AbstractQDProblem; capacity::Integer, threshold::Real,
-                             genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
+                             genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                              phenotype::Type=Nothing)
     return UnstructuredArchive{genotype,fitness}(length(descriptor_bounds(prob));
                                                  capacity, threshold, phenotype)

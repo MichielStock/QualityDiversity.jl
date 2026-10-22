@@ -12,8 +12,11 @@ vectors `M_j` stretch one after the other, `d ← (1 - c_d,j) d + c_d,j M_j (M_j
 After a generation the vectors and the path of the step size move toward the
 recombined `z` of the parents, and the step size follows the cumulative step size
 rule. The learning rates are `c_σ = 2 batch_size / dim`, `c_d,j = 1 / (1.5^(j-1) dim)`
-and `c_c,j = batch_size / (4^(j-1) dim)`. They require `batch_size < dim`, and
-`n_vectors` is at most `dim`. The solutions of a batch are not mirrored.
+and `c_c,j = batch_size / (4^(j-1) dim)`, as in pyribs. They require `batch_size < dim`,
+and `n_vectors` is at most `dim`. The paper assumes a batch much smaller than the
+dimension: when `2 batch_size > dim`, `c_σ` exceeds 1 and the path of the step size
+changes sign every generation, so keep the batch well below the dimension or use
+[`CMAES`](@ref). The solutions of a batch are not mirrored.
 
 The arguments, `sample!`, `update!` and `should_stop` are those of
 [`AbstractEvolutionStrategy`](@ref). `should_stop` also reports a step size below

@@ -77,7 +77,10 @@ function make_evaluation(space::Tuple, fitness, descriptor, phenotype=nothing)
 end
 
 # The number type of a real descriptor: `Float64`, or the type of its components when that
-# carries more, such as the dual numbers of ForwardDiff.
+# carries more, such as the dual numbers of ForwardDiff. A vector gives its element type,
+# which is known from its type; a tuple the types of its entries.
+descriptor_type(descriptor::AbstractVector) = promote_type(Float64, eltype(descriptor))
+descriptor_type(descriptor::Tuple) = promote_type(Float64, map(typeof, descriptor)...)
 descriptor_type(descriptor) = promote_type(Float64, map(typeof, Tuple(descriptor))...)
 
 function make_evaluation(space::DescriptorCategories, fitness, descriptor, phenotype=nothing)

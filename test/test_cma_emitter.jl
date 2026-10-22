@@ -24,6 +24,23 @@ fit(f) = Evaluation(f, SVector(0.5, 0.5))
     @test order == [2, 4, 3, 5, 1] && values == [(2, 5.0), (1, 5.0), (1, 3.0), (0, 2.0), (0, 1.0)]
     @test QD.rank_key(TwoStageObjectiveRanker(), fit(2.5), result(QD.Improved, 0)) === (1, 2.5)
 
+    # a candidate the archive has no cell for ranks after every candidate that has one
+    outside = QD.outside_result(Float64)
+    @test outside == QD.AddResult(QD.Rejected, -Inf)
+    @test QD.outside_result(Float32) === QD.AddResult(QD.Rejected, -Inf32)
+    @test QD.outside_result(Int) === QD.AddResult(QD.Rejected, typemin(Int))
+    @test QD.outside_result(UInt8) === QD.AddResult(QD.Rejected, 0x00)
+    mixed = [outside, result(QD.Rejected, -3), result(QD.Improved, 1), outside]
+    @test QD.rank(ImprovementRanker(), evs[1:4], mixed)[1] == [3, 2, 1, 4]
+    @test QD.rank(TwoStageImprovementRanker(), evs[1:4], mixed)[1] == [3, 2, 1, 4]
+    rejecting = GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside())
+    QD.add!(rejecting, [0.0], fit(5.0))
+    far = Evaluation(1.0, SVector(5.0, 5.0))
+    @test QD.rank_key(ImprovementRanker(), far, QD.add!(rejecting, [0.0], far)) == -Inf
+    @test QD.rank_key(ImprovementRanker(), fit(1.0), QD.add!(rejecting, [0.0], fit(1.0))) == -4.0
+    # all keys equal, also infinite ones, make a flat batch
+    @test QD.flat_ranking([-Inf, -Inf]) && QD.flat_ranking([(0, -Inf), (0, -Inf)]) && !QD.flat_ranking([(0, 1.0), (0, -Inf)])
+
     # a batch is flat when the whole key of the best and the worst agree
     @test QD.key_distance(4.5, 4.0) == 0.5 && QD.key_distance((2, 3.0), (2, 3.0)) == 0
     @test QD.key_distance((2, 3.0), (0, 3.0)) == 2
@@ -183,6 +200,18 @@ end
     xs = QD.ask(Xoshiro(1), corner, GridArchive((2, 2), ((0, 1), (0, 1))))
     @test length(xs) == QD.batch_size(corner)
     @test all(x -> all(0 .<= x .<= 1), xs)
+
+    # an elite outside the bounds, which another emitter can put in the archive, starts the
+    # search from the nearest point inside, not from outside where every draw would be clipped
+    outside = GridArchive((2, 2), ((0, 1), (0, 1)))
+    QD.add!(outside, [6.0, -3.0, 0.5, 2.0], Evaluation(1.0, SVector(0.5, 0.5)))
+    bounded = CMAEmitter(4; sigma0=0.1, lower=0.0, upper=1.0)
+    xs = QD.ask(Xoshiro(1), bounded, outside)
+    @test bounded.es.mean == [1.0, 0.0, 0.5, 1.0]
+    @test all(x -> all(0 .<= x .<= 1), xs)
+    @test maximum(x -> maximum(abs, x .- [1.0, 0.0, 0.5, 1.0]), xs) < 0.5
+    device = DeviceCMAEmitter(4; num_searches=2, sigma0=0.1, lower=0.0, upper=1.0)
+    @test QD.start_means(Xoshiro(1), device, outside) == [[1.0, 0.0, 0.5, 1.0], [1.0, 0.0, 0.5, 1.0]]
 end
 
 @testset "CMAEmitter with an objective ranker maximizes" begin
