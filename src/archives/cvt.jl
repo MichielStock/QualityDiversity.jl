@@ -121,14 +121,6 @@ function kmeans_centroids(rng::AbstractRNG, cells::Integer, lower::SVector{N,Flo
     return kmeans(rng, points, Int(cells); max_iterations=Int(max_iterations))
 end
 
-function box(bounds::Tuple)
-    N = length(bounds)
-    N >= 1 || throw(ArgumentError("bounds must have at least one entry"))
-    lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
-    upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return lower, upper
-end
-
 function CVTArchive{G,F}(centroids::AbstractVector{<:AbstractVector{<:Real}}, bounds::Tuple;
                          outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing) where {G,F<:Real}
     lower, upper = box(bounds)
