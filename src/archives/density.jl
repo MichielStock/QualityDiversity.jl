@@ -1,5 +1,6 @@
 """
-    DensityArchive(rng::AbstractRNG, inner::AbstractArchive; bandwidth, buffer_size=10_000)
+    DensityArchive(inner::AbstractArchive; bandwidth, buffer_capacity=10_000,
+                   rng=Random.default_rng())
 
 The archive of Density Descent Search (Lee et al., 2024, "Density Descent for Diversity
 Optimization"; pyribs `DensityArchive`). It estimates how densely the descriptors found
@@ -8,10 +9,10 @@ so far cover descriptor space, so that emitters can move toward where they are s
 Every solution goes to `inner`, an archive with `SVector` descriptors such as a
 [`GridArchive`](@ref), which holds the solutions: `solve` returns it, a run records its
 metrics, and emitters draw their parents and restarts from it. The descriptors also go
-to a buffer of `buffer_size` entries that stays a uniform sample of all the descriptors
-seen, by reservoir sampling (Li, 1994, Algorithm L) with the generator `rng`. The
-archive keeps its own copy of `rng`, since `add!` takes no generator; `init` copies the
-archive, so a run is reproducible from the seed of `rng` and the seed of the run.
+to a buffer of `buffer_capacity` entries that stays a uniform sample of all the
+descriptors seen, by reservoir sampling (Li, 1994, Algorithm L) with the generator `rng`.
+The archive keeps its own copy of `rng`, since `add!` takes no generator; `init` copies
+the archive, so a run is reproducible from the seed of `rng` and the seed of the run.
 
 The density at a descriptor `y` is the Gaussian kernel density estimate of the buffer,
 
@@ -34,7 +35,7 @@ must be a floating-point type, for the density. [`DDS`](@ref) builds the algorit
 ```jldoctest
 julia> using QualityDiversity, Random
 
-julia> archive = DensityArchive(Xoshiro(1), GridArchive((10, 10), ((0, 1), (0, 1))); bandwidth=0.05);
+julia> archive = DensityArchive(GridArchive((10, 10), ((0, 1), (0, 1))); bandwidth=0.05, rng=Xoshiro(1));
 
 julia> length(archive), QualityDiversity.capacity(archive)
 (0, 100)
@@ -52,24 +53,30 @@ mutable struct DensityArchive{G,F<:AbstractFloat,N,P,A<:AbstractArchive{G,F,SVec
     w::Float64
     skip::Int
 
-    function DensityArchive{G,F,N,P,A,R}(rng::R, inner::A, bandwidth, buffer_size) where {G,F<:AbstractFloat,N,P,A<:AbstractArchive{G,F,SVector{N,Float64},P},R<:AbstractRNG}
+    function DensityArchive{G,F,N,P,A,R}(rng::R, inner::A, bandwidth, buffer_capacity) where {G,F<:AbstractFloat,N,P,A<:AbstractArchive{G,F,SVector{N,Float64},P},R<:AbstractRNG}
         length(inner) == 0 ||
             throw(ArgumentError("the archive to wrap must be empty but holds $(length(inner)) solutions"))
         (isfinite(bandwidth) && bandwidth > 0) ||
             throw(ArgumentError("bandwidth must be finite and greater than 0, got $bandwidth"))
-        buffer_size >= 1 || throw(ArgumentError("buffer_size must be at least 1, got $buffer_size"))
-        archive = new{G,F,N,P,A,R}(inner, rng, Float64(bandwidth), Vector{SVector{N,Float64}}(undef, buffer_size), 0, 0.0, 0)
+        buffer_capacity >= 1 || throw(ArgumentError("buffer_capacity must be at least 1, got $buffer_capacity"))
+        archive = new{G,F,N,P,A,R}(inner, rng, Float64(bandwidth), Vector{SVector{N,Float64}}(undef, buffer_capacity), 0, 0.0, 0)
         start_reservoir!(archive)
         return archive
     end
 end
 
-function DensityArchive(rng::AbstractRNG, inner::AbstractArchive{G,F,SVector{N,Float64},P};
-                        bandwidth::Real, buffer_size::Integer=10_000) where {G,F<:AbstractFloat,N,P}
-    return DensityArchive{G,F,N,P,typeof(inner),typeof(rng)}(copy(rng), inner, bandwidth, Int(buffer_size))
+function DensityArchive(inner::AbstractArchive{G,F,SVector{N,Float64},P}; bandwidth::Real,
+                        buffer_capacity::Integer=10_000,
+                        rng::AbstractRNG=Random.default_rng()) where {G,F<:AbstractFloat,N,P}
+    # the copy of the default generator is a Xoshiro; dispatch binds its type
+    return density_archive(copy(rng), inner, bandwidth, Int(buffer_capacity))
 end
 
-function DensityArchive(rng::AbstractRNG, inner::AbstractArchive; kwargs...)
+function density_archive(own::R, inner::A, bandwidth, buffer_capacity) where {G,F<:AbstractFloat,N,P,A<:AbstractArchive{G,F,SVector{N,Float64},P},R<:AbstractRNG}
+    return DensityArchive{G,F,N,P,A,R}(own, inner, bandwidth, buffer_capacity)
+end
+
+function DensityArchive(inner::AbstractArchive; kwargs...)
     throw(ArgumentError("a DensityArchive measures distances between descriptors, so it wraps an archive with SVector descriptors and a floating-point fitness, not a $(nameof(typeof(inner)))"))
 end
 

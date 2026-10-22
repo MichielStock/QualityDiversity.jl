@@ -65,11 +65,11 @@ the hypervolume of the cell, which is negative when the removed solution covered
 struct ReplaceCrowded <: FullFrontPolicy end
 
 """
-    ParetoGridArchive{G}(dims, bounds, reference_point; max_front=50, outside=ThrowOutside(),
+    ParetoGridArchive{G}(dims, bounds; reference_point, max_front=50, outside=ThrowOutside(),
                          duplicates=RejectDuplicates(), full_front=RejectNewcomer(),
                          phenotype=Nothing)
     ParetoGridArchive(prob::AbstractQDProblem; dims, reference_point, max_front=50,
-                      bounds=descriptor_bounds(prob), genotype=default_genotype(prob),
+                      bounds=nothing, genotype=default_genotype(prob),
                       outside=ThrowOutside(), duplicates=RejectDuplicates(),
                       full_front=RejectNewcomer(), phenotype=Nothing)
 
@@ -120,7 +120,7 @@ for two objectives; for more it does allocate.
 ```jldoctest
 julia> using QualityDiversity, StaticArrays
 
-julia> archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)), [0.0, 0.0]);
+julia> archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)); reference_point=[0.0, 0.0]);
 
 julia> QualityDiversity.add!(archive, [0.1], Evaluation(SVector(1.0, 3.0), SVector(0.2, 0.2))).status
 NewCell::AddStatus = 2
@@ -184,7 +184,7 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P,U<:DuplicatePolicy,R<:
     end
 end
 
-function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::AbstractVector{<:Real};
+function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple; reference_point::AbstractVector{<:Real},
                               max_front::Integer=50, outside::OutsidePolicy=ThrowOutside(),
                               duplicates::DuplicatePolicy=RejectDuplicates(),
                               full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing) where {G}
@@ -195,17 +195,17 @@ function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::Abstr
         duplicates, full_front)
 end
 
-function ParetoGridArchive(dims::Tuple, bounds::Tuple, reference_point::AbstractVector{<:Real}; kwargs...)
-    return ParetoGridArchive{Vector{Float64}}(dims, bounds, reference_point; kwargs...)
+function ParetoGridArchive(dims::Tuple, bounds::Tuple; kwargs...)
+    return ParetoGridArchive{Vector{Float64}}(dims, bounds; kwargs...)
 end
 
 function ParetoGridArchive(prob::AbstractQDProblem; dims::Tuple, reference_point::AbstractVector{<:Real},
-                           max_front::Integer=50, bounds::Tuple=descriptor_bounds(prob),
+                           max_front::Integer=50, bounds::Union{Tuple,Nothing}=nothing,
                            genotype::Type=default_genotype(prob), outside::OutsidePolicy=ThrowOutside(),
                            duplicates::DuplicatePolicy=RejectDuplicates(),
                            full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing)
-    return ParetoGridArchive{genotype}(dims, bounds, reference_point; max_front, outside, duplicates,
-                                       full_front, phenotype)
+    return ParetoGridArchive{genotype}(dims, problem_bounds(prob, bounds); reference_point, max_front, outside,
+                                       duplicates, full_front, phenotype)
 end
 
 Base.length(archive::ParetoGridArchive) = length(archive.occupied_idx)

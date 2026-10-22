@@ -318,8 +318,8 @@ end
 
 @testset "DeviceCVTArchive" begin
     prob = Rastrigin(4)
-    host = CVTArchive(Xoshiro(5), prob; cells=40, samples=4000)
-    dev = DeviceCVTArchive(Xoshiro(5), prob; cells=40, samples=4000, device=Array)
+    host = CVTArchive(prob; cells=40, samples=4000, rng=Xoshiro(5))
+    dev = DeviceCVTArchive(prob; cells=40, samples=4000, device=Array, rng=Xoshiro(5))
     @test dev isa DeviceCVTArchive{Float64,Float64,2}
     @test dev isa QD.DeviceCellArchive
     @test QD.centroids(dev) == QD.centroids(host)
@@ -331,13 +331,13 @@ end
     @test_throws "centroid 2 is (5.0, 0.0), outside the bounds" DeviceCVTArchive{Float64,Float64}(Array, [[0.0, 0.0], [5.0, 0.0]], ((-1, 1), (-1, 1)), 2)
     @test_throws "two centroids are identical" DeviceCVTArchive{Float64,Float64}(Array, [[0.0, 0.0], [0.0, 0.0]], ((-1, 1), (-1, 1)), 2)
     @test_throws "centroid 1 has 3 entries but bounds has 2" DeviceCVTArchive{Float64,Float64}(Array, [[0.0, 0.0, 0.0]], ((-1, 1), (-1, 1)), 2)
-    @test_throws "cells must be at least 1, got 0" DeviceCVTArchive{Float64,Float64}(Array, Xoshiro(1), 0, ((0, 1), (0, 1)), 2)
+    @test_throws "cells must be at least 1, got 0" DeviceCVTArchive{Float64,Float64}(Array, 0, ((0, 1), (0, 1)), 2; rng=Xoshiro(1))
 
     # add_batch! agrees with CVTArchive, for every outside policy and fitness type
     rng = Xoshiro(6)
     for outside in (ThrowOutside(), ClampOutside(), RejectOutside()), F in (Float64, Float32), device in (Array, JLArray)
-        h = CVTArchive{Vector{Float64},F}(Xoshiro(7), 30, ((0, 1), (0, 2)); samples=3000, outside)
-        d = DeviceCVTArchive{Float64,F}(device, Xoshiro(7), 30, ((0, 1), (0, 2)), 3; samples=3000, outside)
+        h = CVTArchive{Vector{Float64},F}(30, ((0, 1), (0, 2)); samples=3000, outside, rng=Xoshiro(7))
+        d = DeviceCVTArchive{Float64,F}(device, 30, ((0, 1), (0, 2)), 3; samples=3000, outside, rng=Xoshiro(7))
         lo, hi = outside isa ThrowOutside ? ((0.0, 0.0), (1.0, 2.0)) : ((-0.3, -0.3), (1.3, 2.3))
         for round in 1:5
             n = rand(rng, 1:60)
@@ -387,35 +387,35 @@ end
 
 @testset "DeviceCMAEmitter" begin
     prob = Rastrigin(6)
-    emitter = DeviceCMAEmitter(6; num_searches=4, sigma0=0.5)
+    emitter = DeviceCMAEmitter(6; num_emitters=4, sigma0=0.5)
     @test QD.batch_size(emitter) == 4 * QD.batch_size(emitter.searches[1])
     @test length(emitter.searches) == 4
     # every search keeps its own copy of a ranker with state
-    directed = DeviceCMAEmitter(6; num_searches=2, sigma0=0.5, ranker=TwoStageRandomDirectionRanker())
+    directed = DeviceCMAEmitter(6; num_emitters=2, sigma0=0.5, ranker=TwoStageRandomDirectionRanker())
     @test directed.searches[1].ranker !== directed.searches[2].ranker
-    @test_throws "num_searches must be at least 1, got 0" DeviceCMAEmitter(6; num_searches=0, sigma0=0.5)
+    @test_throws "num_emitters must be at least 1, got 0" DeviceCMAEmitter(6; num_emitters=0, sigma0=0.5)
 
     archive = DeviceGridArchive(prob; dims=(10, 10), device=Array)
     xs = [QD.random_solution(Xoshiro(k), prob) for k in 1:30]
     QD.add_batch!(archive, xs, [QD.evaluate(prob, x) for x in xs])
-    test_emitter(DeviceCMAEmitter(6; num_searches=3, sigma0=0.5), deepcopy(archive), prob)
+    test_emitter(DeviceCMAEmitter(6; num_emitters=3, sigma0=0.5), deepcopy(archive), prob)
 
     # the searches start from x0, or from elites of the archive
-    near = DeviceCMAEmitter(6; num_searches=3, sigma0=1e-6, x0=fill(0.25, 6))
+    near = DeviceCMAEmitter(6; num_emitters=3, sigma0=1e-6, x0=fill(0.25, 6))
     batch = QD.ask(Xoshiro(1), near, archive)
     @test batch isa QD.DeviceBatch{Float64}
     @test all(x -> maximum(abs, x .- 0.25) < 1e-4, batch)
     elite_set = [x for (x, _) in QD.elites(archive)]
-    from_elites = DeviceCMAEmitter(6; num_searches=5, sigma0=1e-6)
+    from_elites = DeviceCMAEmitter(6; num_emitters=5, sigma0=1e-6)
     @test all(x -> any(e -> maximum(abs, x - e) < 1e-4, elite_set), QD.ask(Xoshiro(2), from_elites, archive))
     @test collect(QD.ask(Xoshiro(3), deepcopy(near), archive)) == collect(QD.ask(Xoshiro(3), deepcopy(near), archive))
 
-    @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(DeviceCMAEmitter(6; num_searches=2, sigma0=0.5), [], [], [])
+    @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(DeviceCMAEmitter(6; num_emitters=2, sigma0=0.5), [], [], [])
     asked = deepcopy(near)
     b = QD.ask(Xoshiro(1), asked, archive)
     @test_throws "expected 27 solutions, evaluations and results but got 2, 2 and 2" QD.tell!(asked, b[1:2], b[1:2], b[1:2])
     @test_throws "a DeviceCMAEmitter adds its candidates to a device archive such as a DeviceGridArchive, not a GridArchive" QD.ask(Xoshiro(1), near, GridArchive(prob; dims=(2, 2)))
-    @test_throws "the solutions of the archive have 6 entries but the emitter has dimension 4" QD.ask(Xoshiro(1), DeviceCMAEmitter(4; num_searches=2, sigma0=0.5), archive)
+    @test_throws "the solutions of the archive have 6 entries but the emitter has dimension 4" QD.ask(Xoshiro(1), DeviceCMAEmitter(4; num_emitters=2, sigma0=0.5), archive)
 
     # CMA-ME on a device: reproducible, with restarts, close to the host in quality
     alg = CMAME(prob; dims=(10, 10), sigma0=0.5, num_emitters=8, device=Array)
@@ -439,7 +439,7 @@ end
                    fitness=Float32, kwargs...)
         @test coverage(solve(prob, jl; budget=3_000, rng=Xoshiro(2)).archive) > 0.2
     end
-    cvt = CMAME(DeviceCVTArchive(Xoshiro(1), prob; cells=50, samples=5000, device=Array); sigma0=0.5, dim=6,
+    cvt = CMAME(DeviceCVTArchive(prob; cells=50, samples=5000, device=Array, rng=Xoshiro(1)); sigma0=0.5, dim=6,
                 num_emitters=4)
     @test coverage(solve(prob, cvt; budget=3_000, rng=Xoshiro(2)).archive) > 0.3
     @test_throws "a DeviceGridArchive stores no phenotypes" CMAME(prob; dims=(2, 2), sigma0=0.5, device=Array, phenotype=String)

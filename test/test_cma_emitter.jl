@@ -210,7 +210,7 @@ end
     @test bounded.es.mean == [1.0, 0.0, 0.5, 1.0]
     @test all(x -> all(0 .<= x .<= 1), xs)
     @test maximum(x -> maximum(abs, x .- [1.0, 0.0, 0.5, 1.0]), xs) < 0.5
-    device = DeviceCMAEmitter(4; num_searches=2, sigma0=0.1, lower=0.0, upper=1.0)
+    device = DeviceCMAEmitter(4; num_emitters=2, sigma0=0.1, lower=0.0, upper=1.0)
     @test QD.start_means(Xoshiro(1), device, outside) == [[1.0, 0.0, 0.5, 1.0], [1.0, 0.0, 0.5, 1.0]]
 end
 
@@ -246,7 +246,7 @@ end
     @test_throws UndefKeywordError CMAMAE(prob; dims=(8, 8), sigma0=0.5)
 
     # any archive: the dimension is given
-    cvt = CVTArchive(Xoshiro(1), prob; cells=40, samples=2_000)
+    cvt = CVTArchive(prob; cells=40, samples=2_000, rng=Xoshiro(1))
     over_cvt = CMAME(cvt; sigma0=0.5, dim=10, num_emitters=2)
     @test over_cvt.archive === cvt && length(over_cvt.emitters) == 2
     r = solve(prob, over_cvt; budget=1_500, rng=Xoshiro(1))
@@ -330,7 +330,7 @@ end
     # the archive wrappers report their bounds, and others fail with a message
     @test QD.descriptor_bounds(archive) == ((0.0, 2.0), (-10.0, 10.0))
     @test QD.descriptor_bounds(ThresholdArchive(archive; learning_rate=0.1, threshold_min=0.0)) == ((0.0, 2.0), (-10.0, 10.0))
-    @test_throws "UnstructuredArchive does not report the bounds of its descriptor space" QD.reset_ranker!(Xoshiro(1), ranker, UnstructuredArchive{Vector{Float64}}(2; capacity=10, threshold=0.1))
+    @test_throws "UnstructuredArchive does not report the bounds of its descriptor space" QD.reset_ranker!(Xoshiro(1), ranker, UnstructuredArchive{Vector{Float64}}(2; capacity=10, novelty_threshold=0.1))
     # rankers without state ignore the reset
     @test QD.reset_ranker!(Xoshiro(1), ObjectiveRanker(), archive) === nothing
 end

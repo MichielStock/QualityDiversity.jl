@@ -1,10 +1,10 @@
 """
     DeviceCVTArchive{T,F}(device, centroids, bounds, dim; outside=ThrowOutside())
-    DeviceCVTArchive{T,F}(device, rng, cells, bounds, dim; samples=100_000,
-                          max_iterations=100, outside=ThrowOutside())
-    DeviceCVTArchive(rng, prob::AbstractQDProblem; cells, device, bounds=descriptor_bounds(prob),
-                     samples=100_000, genotype=default_genotype(prob), fitness=Float64,
-                     outside=ThrowOutside())
+    DeviceCVTArchive{T,F}(device, cells, bounds, dim; rng=Random.default_rng(),
+                          samples=100_000, max_iterations=100, outside=ThrowOutside())
+    DeviceCVTArchive(prob::AbstractQDProblem; cells, device, rng=Random.default_rng(),
+                     bounds=nothing, samples=100_000, max_iterations=100,
+                     genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside())
 
 A [`CVTArchive`](@ref) held in the arrays of a device, for MAP-Elites on a GPU: the Voronoi
 cells of a set of centroids, with the rules of the host archive, for solutions that are real
@@ -35,7 +35,7 @@ plot it.
 ```julia
 using CUDA
 prob = Rastrigin(20)
-archive = DeviceCVTArchive(Xoshiro(1), prob; cells=10_000, device=CuArray,
+archive = DeviceCVTArchive(prob; cells=10_000, device=CuArray, rng=Xoshiro(1),
                            genotype=Vector{Float32}, fitness=Float32)
 alg = MAPElites(archive; batch_size=10_000, variation=GaussianMutation(0.5f0))
 result = solve(prob, alg; budget=1_000_000, rng=Xoshiro(2))
@@ -83,20 +83,23 @@ function DeviceCVTArchive{T,F}(device::Type, centroids::AbstractVector{<:Abstrac
     return device_cvt_archive(T, F, device, centroid_points(centroids, bounds), lower, upper, dim, outside)
 end
 
-function DeviceCVTArchive{T,F}(device::Type, rng::AbstractRNG, cells::Integer, bounds::Tuple, dim::Integer;
-                               samples::Integer=100_000, max_iterations::Integer=100,
+function DeviceCVTArchive{T,F}(device::Type, cells::Integer, bounds::Tuple, dim::Integer;
+                               rng::AbstractRNG=Random.default_rng(), samples::Integer=100_000,
+                               max_iterations::Integer=100,
                                outside::OutsidePolicy=ThrowOutside()) where {T<:AbstractFloat,F<:Real}
     lower, upper = box(bounds)
     points = kmeans_centroids(rng, cells, lower, upper; samples, max_iterations)
     return device_cvt_archive(T, F, device, points, lower, upper, dim, outside)
 end
 
-function DeviceCVTArchive(rng::AbstractRNG, prob::AbstractQDProblem; cells::Integer, device::Type,
-                          bounds::Tuple=descriptor_bounds(prob), samples::Integer=100_000,
+function DeviceCVTArchive(prob::AbstractQDProblem; cells::Integer, device::Type,
+                          rng::AbstractRNG=Random.default_rng(), bounds::Union{Tuple,Nothing}=nothing,
+                          samples::Integer=100_000, max_iterations::Integer=100,
                           genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                           outside::OutsidePolicy=ThrowOutside())
     T = device_eltype(genotype)
-    return DeviceCVTArchive{T,fitness}(device, rng, cells, bounds, solution_dim(prob); samples, outside)
+    return DeviceCVTArchive{T,fitness}(device, cells, problem_bounds(prob, bounds), solution_dim(prob);
+                                       rng, samples, max_iterations, outside)
 end
 
 function device_cvt_archive(::Type{T}, ::Type{F}, device, points::Vector{SVector{N,Float64}}, lower, upper,

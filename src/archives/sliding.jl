@@ -3,7 +3,7 @@
                                   outside=ClampOutside(), phenotype=Nothing)
     SlidingBoundariesArchive{G}(dims, bounds; kwargs...)
     SlidingBoundariesArchive(dims, bounds; kwargs...)
-    SlidingBoundariesArchive(prob::AbstractQDProblem; dims, bounds=descriptor_bounds(prob),
+    SlidingBoundariesArchive(prob::AbstractQDProblem; dims, bounds=nothing,
                              genotype=default_genotype(prob), fitness=Float64, remap_frequency=100,
                              buffer_capacity=1000, outside=ClampOutside(), phenotype=Nothing)
 
@@ -144,12 +144,12 @@ function SlidingBoundariesArchive(dims::Tuple, bounds::Tuple; kwargs...)
 end
 
 function SlidingBoundariesArchive(prob::AbstractQDProblem; dims::Tuple,
-                                  bounds::Tuple=descriptor_bounds(prob),
+                                  bounds::Union{Tuple,Nothing}=nothing,
                                   genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                                   remap_frequency::Integer=100, buffer_capacity::Integer=1000,
                                   outside::OutsidePolicy=ClampOutside(), phenotype::Type=Nothing)
-    return SlidingBoundariesArchive{genotype,fitness}(dims, bounds; remap_frequency, buffer_capacity,
-                                                      outside, phenotype)
+    return SlidingBoundariesArchive{genotype,fitness}(dims, problem_bounds(prob, bounds); remap_frequency,
+                                                      buffer_capacity, outside, phenotype)
 end
 
 """
