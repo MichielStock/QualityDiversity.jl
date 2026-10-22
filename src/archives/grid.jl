@@ -3,7 +3,7 @@
     GridArchive{G}(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
     GridArchive(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
     GridArchive(prob::AbstractQDProblem; dims, bounds=descriptor_bounds(prob),
-                genotype=Vector{Float64}, fitness=Float64, outside=ThrowOutside(),
+                genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside(),
                 phenotype=Nothing)
 
 Archive that divides descriptor space into a regular grid and keeps the
@@ -111,7 +111,7 @@ end
 
 function GridArchive(prob::AbstractQDProblem; dims::Tuple,
                      bounds::Tuple=descriptor_bounds(prob),
-                     genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
+                     genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                      outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing)
     return GridArchive{genotype,fitness}(dims, bounds; outside, phenotype)
 end

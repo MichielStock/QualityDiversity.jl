@@ -119,7 +119,7 @@ end
 
 @testset "descriptors outside the bounds" begin
     rejecting = SpreadArchive(GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside()))
-    @test QD.add!(rejecting, [0.0], spread_eval(1.0, (2.0, 2.0), (3.0, 3.0))) == AddResult(QD.Rejected, 0.0)
+    @test QD.add!(rejecting, [0.0], spread_eval(1.0, (2.0, 2.0), (3.0, 3.0))) == AddResult(QD.Rejected, -Inf)
     # the descriptors inside decide the cell; all of them count for the spread
     @test QD.add!(rejecting, [0.0], spread_eval(1.0, (2.0, 2.0), (0.1, 0.1))).status == QD.NewCell
     @test only(QD.elites(rejecting))[2].descriptor == SVector(0.1, 0.1)

@@ -110,8 +110,9 @@ function recombination_weights(parents)
 end
 
 # Distance between two ranking keys, a number or a tuple of numbers.
-key_distance(a::Real, b::Real) = abs(Float64(a) - Float64(b))
-key_distance(a::Tuple, b::Tuple) = sqrt(sum(abs2, Float64.(a) .- Float64.(b)))
+# Equal keys are at distance zero also when they are infinite.
+key_distance(a::Real, b::Real) = a == b ? 0.0 : abs(Float64(a) - Float64(b))
+key_distance(a::Tuple, b::Tuple) = sqrt(sum(abs2, map(key_distance, a, b)))
 
 # The batch is flat when the best and the worst key are the same.
 flat_ranking(keys) = length(keys) >= 2 && key_distance(first(keys), last(keys)) < 1e-12

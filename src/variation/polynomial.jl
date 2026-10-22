@@ -15,7 +15,9 @@ non-negative and `proportion` between 0 and 1; the textbook value of
 `proportion` is `1 / n` for vectors of length `n`.
 
 `vary(rng, op, parent)` requires every entry of `parent` to lie inside the
-bounds, and throws an `ArgumentError` otherwise. It returns a new array with the
+bounds, and throws an `ArgumentError` otherwise; an archive fed by other operators or by
+a `random_solution` that ignore the bounds can hold such a parent, so give every
+emitter of a run the same bounds. It returns a new array with the
 indices of `parent`, made with `similar` (a `Vector` for a `Vector`), with the
 element type of `parent` (`Float64` for integers), and leaves `parent` unchanged.
 

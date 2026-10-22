@@ -193,7 +193,7 @@ end
     @test_throws "got 2 solutions but 1 evaluations" QD.add_batch!(r, [[1.0], [2.0]], [ev(1.0)])
     discarding = ThresholdArchive(GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside()))
     rs = QD.add_batch!(discarding, [[1.0], [2.0]], [ev(1.0, (5.0, 0.5)), ev(2.0)])
-    @test [r.status for r in rs] == [QD.Rejected, QD.NewCell] && rs[1].improvement == 0.0
+    @test [r.status for r in rs] == [QD.Rejected, QD.NewCell] && rs[1].improvement == -Inf
     @test isempty(QD.add_batch!(r, Vector{Float64}[], Evaluation{Float64,SVector{2,Float64}}[]))
 end
 
@@ -263,7 +263,7 @@ end
 @testset "ThresholdArchive rejects what the wrapped archive discards" begin
     a = ThresholdArchive(GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside()))
     r = QD.add!(a, [1.0], Evaluation(1.0, SVector(5.0, 0.5)))
-    @test r.status == QD.Rejected && r.improvement == 0.0 && length(a) == 0
+    @test r.status == QD.Rejected && r.improvement == -Inf && length(a) == 0
     @test QD.cell_index(a, SVector(5.0, 0.5)) == 0
     @test_throws "descriptor has 3 dimensions but the archive has 2" QD.cell_index(a, [0.0, 0.0, 0.0])
     t = ThresholdArchive(GridArchive((2, 2), ((0, 1), (0, 1))))

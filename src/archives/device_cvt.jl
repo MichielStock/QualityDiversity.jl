@@ -3,7 +3,7 @@
     DeviceCVTArchive{T,F}(device, rng, cells, bounds, dim; samples=100_000,
                           max_iterations=100, outside=ThrowOutside())
     DeviceCVTArchive(rng, prob::AbstractQDProblem; cells, device, bounds=descriptor_bounds(prob),
-                     samples=100_000, genotype=Vector{Float64}, fitness=Float64,
+                     samples=100_000, genotype=default_genotype(prob), fitness=Float64,
                      outside=ThrowOutside())
 
 A [`CVTArchive`](@ref) held in the arrays of a device, for MAP-Elites on a GPU: the Voronoi
@@ -93,7 +93,7 @@ end
 
 function DeviceCVTArchive(rng::AbstractRNG, prob::AbstractQDProblem; cells::Integer, device::Type,
                           bounds::Tuple=descriptor_bounds(prob), samples::Integer=100_000,
-                          genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
+                          genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                           outside::OutsidePolicy=ThrowOutside())
     T = device_eltype(genotype)
     return DeviceCVTArchive{T,fitness}(device, rng, cells, bounds, solution_dim(prob); samples, outside)

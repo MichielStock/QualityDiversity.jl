@@ -95,8 +95,8 @@ export qd_score, coverage, max_fitness, mean_fitness, cqd_score, CQDScore
 export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scores
 
 @compat public Rejected, Improved, NewCell
-@compat public evaluate, evaluate_batch, evaluate_gradient, evaluate_gradient_batch, evaluations_per_solution, Expectation, expectation, random_solution, descriptor_bounds,
-    descriptor_categories, fitness_offset, reference_point
+@compat public evaluate, evaluate_batch, evaluate_gradient, evaluate_gradient_batch, evaluations_per_solution, Expectation, expectation, random_solution, default_genotype,
+    descriptor_bounds, descriptor_categories, fitness_offset, reference_point
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
 @compat public CellArchive, boundaries, density, centroids, thresholds, spreads, DescriptorSamples

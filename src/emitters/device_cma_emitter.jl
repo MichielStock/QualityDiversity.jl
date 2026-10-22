@@ -72,7 +72,9 @@ function start_means(rng, emitter::DeviceCMAEmitter, archive)
     e = 0
     for (i, search) in pairs(searches)
         if from_elite[i]
-            means[i] = collect(Float64, elites[e += 1])
+            # Moved inside the bounds of the search, as `elite_start` does on the host.
+            es = search.es
+            means[i] = clamp.(collect(Float64, elites[e += 1]), es.lower, es.upper)
         elseif needs_start(search)
             means[i] = search.x0
         end

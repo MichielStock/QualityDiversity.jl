@@ -5,7 +5,7 @@
     CVTArchive{G}(...)
     CVTArchive(...)
     CVTArchive(rng, prob::AbstractQDProblem; cells, bounds=descriptor_bounds(prob),
-               samples=100_000, genotype=Vector{Float64}, fitness=Float64,
+               samples=100_000, genotype=default_genotype(prob), fitness=Float64,
                outside=ThrowOutside(), phenotype=Nothing)
 
 Archive that divides descriptor space into the Voronoi cells of a set of
@@ -150,7 +150,7 @@ CVTArchive(args...; kwargs...) = CVTArchive{Vector{Float64}}(args...; kwargs...)
 
 function CVTArchive(rng::AbstractRNG, prob::AbstractQDProblem; cells::Integer,
                     bounds::Tuple=descriptor_bounds(prob),
-                    genotype::Type=Vector{Float64}, fitness::Type{<:Real}=Float64,
+                    genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                     samples::Integer=100_000, outside::OutsidePolicy=ThrowOutside(),
                     phenotype::Type=Nothing)
     return CVTArchive{genotype,fitness}(rng, cells, bounds; samples, outside, phenotype)

@@ -69,8 +69,13 @@ Evaluate every solution in `xs`, returning one [`Evaluation`](@ref) per
 solution in the same order. Optional: a problem specializes it to evaluate a
 batch at once, for example on a GPU or through a call into Python.
 
-The default calls [`evaluate`](@ref QualityDiversity.evaluate) on each solution
-in parallel with `Threads.@threads`, so `evaluate` must be thread-safe.
+The default calls [`evaluate`](@ref QualityDiversity.evaluate) on each solution,
+on several threads when the batch is worth it, so `evaluate` must be thread-safe. It
+times the first evaluation of the batch and runs the rest in parallel only if the whole
+batch would take longer than about 100 µs on one thread: starting the threads costs
+10 to 30 µs, more than a batch of a cheap function. The results do not depend on
+the number of threads. An error that `evaluate` throws comes out as it is, not wrapped
+in the exception of a task.
 
 To evaluate on a GPU, a problem type defines this method: it copies the batch
 to the device, runs array operations or a kernel, and copies the fitness and
@@ -98,16 +103,57 @@ function evaluate_batch end
 
 evaluate_batch(prob::AbstractQDProblem, xs::AbstractVector) = default_evaluate_batch(prob, xs)
 
+# Threads pay for themselves once a batch takes about this long on one thread: starting
+# the tasks of `Threads.@threads` costs 10 to 30 µs, whatever the batch.
+const THREADED_BATCH_NS = 100_000
+
 # The default of `evaluate_batch`, chosen by the type of the batch: a problem that
 # defines `evaluate_batch(prob::MyProblem, xs::AbstractVector)` takes every batch.
 function default_evaluate_batch(prob::AbstractQDProblem, xs::AbstractVector)
+    Base.require_one_based_indexing(xs)
     T = Base.promote_op(evaluate, typeof(prob), eltype(xs))
     evs = Vector{T}(undef, length(xs))
-    Threads.@threads for i in eachindex(xs)
-        evs[i] = evaluate(prob, xs[i])
+    evaluate_each!(i -> evaluate(prob, xs[i]), evs)
+    return evs
+end
+
+# Sets `evs[i] = f(i)` for every index, on several threads when the batch is worth it:
+# the first evaluation is timed, and the rest run in parallel only if the batch would take
+# longer than `THREADED_BATCH_NS` on one thread. The results do not depend on the choice.
+function evaluate_each!(f::F, evs::Vector) where {F}
+    n = length(evs)
+    n == 0 && return evs
+    evs[1] = f(1)
+    n == 1 && return evs
+    if Threads.nthreads() == 1
+        for i in 2:n
+            evs[i] = f(i)
+        end
+        return evs
+    end
+    start = time_ns()
+    evs[2] = f(2)
+    if (time_ns() - start) * (n - 1) < THREADED_BATCH_NS
+        for i in 3:n
+            evs[i] = f(i)
+        end
+        return evs
+    end
+    try
+        Threads.@threads for i in 3:n
+            evs[i] = f(i)
+        end
+    catch err
+        throw(task_error(err))
     end
     return evs
 end
+
+# The error that `evaluate` threw inside a threaded loop, unwrapped from the exceptions
+# that the tasks wrap it in.
+task_error(err::CompositeException) = isempty(err.exceptions) ? err : task_error(first(err.exceptions))
+task_error(err::TaskFailedException) = task_error(err.task.result)
+task_error(err) = err
 
 evaluate_batch(rng::AbstractRNG, prob::AbstractQDProblem, xs::AbstractVector) =
     evaluate_batch(prob, xs)
@@ -119,12 +165,11 @@ end
 function evaluate_batch(rng::AbstractRNG, prob::AbstractStochasticQDProblem, xs::AbstractVector)
     # One draw at a time: the seed of a solution is the draw at its position, whatever the
     # length of the batch.
+    Base.require_one_based_indexing(xs)
     seeds = [rand(rng, UInt64) for _ in xs]
     T = Base.promote_op(evaluate, Random.Xoshiro, typeof(prob), eltype(xs))
     evs = Vector{T}(undef, length(xs))
-    Threads.@threads for i in eachindex(xs)
-        evs[i] = evaluate(Random.Xoshiro(seeds[i]), prob, xs[i])
-    end
+    evaluate_each!(i -> evaluate(Random.Xoshiro(seeds[i]), prob, xs[i]), evs)
     return evs
 end
 
@@ -150,6 +195,16 @@ device_evaluate(prob::AbstractQDProblem, x) = evaluate(prob, x)
 One random genotype, used to initialize the archive. Required.
 """
 function random_solution end
+
+"""
+    default_genotype(prob::AbstractQDProblem) -> Type
+
+The genotype type that the archives and algorithms built from `prob` store when
+`genotype` is not given: the type of `random_solution(Xoshiro(0), prob)`. Optional; a
+problem whose random solutions do not all have the type the archive should hold defines
+it, or passes `genotype` to the constructors.
+"""
+default_genotype(prob::AbstractQDProblem) = typeof(random_solution(Random.Xoshiro(0), prob))
 
 """
     descriptor_bounds(prob::AbstractQDProblem)
@@ -296,6 +351,10 @@ function cell_index end
 
 Draw `n` parent genotypes from the occupied cells of `archive`. Required.
 Uniform over occupied cells unless the archive documents otherwise.
+
+The genotypes are the objects the archive stores, not copies: archives keep what they
+are given by reference, so that genotypes that are not `isbits` cost nothing to store
+or sample. A caller must not modify them; see [`vary`](@ref QualityDiversity.vary).
 """
 function sample_elites end
 
@@ -356,7 +415,10 @@ abstract type AbstractVariation end
     vary(rng::AbstractRNG, op::AbstractVariation, p1, p2)
 
 One child of `parent`, or of the parents `p1` and `p2`. Does not modify its
-parents.
+parents, and returns a new object, not one of them: the parents are the genotypes the
+archive stores, and the child becomes one if the archive takes it. An operator that
+changed its parent in place would change an elite, which then no longer belongs to its
+cell. [`test_variation`](@ref QualityDiversity.Testing.test_variation) checks this.
 """
 function vary end
 
@@ -395,7 +457,10 @@ abstract type AbstractEmitter end
 """
     ask(rng::AbstractRNG, emitter::AbstractEmitter, archive::AbstractArchive) -> Vector{G}
 
-A batch of `batch_size(emitter)` candidate genotypes. Required.
+A batch of `batch_size(emitter)` candidate genotypes. Required. Every candidate is a
+new object: the archive stores what it accepts by reference, so an emitter must not hand
+over a genotype it got from the archive or a buffer it writes to again.
+[`test_emitter`](@ref QualityDiversity.Testing.test_emitter) checks this.
 """
 function ask end
 

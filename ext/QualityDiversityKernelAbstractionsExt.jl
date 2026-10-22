@@ -284,7 +284,7 @@ end
         improvement[k] = zero(F)
     elseif c == 0
         status[k] = REJECTED
-        improvement[k] = zero(F)
+        improvement[k] = QD.outside_improvement(F)
     elseif occupied[c]
         improvement[k] = QD.fitness_gain(f, stored[c])
         if f > stored[c]

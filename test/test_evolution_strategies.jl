@@ -57,6 +57,20 @@ end
     xs = QD.sample!(Xoshiro(1), narrow)
     @test all(==(1e-9), xs)
     hasproperty(narrow, :y) && @test narrow.y ≈ (xs .- narrow.mean) ./ narrow.sigma
+
+    # OpenAIES keeps its point inside the bounds after a step, so that mirrored pairs keep
+    # landing inside
+    if S === QD.OpenAIES
+        edge = S(3; sigma0=0.2, batch_size=6, lower=0.0, upper=1.0, learning_rate=0.5)
+        QD.reset!(edge, [0.99, 0.5, 0.01])
+        for g in 1:20
+            x = QD.sample!(Xoshiro(g), edge)
+            order = sortperm(vec(x[1, :] .- x[3, :]); rev=true)    # pushes toward (1, ·, 0)
+            QD.update!(edge, order, 3)
+        end
+        @test all(0 .<= edge.theta .<= 1)
+        @test edge.theta[1] == 1.0 && edge.theta[3] == 0.0
+    end
 end
 
 @testset "update! with $(nameof(S))" for S in strategies

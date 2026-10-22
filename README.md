@@ -65,9 +65,9 @@ With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
 
 ### A custom genotype
 
-Any type works as a genotype. Define a variation operator for it, and tell the algorithm
-the type. Here `graph_prob` is a `QDProblem` whose function scores a graph and whose
-`init` draws a random one:
+Any type works as a genotype: the archive stores whatever type `init` returns. Define a
+variation operator for it. Here `graph_prob` is a `QDProblem` whose function scores a
+graph and whose `init` draws a random one:
 
 ```julia
 using Graphs
@@ -81,7 +81,7 @@ function QualityDiversity.vary(rng, ::EdgeFlip, parent::SimpleGraph{Int})
     return child
 end
 
-alg = MAPElites(graph_prob; dims=(20, 20), genotype=SimpleGraph{Int}, variation=EdgeFlip())
+alg = MAPElites(graph_prob; dims=(20, 20), variation=EdgeFlip())
 ```
 
 The [graph tutorial](https://wclaerhout.github.io/QualityDiversity.jl/dev/tutorials/graphs/)

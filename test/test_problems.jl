@@ -14,6 +14,32 @@
 
     evs = QD.evaluate_batch(prob, [[1.0, 2.0], [0.0, 0.0]])
     @test [e.fitness for e in evs] == [-5.0, 0.0]
+
+    # a descriptor returned as a vector infers like one returned as a tuple
+    vectors = QDProblem(x -> (-sum(abs2, x), [x[1], x[2]]); init=rng -> randn(rng, 2), bounds=((-3, 3), (-3, 3)))
+    @test (@inferred QD.evaluate(vectors, [1.0, 2.0])) == ev
+    @test eltype(@inferred QD.evaluate_batch(vectors, [[1.0, 2.0]])) == Evaluation{Float64,SVector{2,Float64},Nothing}
+    static = QDProblem(x -> (-sum(abs2, x), SVector(x[1], x[2])); init=rng -> randn(rng, 2), bounds=((-3, 3), (-3, 3)))
+    @test (@inferred QD.evaluate(static, [1.0, 2.0])) == ev
+end
+
+@testset "evaluate_batch on threads" begin
+    # the results do not depend on the size of the batch or on the number of threads
+    prob = QDProblem(x -> (sum(k -> sin(k * x[1]), 1:500), (x[1], x[2])); init=rng -> rand(rng, 3), bounds=((0, 1), (0, 1)))
+    xs = [QD.random_solution(Xoshiro(k), prob) for k in 1:300]
+    @test QD.evaluate_batch(prob, xs) == [QD.evaluate(prob, x) for x in xs]
+    @test QD.evaluate_batch(prob, xs[1:2]) == [QD.evaluate(prob, x) for x in xs[1:2]]
+    @test isempty(QD.evaluate_batch(prob, empty(xs)))
+    cheap = QDProblem(x -> (-sum(abs2, x), (x[1], x[2])); init=rng -> rand(rng, 3), bounds=((0, 1), (0, 1)))
+    @test QD.evaluate_batch(cheap, xs) == [QD.evaluate(cheap, x) for x in xs]
+    # an error in the function comes out as it is, whichever thread raised it
+    failing = QDProblem(x -> (x[1] < 0.5 ? error("no good: " * string(x[1] > 0)) : 0.0, (x[1], x[2]));
+                        init=rng -> rand(rng, 3), bounds=((0, 1), (0, 1)))
+    @test_throws ErrorException("no good: true") QD.evaluate_batch(failing, xs)
+    noisy = StochasticQDProblem((rng, x) -> (sum(k -> sin(k * x[1]), 1:500) + randn(rng), (x[1], x[2]));
+                                init=rng -> rand(rng, 3), bounds=((0, 1), (0, 1)))
+    @test QD.evaluate_batch(Xoshiro(1), noisy, xs) == QD.evaluate_batch(Xoshiro(1), noisy, xs)
+    @test QD.evaluate_batch(Xoshiro(1), noisy, xs)[1:2] == QD.evaluate_batch(Xoshiro(1), noisy, xs[1:2])
 end
 
 @testset "Rastrigin" begin

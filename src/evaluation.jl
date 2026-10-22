@@ -67,8 +67,12 @@ Result of [`add!`](@ref QualityDiversity.add!).
 `improvement` is the fitness gain over the previous occupant of the cell, or
 over the archive's threshold for a cell that was empty. It is zero or
 negative for a rejected solution, and zero for an unsigned fitness type, which
-has no negative values. Emitters that rank
-candidates by improvement, such as CMA-ME, read this field.
+has no negative values. A solution the archive has no cell for, one that
+`RejectOutside()` discards, gets the lowest improvement there is, `-Inf` for a
+floating-point fitness type, so that a ranker places it after every solution that
+has a cell. Emitters that rank candidates by improvement, such as CMA-ME, read this
+field. The archives whose `improvement` means something else, such as
+[`DensityArchive`](@ref) and [`DNSArchive`](@ref), say so.
 """
 struct AddResult{F}
     status::AddStatus
@@ -101,6 +105,16 @@ check_fitness(::Type{F}, fitness) where {F} = nothing
 # negative values, so a worse fitness gains zero instead of wrapping around.
 fitness_gain(new, old) = new - old
 fitness_gain(new::Unsigned, old::Unsigned) = new >= old ? new - old : zero(new)
+
+# The improvement of a solution the archive has no cell for, below that of any solution
+# in a cell: `-Inf` for a floating-point fitness type and the smallest value otherwise,
+# which is zero for an unsigned type.
+outside_improvement(::Type{F}) where {F<:AbstractFloat} = -F(Inf)
+outside_improvement(::Type{F}) where {F<:Integer} = typemin(F)
+outside_improvement(::Type{F}) where {F} = zero(F)
+
+# The result of a solution the archive has no cell for.
+outside_result(::Type{F}) where {F} = AddResult(Rejected, outside_improvement(F))
 
 # The phenotype of an evaluation as an archive with phenotype type `P` stores it. A
 # mismatch throws before the archive changes.

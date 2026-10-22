@@ -2,7 +2,7 @@
     CategoricalArchive{G,F}(categories; outside=ThrowOutside(), phenotype=Nothing)
     CategoricalArchive{G}(categories; outside=ThrowOutside(), phenotype=Nothing)
     CategoricalArchive(categories; outside=ThrowOutside(), phenotype=Nothing)
-    CategoricalArchive(prob::AbstractQDProblem; genotype=Vector{Float64},
+    CategoricalArchive(prob::AbstractQDProblem; genotype=default_genotype(prob),
                        fitness=Float64, outside=ThrowOutside(), phenotype=Nothing)
 
 Archive with one cell for each combination of discrete descriptor values, and
@@ -104,7 +104,7 @@ CategoricalArchive{G}(categories::Tuple; kwargs...) where {G} =
 CategoricalArchive(categories::Tuple; kwargs...) =
     CategoricalArchive{Vector{Float64}}(categories; kwargs...)
 
-function CategoricalArchive(prob::AbstractQDProblem; genotype::Type=Vector{Float64},
+function CategoricalArchive(prob::AbstractQDProblem; genotype::Type=default_genotype(prob),
                            fitness::Type{<:Real}=Float64, outside::OutsidePolicy=ThrowOutside(),
                            phenotype::Type=Nothing)
     hasmethod(descriptor_categories, Tuple{typeof(prob)}) ||

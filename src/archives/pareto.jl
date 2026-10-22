@@ -69,7 +69,7 @@ struct ReplaceCrowded <: FullFrontPolicy end
                          duplicates=RejectDuplicates(), full_front=RejectNewcomer(),
                          phenotype=Nothing)
     ParetoGridArchive(prob::AbstractQDProblem; dims, reference_point, max_front=50,
-                      bounds=descriptor_bounds(prob), genotype=Vector{Float64},
+                      bounds=descriptor_bounds(prob), genotype=default_genotype(prob),
                       outside=ThrowOutside(), duplicates=RejectDuplicates(),
                       full_front=RejectNewcomer(), phenotype=Nothing)
 
@@ -206,7 +206,7 @@ end
 
 function ParetoGridArchive(prob::AbstractQDProblem; dims::Tuple, reference_point::AbstractVector{<:Real},
                            max_front::Integer=50, bounds::Tuple=descriptor_bounds(prob),
-                           genotype::Type=Vector{Float64}, outside::OutsidePolicy=ThrowOutside(),
+                           genotype::Type=default_genotype(prob), outside::OutsidePolicy=ThrowOutside(),
                            duplicates::DuplicatePolicy=RejectDuplicates(),
                            full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing)
     return ParetoGridArchive{genotype}(dims, bounds, reference_point; max_front, outside, duplicates,
@@ -414,9 +414,9 @@ Insert `x` into the front of the cell of `ev.descriptor`; see [`ParetoGridArchiv
 """
 function add!(archive::ParetoGridArchive{G,M,N,O,P}, x, ev::Evaluation) where {G,M,N,O,P}
     phenotype = stored_phenotype(P, ev.phenotype)
+    f = objectives(archive, ev)    # throws before the archive changes
     i = cell_index(archive, ev.descriptor)
-    i == 0 && return AddResult(Rejected, 0.0)
-    f = objectives(archive, ev)
+    i == 0 && return outside_result(Float64)
     result, remove = front_outcome(archive, i, f)
     result.status == Rejected && return result
     insert_front!(archive, i, x, f, stored_descriptor(archive, ev.descriptor), phenotype, remove)
@@ -444,15 +444,12 @@ function add_batch!(archive::ParetoGridArchive{G,M,N,O,P}, xs::AbstractVector,
     cells = Vector{Int}(undef, n)
     fitness = Vector{eltype(archive.fitness)}(undef, n)
     for k in 1:n
+        # Both checks throw before the archive changes.
+        fitness[k] = objectives(archive, evs[k])
+        stored_phenotype(P, evs[k].phenotype)
         i = cell_index(archive, evs[k].descriptor)
-        stored_phenotype(P, evs[k].phenotype)    # throws before the archive changes
         cells[k] = i
-        if i == 0
-            results[k] = AddResult(Rejected, 0.0)
-        else
-            fitness[k] = objectives(archive, evs[k])
-            results[k] = first(front_outcome(archive, i, fitness[k]))
-        end
+        results[k] = i == 0 ? outside_result(Float64) : first(front_outcome(archive, i, fitness[k]))
     end
     for k in 1:n
         i = cells[k]

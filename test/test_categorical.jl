@@ -62,7 +62,7 @@ end
     @test QD.cell_index(rejecting, [1, NaN]) == 0
     @test QD.cell_index(rejecting, (1, 10)) == 2
     r = QD.add!(rejecting, [1.0], Evaluation(1.0f0, (1.5, 10)))
-    @test r.status == QD.Rejected && r.improvement === 0.0 && length(rejecting) == 0
+    @test r.status == QD.Rejected && r.improvement === -Inf && length(rejecting) == 0
 end
 
 @testset "CategoricalArchive stores and reports like any cell archive" begin

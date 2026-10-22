@@ -10,9 +10,11 @@ abstract type SelectionRule end
 """
     FilterSelection()
 
-Recombine the candidates that the archive accepted: a new cell or an improvement.
-This is the selection of CMA-ME. With no such candidate the distribution does not
-change.
+Recombine as many of the first-ranked candidates as the archive accepted, a new cell
+or an improvement. With a two-stage ranker, which places the accepted candidates first,
+these are the accepted candidates themselves; with another ranker they are the
+top-ranked ones, accepted or not. This is the selection of CMA-ME and of pyribs. With
+no accepted candidate the distribution does not change.
 """
 struct FilterSelection <: SelectionRule end
 
@@ -170,7 +172,7 @@ function start_mean(rng, emitter::CMAEmitter, archive)
     if !emitter.started && x0 !== nothing
         return x0
     end
-    return elite_start(rng, archive, emitter.es.dim)
+    return elite_start(rng, archive, emitter.es)
 end
 
 function elite_start(rng, archive, dim)
@@ -180,12 +182,24 @@ function elite_start(rng, archive, dim)
     return collect(Float64, elite)
 end
 
+# A random elite, moved inside the bounds of the strategy. An elite can lie outside them:
+# `random_solution` and the variation operators of other emitters do not know the bounds,
+# and a search that starts outside draws every solution outside.
+function elite_start(rng, archive, es::AbstractEvolutionStrategy)
+    start = elite_start(rng, archive, es.dim)
+    for i in eachindex(start)
+        start[i] = clamp(start[i], es.lower[i], es.upper[i])
+    end
+    return start
+end
+
 """
     ask(rng, emitter::CMAEmitter, archive) -> Vector{G}
 
 A batch of candidates drawn from the search distribution. The first call, and the
-first after a restart, starts a new search from a random elite of `archive`
-(the first call uses `x0` if the emitter has one).
+first after a restart, starts a new search from a random elite of `archive`, moved
+inside the bounds of the strategy if it lies outside them (the first call uses `x0` if
+the emitter has one).
 """
 function ask(rng::AbstractRNG, emitter::CMAEmitter, archive::AbstractArchive{G}) where {G}
     needs_start(emitter) && start_search!(rng, emitter, archive, start_mean(rng, emitter, archive))

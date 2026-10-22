@@ -13,7 +13,8 @@ it.
 
 `batch_size` is even, and by default the default of [`CMAES`](@ref) rounded up to an
 even number. With bounds, a pair of mirrored solutions is drawn again if either lies
-outside, and moved inside the bounds after $(RESAMPLE_LIMIT) draws. Unlike for the covariance matrix strategies, the number of `parents` of
+outside, and moved inside the bounds after $(RESAMPLE_LIMIT) draws, and `θ` is moved
+inside the bounds after every step, so that the pairs keep landing inside. Unlike for the covariance matrix strategies, the number of `parents` of
 `update!` has no effect: the ranks of the whole batch make up the gradient. A
 restart resets `θ` and the state of Adam. `should_stop` also reports a last step of
 `θ` below `1e-9` times its norm.
@@ -117,7 +118,9 @@ function update!(es::OpenAIES, order::AbstractVector{<:Integer}, parents::Intege
     es.moment2 .= es.beta2 .* es.moment2 .+ (1 - es.beta2) .* gradient .^ 2
     scale = es.learning_rate * sqrt(1 - es.beta2^es.steps) / (1 - es.beta1^es.steps)
     step = scale .* es.moment1 ./ (sqrt.(es.moment2) .+ es.epsilon)
-    es.theta .+= step
+    for i in 1:es.dim
+        es.theta[i] = clamp(es.theta[i] + step[i], es.lower[i], es.upper[i])
+    end
     es.update_ratio = norm(step) / max(norm(es.theta), floatmin(Float64))
     return es
 end

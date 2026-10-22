@@ -25,9 +25,12 @@ abstract type AbstractRanker end
 """
     ObjectiveRanker()
 
-Ranks candidates by fitness alone, whatever the archive did with them. A
-[`CMAEmitter`](@ref) with this ranker is a plain CMA-ES that maximizes the fitness,
-the optimizing emitter of CMA-ME.
+Ranks candidates by fitness alone, whatever the archive did with them: the optimizing
+emitter of CMA-ME. With [`MuSelection`](@ref) and [`ConvergenceRestart`](@ref) a
+[`CMAEmitter`](@ref) with this ranker is a plain CMA-ES that maximizes the fitness; with
+the default [`FilterSelection`](@ref) and [`NoImprovementRestart`](@ref) it recombines
+as many of the fittest candidates as the archive accepted and restarts when it accepts
+none, as in pyribs.
 """
 struct ObjectiveRanker <: AbstractRanker end
 

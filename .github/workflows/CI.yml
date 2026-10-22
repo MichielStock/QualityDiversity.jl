@@ -8,12 +8,19 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    name: Julia ${{ matrix.version }}
+    name: Julia ${{ matrix.version }}, ${{ matrix.threads }} thread(s)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         version: ['lts', '1']
+        threads: [1]
+        include:
+          # evaluate_batch and the device emitters use threads
+          - version: '1'
+            threads: 4
+    env:
+      JULIA_NUM_THREADS: ${{ matrix.threads }}
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2

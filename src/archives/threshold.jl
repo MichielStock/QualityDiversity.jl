@@ -204,14 +204,14 @@ Insert `x` into the cell of `ev.descriptor` if its fitness exceeds the cell's
 threshold, and raise the threshold; see [`ThresholdArchive`](@ref). The status
 is `NewCell` for an empty cell, `Improved` for an occupied one and `Rejected`
 otherwise. A descriptor that the wrapped archive discards gives `Rejected` with
-zero `improvement`.
+the lowest `improvement`, `-Inf` for a floating-point fitness type.
 """
 function add!(archive::ThresholdArchive{G,F,D,P}, x, ev::Evaluation{<:Real}) where {G,F,D,P}
     phenotype = stored_phenotype(P, ev.phenotype)
     fitness = stored_fitness(F, ev.fitness)    # throws before either archive changes
     i = cell_index(archive.inner, ev.descriptor)
     offer!(archive.result, x, ev)
-    i == 0 && return AddResult(Rejected, zero(F))
+    i == 0 && return outside_result(F)
     result = classify(archive, i, fitness)
     result.status == Rejected && return result
     threshold = next_threshold(archive.learning_rate, archive.thresholds[i], fitness, 1)
@@ -248,7 +248,7 @@ function add_batch!(archive::ThresholdArchive{G,F,D,P}, xs::AbstractVector, evs:
     for k in 1:n
         i = cell_index(archive.inner, evs[k].descriptor)
         cells[k] = i
-        results[k] = i == 0 ? AddResult(Rejected, zero(F)) :
+        results[k] = i == 0 ? outside_result(F) :
                      classify(archive, i, stored_fitness(F, evs[k].fitness))
         results[k].status == Rejected || push!(passing, k)
     end
