@@ -10,16 +10,16 @@ coverage
 max_fitness
 mean_fitness
 cqd_score
-CQDScore
+QualityDiversity.CQDScore
 ```
 
 ## Several objectives
 
 ```@docs
 hypervolume
-max_hypervolume
+QualityDiversity.max_hypervolume
 global_hypervolume
-max_scores
+QualityDiversity.max_scores
 ```
 
 ## Plotting

@@ -28,7 +28,7 @@ It needs Julia 1.10 or later.
 ## Quick start
 
 ```@example index
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 
 prob = Rastrigin(10)                                  # a benchmark with 10 parameters
@@ -55,6 +55,21 @@ solve(prob, CMAME(prob; dims=(20, 20), sigma0=0.5); budget=50_000)
 ```
 
 With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
+
+## Exported and public names
+
+`using QualityDiversity` brings in the names a script needs: the problem wrappers,
+the archives, variations, emitters and algorithms, `solve` and the metrics. The rest of
+the interface is public but not exported, so it never clashes with another package and
+you write it with a qualified name: the functions you extend for a type of your own, such
+as `QualityDiversity.evaluate`, and the values of keyword arguments, such as
+`CMAME(prob; ranker=QualityDiversity.ObjectiveRanker(), ...)`. The benchmark problems
+live in the submodule `QualityDiversity.Benchmarks`, which exports them:
+
+```julia
+using QualityDiversity, QualityDiversity.Benchmarks
+prob = Sphere(20)
+```
 
 ## What is included
 

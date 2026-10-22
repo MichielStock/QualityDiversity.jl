@@ -76,7 +76,7 @@ end
     # the results are against the empty archive, so both solutions in the first cell are new
     @test [r.status for r in rs] == [QD.NewCell, QD.NewCell, QD.NewCell]
     @test [r.improvement for r in rs] == [1.0, 2.0, 1.0]
-    @test rs isa Vector{AddResult{Float64}}
+    @test rs isa Vector{QD.AddResult{Float64}}
     @test sort(first.(collect(QD.elites(a)))) == [[2.0], [3.0]]          # the better one stays
     @test_throws "got 1 solutions but 3 evaluations" QD.add_batch!(a, [[1.0]], evs)
     @test isempty(QD.add_batch!(a, Vector{Float64}[], Evaluation{Float64,SVector{1,Float64}}[]))
@@ -105,14 +105,14 @@ end
     # unsigned fitness: a worse solution is rejected with zero improvement, not wrapped around
     for archive in (GridArchive{Vector{Float64},UInt8}((2,), ((0, 1),)),
                     UnstructuredArchive{Vector{Float64},UInt8}(1; capacity=4, novelty_threshold=0.5))
-        @test QD.add!(archive, [1.0], Evaluation(UInt8(5), SVector(0.1))) == AddResult(QD.NewCell, UInt8(5))
-        @test QD.add!(archive, [2.0], Evaluation(UInt8(3), SVector(0.1))) == AddResult(QD.Rejected, UInt8(0))
-        @test QD.add!(archive, [3.0], Evaluation(UInt8(9), SVector(0.1))) == AddResult(QD.Improved, UInt8(4))
+        @test QD.add!(archive, [1.0], Evaluation(UInt8(5), SVector(0.1))) == QD.AddResult(QD.NewCell, UInt8(5))
+        @test QD.add!(archive, [2.0], Evaluation(UInt8(3), SVector(0.1))) == QD.AddResult(QD.Rejected, UInt8(0))
+        @test QD.add!(archive, [3.0], Evaluation(UInt8(9), SVector(0.1))) == QD.AddResult(QD.Improved, UInt8(4))
         @test max_fitness(archive) == 9
     end
     unsigned = GridArchive{Vector{Float64},UInt8}((2,), ((0, 1),))
     QD.add!(unsigned, [1.0], Evaluation(UInt8(5), SVector(0.1)))
-    @test QD.add_batch!(unsigned, [[2.0]], [Evaluation(UInt8(3), SVector(0.1))]) == [AddResult(QD.Rejected, UInt8(0))]
+    @test QD.add_batch!(unsigned, [[2.0]], [Evaluation(UInt8(3), SVector(0.1))]) == [QD.AddResult(QD.Rejected, UInt8(0))]
 end
 
 # The results of a batch are against the archive before it; the archive after it

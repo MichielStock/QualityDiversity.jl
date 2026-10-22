@@ -17,7 +17,7 @@ kernels and what runs on the host. The second form takes `T` from `genotype`, `F
 
 ```julia
 using CUDA
-prob = Rastrigin(20)
+prob = QualityDiversity.Benchmarks.Rastrigin(20)
 alg = MAPElites(prob; dims=(100, 100), batch_size=10_000, device=CuArray,
                 genotype=Vector{Float32}, fitness=Float32, variation=GaussianMutation(0.5f0))
 result = solve(prob, alg; budget=1_000_000, rng=Xoshiro(1))

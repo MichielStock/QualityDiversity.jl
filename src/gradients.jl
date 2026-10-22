@@ -14,7 +14,8 @@ The default differentiates `evaluate(prob, x)` with ForwardDiff.jl, which must b
 `x` rather than convert its entries to `Float64`, since ForwardDiff passes vectors of dual
 numbers; a [`QDProblem`](@ref) does, if its function does. A problem defines this method
 itself to give its gradients in closed form, which is faster, or to compute them with
-another automatic-differentiation package. [`Sphere`](@ref) and [`Rastrigin`](@ref) define
+another automatic-differentiation package. [`Sphere`](@ref QualityDiversity.Benchmarks.Sphere) and
+[`Rastrigin`](@ref QualityDiversity.Benchmarks.Rastrigin) define
 it in closed form. Stochastic problems have no gradient.
 
 # Example

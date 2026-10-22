@@ -7,7 +7,7 @@ VERSION < v"1.11" && Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..", "..")
 Pkg.instantiate()
 
 using BenchmarkTools
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 using Statistics: median, quantile
 

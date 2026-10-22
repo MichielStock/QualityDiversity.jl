@@ -36,7 +36,7 @@ Julia 1.10 or later.
 ## Quick start
 
 ```julia
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 
 prob = Rastrigin(10)                                  # a benchmark with 10 parameters

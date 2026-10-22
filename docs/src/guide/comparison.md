@@ -26,8 +26,8 @@ libraries on the same inputs (`test/reference`).
 | [`VariationEmitter`](@ref) | `GaussianEmitter`, `IsoLineEmitter` | `MixingEmitter` |
 | [`CMAEmitter`](@ref) | `EvolutionStrategyEmitter` | `CMAEmitter` and its subclasses |
 | [`BanditScheduler`](@ref) | `BanditScheduler` | — |
-| [`CMAES`](@ref), [`SepCMAES`](@ref), [`LMMAES`](@ref), [`OpenAIES`](@ref) | `CMAEvolutionStrategy`, `SeparableCMAEvolutionStrategy`, `LMMAEvolutionStrategy`, `OpenAIEvolutionStrategy` | `CMAES` |
-| [`ImprovementRanker`](@ref), [`TwoStageImprovementRanker`](@ref), … | `ImprovementRanker`, `TwoStageImprovementRanker`, … | emitter subclasses |
+| [`CMAES`](@ref QualityDiversity.CMAES), [`SepCMAES`](@ref QualityDiversity.SepCMAES), [`LMMAES`](@ref QualityDiversity.LMMAES), [`OpenAIES`](@ref QualityDiversity.OpenAIES) | `CMAEvolutionStrategy`, `SeparableCMAEvolutionStrategy`, `LMMAEvolutionStrategy`, `OpenAIEvolutionStrategy` | `CMAES` |
+| [`ImprovementRanker`](@ref QualityDiversity.ImprovementRanker), [`TwoStageImprovementRanker`](@ref QualityDiversity.TwoStageImprovementRanker), … | `ImprovementRanker`, `TwoStageImprovementRanker`, … | emitter subclasses |
 | [`solve`](@ref) | a loop over `scheduler.ask()` and `scheduler.tell()` | a loop over `map_elites.update`, or `scan_update` |
 | [`cqd_score`](@ref) | `cqd_score` | — |
 | `heatmap(archive)` (Makie) | `grid_archive_heatmap`, `cvt_archive_heatmap` | `plot_2d_map_elites_repertoire` |

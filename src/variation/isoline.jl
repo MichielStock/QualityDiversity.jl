@@ -20,7 +20,7 @@ new array of floating-point numbers with those indices, made with `similar` from
 # Example
 
 ```julia
-prob = Rastrigin(10)
+prob = QualityDiversity.Benchmarks.Rastrigin(10)
 alg = MAPElites(prob; dims=(20, 20), variation=IsoLineVariation(0.01, 0.2))
 ```
 """

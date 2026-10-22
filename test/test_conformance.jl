@@ -69,7 +69,7 @@ end
                                 init=rng -> 2 .* rand(rng, 3) .- 1, bounds=((-1, 1), (-1, 1)))
     test_problem(noisy)
     test_problem(Sampled(noisy; num_samples=3))
-    test_problem(Sampled(noisy; num_samples=4, expectation=Median()))
+    test_problem(Sampled(noisy; num_samples=4, expectation=QD.Median()))
     test_problem(StochasticQDProblem((rng, x) -> (randn(rng), (rand(rng, 1:3), :ring));
                                      init=rng -> randn(rng, 2), categories=(1:3, [:chain, :ring])))
     test_archive(() -> CategoricalArchive(labelled), labelled; sequential_batch=false)
@@ -159,9 +159,9 @@ end
     test_front_archive(() -> ParetoGridArchive(prob; dims=(4, 4), reference_point=reference, genotype=SVector{4,Float64}), prob)
     test_front_archive(() -> ParetoGridArchive(prob; dims=(4, 4), reference_point=reference, outside=ClampOutside()), prob)
     test_front_archive(() -> ParetoGridArchive(prob; dims=(3, 3), reference_point=reference, max_front=4,
-                                               duplicates=KeepDuplicates(), full_front=ReplaceCrowded()), prob)
+                                               duplicates=QD.KeepDuplicates(), full_front=QD.ReplaceCrowded()), prob)
     test_front_archive(() -> ParetoGridArchive(prob; dims=(3, 3), reference_point=reference, max_front=4,
-                                               genotype=SVector{4,Float64}, full_front=ReplaceCrowded()), prob)
+                                               genotype=SVector{4,Float64}, full_front=QD.ReplaceCrowded()), prob)
     three = QDProblem(x -> (SVector(-sum(abs2, x .- 1), -sum(abs2, x .+ 1), -sum(abs2, x)), (x[1], x[2]));
                       init=rng -> 4 .* rand(rng, 3) .- 2, bounds=((-2, 2), (-2, 2)))
     test_front_archive(() -> ParetoGridArchive(three; dims=(4, 4), reference_point=[-100.0, -100.0, -100.0]), three;
@@ -189,20 +189,20 @@ end
     for op in (GaussianMutation(0.2), IsoLineVariation(0.05, 0.3), PolynomialMutation(-5.12, 5.12), UniformCrossover())
         test_emitter(VariationEmitter(op; batch_size=16), filled(), prob)
     end
-    for (ranker, selection, restart) in ((TwoStageImprovementRanker(), FilterSelection(), NoImprovementRestart()),
-                                         (ImprovementRanker(), MuSelection(), ConvergenceRestart()),
-                                         (ObjectiveRanker(), MuSelection(), PeriodicRestart(2)))
+    for (ranker, selection, restart) in ((QD.TwoStageImprovementRanker(), QD.FilterSelection(), QD.NoImprovementRestart()),
+                                         (QD.ImprovementRanker(), QD.MuSelection(), QD.ConvergenceRestart()),
+                                         (QD.ObjectiveRanker(), QD.MuSelection(), QD.PeriodicRestart(2)))
         test_emitter(CMAEmitter(4; sigma0=1.0, ranker, selection, restart), filled(), prob)
         test_emitter(CMAEmitter(4; sigma0=1.0, ranker, selection, restart, x0=zeros(4), batch_size=9), filled(), prob)
     end
     test_emitter(CMAEmitter(4; sigma0=1.0, lower=-5.12, upper=5.12), filled(), prob)
-    for ranker in (TwoStageObjectiveRanker(), RandomDirectionRanker(), TwoStageRandomDirectionRanker(),
-                   AcceptedRandomDirectionRanker())
+    for ranker in (QD.TwoStageObjectiveRanker(), QD.RandomDirectionRanker(), QD.TwoStageRandomDirectionRanker(),
+                   QD.AcceptedRandomDirectionRanker())
         test_emitter(CMAEmitter(4; sigma0=1.0, ranker), filled(), prob)
     end
-    for strategy in (PyribsCMAES, SepCMAES, OpenAIES, LMMAES)
+    for strategy in (QD.PyribsCMAES, QD.SepCMAES, QD.OpenAIES, QD.LMMAES)
         # LMMAES needs a batch smaller than the dimension
-        test_emitter(CMAEmitter(4; sigma0=1.0, strategy, batch_size=3 + 3 * (strategy === OpenAIES)), filled(), prob)
+        test_emitter(CMAEmitter(4; sigma0=1.0, strategy, batch_size=3 + 3 * (strategy === QD.OpenAIES)), filled(), prob)
     end
     # genotypes other than Vector{Float64}
     for G in (Vector{Float32}, SVector{4,Float64})
@@ -214,7 +214,7 @@ end
     # bandit schedulers, with emitters of different batch sizes in one pool
     pool() = (VariationEmitter(GaussianMutation(0.2); batch_size=16), VariationEmitter(UniformCrossover(); batch_size=5),
               CMAEmitter(4; sigma0=1.0), CMAEmitter(4; sigma0=1.0, batch_size=9))
-    for num_active in 1:4, reselect in (ReselectTerminated(), ReselectAll())
+    for num_active in 1:4, reselect in (QD.ReselectTerminated(), QD.ReselectAll())
         test_emitter(BanditScheduler(pool(); num_active, reselect), filled(), prob)
     end
     test_emitter(BanditScheduler((CMAEmitter(4; sigma0=1.0),); num_active=1, window=1), filled(), prob)

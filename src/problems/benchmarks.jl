@@ -1,3 +1,23 @@
+"""
+    QualityDiversity.Benchmarks
+
+The benchmark problems of the package: [`Rastrigin`](@ref), [`Sphere`](@ref) and
+[`BiSphere`](@ref). They are not exported from `QualityDiversity`, because `Sphere` is
+also a name of Makie and GeometryBasics; load them with
+
+```julia
+using QualityDiversity, QualityDiversity.Benchmarks
+prob = Rastrigin(10)
+```
+"""
+module Benchmarks
+
+using ..QualityDiversity: QualityDiversity, AbstractQDProblem, Evaluation
+using Random: AbstractRNG
+using StaticArrays: SVector
+
+export Rastrigin, Sphere, BiSphere
+
 const RASTRIGIN_LIMIT = 5.12
 
 # The number type a benchmark computes in: `Float64`, or the element type of the solution
@@ -26,15 +46,15 @@ struct Rastrigin <: AbstractQDProblem
     end
 end
 
-function evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
+function QualityDiversity.evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
     length(x) == prob.dim ||
         throw(ArgumentError("solution has $(length(x)) entries but Rastrigin has dimension $(prob.dim)"))
-    return device_evaluate(prob, x)
+    return QualityDiversity.device_evaluate(prob, x)
 end
 
 # Without the length check, whose message a device kernel cannot build; the archive
 # checks the length of the solutions of a device batch.
-function device_evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
+function QualityDiversity.device_evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
     n = prob.dim
     h = n ÷ 2
     T = compute_type(x)
@@ -55,16 +75,16 @@ function device_evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
     return Evaluation(-(10 * n + total), descriptor)
 end
 
-function random_solution(rng::AbstractRNG, prob::Rastrigin)
+function QualityDiversity.random_solution(rng::AbstractRNG, prob::Rastrigin)
     return (2 * rand(rng, prob.dim) .- 1) .* RASTRIGIN_LIMIT
 end
 
-function descriptor_bounds(::Rastrigin)
+function QualityDiversity.descriptor_bounds(::Rastrigin)
     return ((-RASTRIGIN_LIMIT, RASTRIGIN_LIMIT), (-RASTRIGIN_LIMIT, RASTRIGIN_LIMIT))
 end
 
 # Each clipped term of the Rastrigin sum is at most 40.5.
-fitness_offset(prob::Rastrigin) = 41.0 * prob.dim
+QualityDiversity.fitness_offset(prob::Rastrigin) = 41.0 * prob.dim
 
 const SPHERE_LIMIT = 5.12
 const SPHERE_SHIFT = 0.4 * SPHERE_LIMIT
@@ -99,13 +119,13 @@ end
 # A parameter inside the box stays; outside it, it is mapped back into the box.
 sphere_clip(x) = -SPHERE_LIMIT <= x <= SPHERE_LIMIT ? x : SPHERE_LIMIT / x
 
-function evaluate(prob::Sphere, x::AbstractVector{<:Real})
+function QualityDiversity.evaluate(prob::Sphere, x::AbstractVector{<:Real})
     length(x) == prob.dim ||
         throw(ArgumentError("solution has $(length(x)) entries but Sphere has dimension $(prob.dim)"))
-    return device_evaluate(prob, x)
+    return QualityDiversity.device_evaluate(prob, x)
 end
 
-function device_evaluate(prob::Sphere, x::AbstractVector{<:Real})
+function QualityDiversity.device_evaluate(prob::Sphere, x::AbstractVector{<:Real})
     n = prob.dim
     h = n ÷ 2
     T = compute_type(x)
@@ -121,11 +141,11 @@ function device_evaluate(prob::Sphere, x::AbstractVector{<:Real})
     return Evaluation(100 * (1 - distance / worst), SVector(first_half, second_half))
 end
 
-function random_solution(rng::AbstractRNG, prob::Sphere)
+function QualityDiversity.random_solution(rng::AbstractRNG, prob::Sphere)
     return (2 * rand(rng, prob.dim) .- 1) .* SPHERE_LIMIT
 end
 
-function descriptor_bounds(prob::Sphere)
+function QualityDiversity.descriptor_bounds(prob::Sphere)
     limit = SPHERE_LIMIT * prob.dim / 2
     return ((-limit, limit), (-limit, limit))
 end
@@ -157,7 +177,7 @@ struct BiSphere <: AbstractQDProblem
     end
 end
 
-function evaluate(prob::BiSphere, x::AbstractVector{<:Real})
+function QualityDiversity.evaluate(prob::BiSphere, x::AbstractVector{<:Real})
     n = prob.dim
     length(x) == n ||
         throw(ArgumentError("solution has $(length(x)) entries but BiSphere has dimension $n"))
@@ -182,15 +202,15 @@ function evaluate(prob::BiSphere, x::AbstractVector{<:Real})
     return Evaluation(SVector(-near, -far), descriptor)
 end
 
-function random_solution(rng::AbstractRNG, prob::BiSphere)
+function QualityDiversity.random_solution(rng::AbstractRNG, prob::BiSphere)
     return (2 * rand(rng, prob.dim) .- 1) .* BISPHERE_LIMIT
 end
 
-function descriptor_bounds(::BiSphere)
+function QualityDiversity.descriptor_bounds(::BiSphere)
     return ((-BISPHERE_LIMIT, BISPHERE_LIMIT), (-BISPHERE_LIMIT, BISPHERE_LIMIT))
 end
 
-function reference_point(prob::BiSphere)
+function QualityDiversity.reference_point(prob::BiSphere)
     lowest = -prob.dim * (BISPHERE_LIMIT + BISPHERE_CENTER)^2
     return SVector(lowest, lowest)
 end
@@ -198,8 +218,8 @@ end
 # The gradients in closed form, several times faster than ForwardDiff and available without
 # it. At a clipping limit the derivative is the one from inside; ForwardDiff 1 takes the one
 # from outside.
-function evaluate_gradient(prob::Rastrigin, x::AbstractVector{<:Real})
-    ev = evaluate(prob, x)
+function QualityDiversity.evaluate_gradient(prob::Rastrigin, x::AbstractVector{<:Real})
+    ev = QualityDiversity.evaluate(prob, x)
     n = prob.dim
     h = n ÷ 2
     jacobian = zeros(3, n)
@@ -212,8 +232,8 @@ function evaluate_gradient(prob::Rastrigin, x::AbstractVector{<:Real})
     return ev, jacobian
 end
 
-function evaluate_gradient(prob::Sphere, x::AbstractVector{<:Real})
-    ev = evaluate(prob, x)
+function QualityDiversity.evaluate_gradient(prob::Sphere, x::AbstractVector{<:Real})
+    ev = QualityDiversity.evaluate(prob, x)
     n = prob.dim
     h = n ÷ 2
     worst = (SPHERE_LIMIT + SPHERE_SHIFT)^2 * n
@@ -225,3 +245,5 @@ function evaluate_gradient(prob::Sphere, x::AbstractVector{<:Real})
     end
     return ev, jacobian
 end
+
+end # module Benchmarks

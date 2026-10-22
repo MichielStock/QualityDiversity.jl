@@ -32,12 +32,12 @@ CMAEmitter
 ### Evolution strategies
 
 ```@docs
-AbstractEvolutionStrategy
-CMAES
-PyribsCMAES
-SepCMAES
-LMMAES
-OpenAIES
+QualityDiversity.AbstractEvolutionStrategy
+QualityDiversity.CMAES
+QualityDiversity.PyribsCMAES
+QualityDiversity.SepCMAES
+QualityDiversity.LMMAES
+QualityDiversity.OpenAIES
 QualityDiversity.reset!
 QualityDiversity.sample!
 QualityDiversity.update!
@@ -50,34 +50,34 @@ QualityDiversity.PyribsRankOne
 ### Rankers
 
 ```@docs
-AbstractRanker
+QualityDiversity.AbstractRanker
 QualityDiversity.rank_key
 QualityDiversity.reset_ranker!
-ObjectiveRanker
-ImprovementRanker
-TwoStageImprovementRanker
-TwoStageObjectiveRanker
-DirectionRanker
-RandomDirectionRanker
-TwoStageRandomDirectionRanker
-AcceptedRandomDirectionRanker
+QualityDiversity.ObjectiveRanker
+QualityDiversity.ImprovementRanker
+QualityDiversity.TwoStageImprovementRanker
+QualityDiversity.TwoStageObjectiveRanker
+QualityDiversity.DirectionRanker
+QualityDiversity.RandomDirectionRanker
+QualityDiversity.TwoStageRandomDirectionRanker
+QualityDiversity.AcceptedRandomDirectionRanker
 ```
 
 ### Selection rules
 
 ```@docs
 QualityDiversity.SelectionRule
-FilterSelection
-MuSelection
+QualityDiversity.FilterSelection
+QualityDiversity.MuSelection
 ```
 
 ### Restart rules
 
 ```@docs
 QualityDiversity.RestartRule
-NoImprovementRestart
-ConvergenceRestart
-PeriodicRestart
+QualityDiversity.NoImprovementRestart
+QualityDiversity.ConvergenceRestart
+QualityDiversity.PeriodicRestart
 ```
 
 ## Gradient emitters
@@ -93,8 +93,8 @@ GradientOperatorEmitter
 QualityDiversity.ask_gradients
 QualityDiversity.tell_gradients!
 QualityDiversity.GradientOptimizer
-AdamAscent
-GradientAscent
+QualityDiversity.AdamAscent
+QualityDiversity.GradientAscent
 ```
 
 ## Bandit scheduler
@@ -103,6 +103,6 @@ GradientAscent
 BanditScheduler
 QualityDiversity.active
 QualityDiversity.ReselectRule
-ReselectTerminated
-ReselectAll
+QualityDiversity.ReselectTerminated
+QualityDiversity.ReselectAll
 ```

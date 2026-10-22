@@ -1,6 +1,6 @@
 # Fill a 20×20 grid archive on the 10-dimensional Rastrigin benchmark.
 # Run from the repository root: julia --project examples/rastrigin.jl
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 
 prob = Rastrigin(10)

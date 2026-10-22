@@ -116,7 +116,7 @@ properties `iterations`, the number of batches told, and `restarts`.
 # Example
 
 ```jldoctest
-julia> using QualityDiversity, Random
+julia> using QualityDiversity, QualityDiversity.Benchmarks, Random
 
 julia> prob = Rastrigin(10);
 

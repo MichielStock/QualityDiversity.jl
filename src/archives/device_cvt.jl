@@ -34,7 +34,7 @@ plot it.
 
 ```julia
 using CUDA
-prob = Rastrigin(20)
+prob = QualityDiversity.Benchmarks.Rastrigin(20)
 archive = DeviceCVTArchive(prob; cells=10_000, device=CuArray, rng=Xoshiro(1),
                            genotype=Vector{Float32}, fitness=Float32)
 alg = MAPElites(archive; batch_size=10_000, variation=GaussianMutation(0.5f0))

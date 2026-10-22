@@ -243,7 +243,7 @@ end
 [`CMAES`](@ref) with the rank-one covariance weight of pyribs, `c1²` instead of `c1`;
 see [`PyribsRankOne`](@ref). It exists to reproduce results that were produced with
 pyribs, such as those of the CMA-MAE paper, where it makes a search explore with rounder
-distributions. Pass it as `strategy=PyribsCMAES` to a [`CMAEmitter`](@ref),
+distributions. Pass it as `strategy=QualityDiversity.PyribsCMAES` to a [`CMAEmitter`](@ref),
 [`CMAME`](@ref) or [`CMAMAE`](@ref).
 """
 PyribsCMAES(dim::Integer; kwargs...) = CMAES(dim; kwargs..., rank_one=PyribsRankOne())

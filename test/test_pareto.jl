@@ -120,10 +120,10 @@ end
 
 @testset "duplicates" begin
     a = pareto_archive()
-    @test a.duplicates === RejectDuplicates()
+    @test a.duplicates === QD.RejectDuplicates()
     QD.add!(a, [1.0], ev2(1, 3))
     @test QD.add!(a, [2.0], ev2(1, 3)) == QD.AddResult(QD.Rejected, 0.0) && QD.num_solutions(a) == 1
-    b = pareto_archive(duplicates=KeepDuplicates())
+    b = pareto_archive(duplicates=QD.KeepDuplicates())
     QD.add!(b, [1.0], ev2(1, 3))
     @test QD.add!(b, [2.0], ev2(1, 3)) == QD.AddResult(QD.Improved, 0.0)
     @test QD.num_solutions(b) == 2 && QD.qd_score(b) == 3.0
@@ -132,8 +132,8 @@ end
     @test QD.add!(b, [4.0], ev2(1, 4)).status == QD.Improved
     @test [g for (g, _) in QD.elites(b)] == [[4.0]] && QD.qd_score(b) == 4.0
     # a full front of copies rejects one more copy, whatever the full-front rule
-    for full_front in (RejectNewcomer(), ReplaceCrowded())
-        c = pareto_archive(duplicates=KeepDuplicates(), full_front=full_front, max_front=2)
+    for full_front in (QD.RejectNewcomer(), QD.ReplaceCrowded())
+        c = pareto_archive(duplicates=QD.KeepDuplicates(), full_front=full_front, max_front=2)
         QD.add!(c, [1.0], ev2(1, 3)); QD.add!(c, [2.0], ev2(1, 3))
         @test QD.add!(c, [3.0], ev2(1, 3)).status == QD.Rejected
         @test sort([g[1] for (g, _) in QD.elites(c)]) == [1.0, 2.0]
@@ -142,7 +142,7 @@ end
 
 @testset "a full front replaces its most crowded solution" begin
     function full_front(ts; max_front=3)
-        a = pareto_archive(; max_front, full_front=ReplaceCrowded())
+        a = pareto_archive(; max_front, full_front=QD.ReplaceCrowded())
         for (k, t) in enumerate(ts)
             QD.add!(a, [Float64(k)], ev2(t, 1 - t))
         end
@@ -180,7 +180,7 @@ end
     @test QD.add!(a, [2.0], ev2(0.8, 0.2)).status == QD.Rejected && ids(a) == [1.0]
     # an objective in which every solution is equal adds nothing to the distance
     ev3(f...) = Evaluation(SVector(Float64.(f)...), SVector(0.2, 0.2))
-    a = ParetoGridArchive{Float64}((2, 2), ((0, 1), (0, 1)); reference_point=zeros(3), max_front=3, full_front=ReplaceCrowded())
+    a = ParetoGridArchive{Float64}((2, 2), ((0, 1), (0, 1)); reference_point=zeros(3), max_front=3, full_front=QD.ReplaceCrowded())
     for (k, t) in enumerate((0.1, 0.2, 0.9))
         QD.add!(a, Float64(k), ev3(t, 1 - t, 0.5))
     end
@@ -194,7 +194,7 @@ end
 @testset "fronts kept as by MOME-PGX" begin
     for c in crowding_cases
         m = c.objectives
-        a = ParetoGridArchive{Int}((1,), ((0.0, 1.0),); reference_point=fill(-10.0, m), max_front=c.max_front, duplicates=KeepDuplicates(), full_front=ReplaceCrowded())
+        a = ParetoGridArchive{Int}((1,), ((0.0, 1.0),); reference_point=fill(-10.0, m), max_front=c.max_front, duplicates=QD.KeepDuplicates(), full_front=QD.ReplaceCrowded())
         for i in 1:length(c.fitness)÷m
             QD.add!(a, i - 1, Evaluation(SVector{m,Float64}(c.fitness[(i-1)*m+1:i*m]), SVector(0.5)))
         end
@@ -213,8 +213,8 @@ end
     end
 end
 
-@testset "front invariants under random insertions, $duplicates, $full_front" for duplicates in (RejectDuplicates(), KeepDuplicates()),
-                                                                                         full_front in (RejectNewcomer(), ReplaceCrowded())
+@testset "front invariants under random insertions, $duplicates, $full_front" for duplicates in (QD.RejectDuplicates(), QD.KeepDuplicates()),
+                                                                                         full_front in (QD.RejectNewcomer(), QD.ReplaceCrowded())
     rng = Xoshiro(4)
     a = pareto_archive(; dims=(2, 2), max_front=6, duplicates, full_front)
     for _ in 1:600
@@ -230,7 +230,7 @@ end
     for front in values(fronts)
         @test 1 <= length(front) <= 6
         @test all(f -> !any(g -> g != f && all(g .>= f), front), front)
-        duplicates isa RejectDuplicates && @test allunique(front)
+        duplicates isa QD.RejectDuplicates && @test allunique(front)
     end
     @test QD.num_solutions(a) == sum(length, values(fronts))
     @test QD.qd_score(a) ≈ sum(hypervolume(front, [0.0, 0.0]) for front in values(fronts))
@@ -267,7 +267,7 @@ end
 
     # with crowding replacement and duplicates as well
     make_crowded() = ParetoGridArchive(prob; dims=(2, 2), reference_point=QD.reference_point(prob), max_front=3,
-                                       duplicates=KeepDuplicates(), full_front=ReplaceCrowded())
+                                       duplicates=QD.KeepDuplicates(), full_front=QD.ReplaceCrowded())
     a, b = make_crowded(), make_crowded()
     QD.add_batch!(a, xs[1:60], evs[1:60])
     QD.add_batch!(b, xs[1:60], evs[1:60])
@@ -374,7 +374,7 @@ end
 @testset "a batch leaves the fronts as adding one at a time does" begin
     # C beats both stored solutions; D beats neither of them, so against the full front
     # before the batch it is rejected, but after C took their place it enters.
-    for full_front in (RejectNewcomer(), ReplaceCrowded())
+    for full_front in (QD.RejectNewcomer(), QD.ReplaceCrowded())
         make() = (a = ParetoGridArchive((1,), ((0, 1),); reference_point=[0.0, 0.0], max_front=2, full_front);
                   QD.add_batch!(a, [[1.0], [2.0]], [Evaluation([1.0, 3.0], SVector(0.5)), Evaluation([3.0, 1.0], SVector(0.5))]);
                   a)

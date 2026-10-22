@@ -111,7 +111,7 @@ end
 @testset "BanditScheduler reselection" begin
     archive = bandit_archive()
     N, R = QD.NewCell, QD.Rejected
-    cma() = CMAEmitter(4; sigma0=0.5, batch_size=4, restart=NoImprovementRestart())
+    cma() = CMAEmitter(4; sigma0=0.5, batch_size=4, restart=QD.NoImprovementRestart())
     pool = (cma(), mutation(4), cma())
 
     # a CMA emitter stays until it restarts; an emitter that cannot restart leaves every round
@@ -129,7 +129,7 @@ end
     @test QD.active(s) == [false, true, true]
 
     # ReselectAll chooses every slot again after every round
-    a = BanditScheduler((mutation(2), mutation(2), mutation(2)); num_active=2, reselect=ReselectAll())
+    a = BanditScheduler((mutation(2), mutation(2), mutation(2)); num_active=2, reselect=QD.ReselectAll())
     bandit_round!(a, archive, [N, N, R, R])
     @test QD.active(a) == [true, false, true]
 end
@@ -137,7 +137,7 @@ end
 @testset "BanditScheduler batches" begin
     archive = bandit_archive()
     pool = (mutation(3), CMAEmitter(4; sigma0=0.5, batch_size=5), mutation(7))
-    s = BanditScheduler(pool; num_active=2, reselect=ReselectAll())
+    s = BanditScheduler(pool; num_active=2, reselect=QD.ReselectAll())
     xs = QD.ask(Xoshiro(3), s, archive)
     @test length(xs) == 8 == QD.batch_size(s)
     @test xs isa Vector{Vector{Float64}}
@@ -206,7 +206,7 @@ end
             s.active[expected] .= true
             foreach(i -> s.pool[i].restart_next = true, case.restarts[t])
             xs = QD.ask(Xoshiro(1), s, archive)
-            QD.tell!(s, xs, [Evaluation(0.0, SVector(0.0)) for _ in xs], [AddResult(status(k), 0.0) for k in case.statuses[t]])
+            QD.tell!(s, xs, [Evaluation(0.0, SVector(0.0)) for _ in xs], [QD.AddResult(status(k), 0.0) for k in case.statuses[t]])
         end
     end
 end

@@ -267,7 +267,7 @@ this does not measure: each QDax step here is a batch of 12, far too small to us
   covariance matrix adapts almost only through the rank-mu term and the search stays
   rounder for longer, which helps CMA-MAE fill the grid. QualityDiversity.jl follows
   the textbook update. The CMA-MAE paper ran all its experiments with pyribs. With
-  `strategy=PyribsCMAES`, which only changes that coefficient, QualityDiversity.jl
+  `strategy=QualityDiversity.PyribsCMAES`, which only changes that coefficient, QualityDiversity.jl
   reaches 0.570 coverage and a QD score of 3.04 million against 0.582 and 3.06
   million for pyribs. Swapping the textbook term into pyribs lowers its CMA-MAE
   coverage from 0.58 to 0.46, and the step size rule and the scaling of the path make

@@ -128,7 +128,7 @@ NewCell::AddStatus = 2
 julia> QualityDiversity.add!(archive, [0.2], Evaluation(SVector(3.0, 1.0), SVector(0.2, 0.2))).improvement
 2.0
 
-julia> length(archive), num_solutions(archive), qd_score(archive)
+julia> length(archive), QualityDiversity.num_solutions(archive), qd_score(archive)
 (1, 2, 5.0)
 ```
 """

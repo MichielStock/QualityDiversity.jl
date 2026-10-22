@@ -89,8 +89,8 @@ end
     cma_state = init(prob, cma; budget=200, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(cma_state)
     JET.@test_opt target_modules = (QualityDiversity,) QD.ask(Xoshiro(1), cma_state.emitters[1], cma_state.archive)
-    for kwargs in ((; ranker=TwoStageRandomDirectionRanker()), (; strategy=SepCMAES), (; strategy=OpenAIES),
-                   (; strategy=LMMAES, batch_size=3))
+    for kwargs in ((; ranker=QD.TwoStageRandomDirectionRanker()), (; strategy=QD.SepCMAES), (; strategy=QD.OpenAIES),
+                   (; strategy=QD.LMMAES, batch_size=3))
         other = CMAME(prob; dims=(5, 5), sigma0=1.0, num_emitters=2, kwargs...)
         other_state = init(prob, other; budget=200, rng=Xoshiro(1))
         JET.@test_opt target_modules = (QualityDiversity,) step!(other_state)
@@ -99,7 +99,7 @@ end
     mae_state = init(prob, mae; budget=200, rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(mae_state)
     for alg in (CMAMEGA(prob; dims=(5, 5), sigma0=1.0, num_emitters=2),
-                CMAMEGA(prob; dims=(5, 5), sigma0=1.0, optimizer=GradientAscent(1.0)),
+                CMAMEGA(prob; dims=(5, 5), sigma0=1.0, optimizer=QD.GradientAscent(1.0)),
                 CMAMAEGA(prob; dims=(5, 5), sigma0=1.0, threshold_min=-500.0),
                 OMGMEGA(prob; dims=(5, 5), sigma0=1.0, batch_size=8))
         mega_state = init(prob, alg; budget=200, rng=Xoshiro(1))

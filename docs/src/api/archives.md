@@ -10,8 +10,8 @@ An archive stores the solutions found so far, and decides which of them to keep.
 
 ```@docs
 AbstractArchive
-AddStatus
-AddResult
+QualityDiversity.AddStatus
+QualityDiversity.AddResult
 QualityDiversity.add!
 QualityDiversity.add_batch!
 QualityDiversity.cell_index
@@ -36,7 +36,7 @@ CategoricalArchive
 ## Descriptors outside the bounds
 
 ```@docs
-OutsidePolicy
+QualityDiversity.OutsidePolicy
 ThrowOutside
 ClampOutside
 RejectOutside
@@ -65,11 +65,11 @@ DNSArchive
 
 ```@docs
 ParetoGridArchive
-num_solutions
-DuplicatePolicy
-RejectDuplicates
-KeepDuplicates
-FullFrontPolicy
-RejectNewcomer
-ReplaceCrowded
+QualityDiversity.num_solutions
+QualityDiversity.DuplicatePolicy
+QualityDiversity.RejectDuplicates
+QualityDiversity.KeepDuplicates
+QualityDiversity.FullFrontPolicy
+QualityDiversity.RejectNewcomer
+QualityDiversity.ReplaceCrowded
 ```

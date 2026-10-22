@@ -164,7 +164,7 @@ end
         archive = DeviceGridArchive(prob; dims=(8, 8), device=Array)
         QD.add_batch!(archive, [QD.random_solution(Xoshiro(k), prob) for k in 1:20],
                       [QD.evaluate(prob, QD.random_solution(Xoshiro(k), prob)) for k in 1:20])
-        test_emitter(DeviceVariationEmitter(op; batch_size=16), archive, prob)
+        test_emitter(QD.DeviceVariationEmitter(op; batch_size=16), archive, prob)
     end
 end
 
@@ -175,7 +175,7 @@ end
     QD.add_batch!(archive, xs, [QD.evaluate(prob, x) for x in xs])
     elite_set = [x for (x, _) in QD.elites(archive)]
 
-    emitter = DeviceVariationEmitter(GaussianMutation(1e-9); batch_size=300)
+    emitter = QD.DeviceVariationEmitter(GaussianMutation(1e-9); batch_size=300)
     batch = QD.ask(Xoshiro(1), emitter, archive)
     @test batch isa QD.DeviceBatch{Float64}
     @test size(parent(batch)) == (6, 300)
@@ -187,20 +187,20 @@ end
     @test collect(QD.ask(Xoshiro(2), emitter, archive)) != collect(batch)
 
     # the step has the standard deviation of the operator, in the element type of the archive
-    wide = DeviceVariationEmitter(GaussianMutation(0.5); batch_size=2000)
+    wide = QD.DeviceVariationEmitter(GaussianMutation(0.5); batch_size=2000)
     steps = [minimum(e -> sum(abs2, e - x), elite_set) for x in QD.ask(Xoshiro(3), wide, archive)]
     @test abs(sum(steps) / length(steps) / (6 * 0.25) - 1) < 0.1
 
     # iso-line children with no isotropic noise lie on the line through two elites
-    line = DeviceVariationEmitter(IsoLineVariation(0.0, 0.3); batch_size=200)
+    line = QD.DeviceVariationEmitter(IsoLineVariation(0.0, 0.3); batch_size=200)
     children = QD.ask(Xoshiro(4), line, archive)
     on_line(x) = any(((p, q),) -> (d = q - p; d == zero(d) ? x ≈ p :
                                          (t = sum((x - p) .* d) / sum(abs2, d); isapprox(x, p + t * d; atol=1e-9))),
                      ((p, q) for p in elite_set, q in elite_set))
     @test all(on_line, children)
 
-    @test_throws "DeviceVariationEmitter supports GaussianMutation and IsoLineVariation, not PolynomialMutation" DeviceVariationEmitter(PolynomialMutation(-1.0, 1.0); batch_size=4)
-    @test_throws "batch_size must be at least 1, got 0" DeviceVariationEmitter(GaussianMutation(0.1); batch_size=0)
+    @test_throws "DeviceVariationEmitter supports GaussianMutation and IsoLineVariation, not PolynomialMutation" QD.DeviceVariationEmitter(PolynomialMutation(-1.0, 1.0); batch_size=4)
+    @test_throws "batch_size must be at least 1, got 0" QD.DeviceVariationEmitter(GaussianMutation(0.1); batch_size=0)
     @test_throws "cannot sample elites from an empty archive" QD.ask(Xoshiro(1), emitter, DeviceGridArchive(prob; dims=(2, 2), device=Array))
     @test_throws "a DeviceVariationEmitter draws its parents from a device archive such as a DeviceGridArchive, not a GridArchive" QD.ask(Xoshiro(1), emitter, GridArchive(prob; dims=(2, 2)))
 end
@@ -233,7 +233,7 @@ end
     prob = Rastrigin(6)
     alg = MAPElites(prob; dims=(10, 10), batch_size=200, variation=GaussianMutation(0.5), device=Array)
     @test alg.archive isa DeviceGridArchive{Float64,Float64}
-    @test alg.emitters[1] isa DeviceVariationEmitter
+    @test alg.emitters[1] isa QD.DeviceVariationEmitter
     result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
     @test result.n_evals == 6_000
     @test result.archive isa DeviceGridArchive
@@ -275,7 +275,7 @@ end
     gpu_prob = GPUExample.GPURastrigin(JLArray, 6)
     archive = DeviceGridArchive(gpu_prob; dims=(10, 10), device=Array, genotype=Vector{Float32}, fitness=Float32)
     gpu_alg = MAPElites(archive; batch_size=100, variation=GaussianMutation(0.5f0))
-    @test gpu_alg.emitters[1] isa DeviceVariationEmitter
+    @test gpu_alg.emitters[1] isa QD.DeviceVariationEmitter
     @test coverage(solve(gpu_prob, gpu_alg; budget=3_000, rng=Xoshiro(1)).archive) > 0.3
 
     # the host emitter also works with a device archive, through the host contract
@@ -375,7 +375,7 @@ end
 
     # MAP-Elites over it, reproducible and close to the host archive
     alg = MAPElites(dev; batch_size=200, variation=GaussianMutation(0.5))
-    @test alg.emitters[1] isa DeviceVariationEmitter
+    @test alg.emitters[1] isa QD.DeviceVariationEmitter
     result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
     @test result.archive isa DeviceCVTArchive
     @test solve(prob, alg; budget=6_000, rng=Xoshiro(1)).history == result.history
@@ -387,40 +387,40 @@ end
 
 @testset "DeviceCMAEmitter" begin
     prob = Rastrigin(6)
-    emitter = DeviceCMAEmitter(6; num_emitters=4, sigma0=0.5)
+    emitter = QD.DeviceCMAEmitter(6; num_emitters=4, sigma0=0.5)
     @test QD.batch_size(emitter) == 4 * QD.batch_size(emitter.searches[1])
     @test length(emitter.searches) == 4
     # every search keeps its own copy of a ranker with state
-    directed = DeviceCMAEmitter(6; num_emitters=2, sigma0=0.5, ranker=TwoStageRandomDirectionRanker())
+    directed = QD.DeviceCMAEmitter(6; num_emitters=2, sigma0=0.5, ranker=QD.TwoStageRandomDirectionRanker())
     @test directed.searches[1].ranker !== directed.searches[2].ranker
-    @test_throws "num_emitters must be at least 1, got 0" DeviceCMAEmitter(6; num_emitters=0, sigma0=0.5)
+    @test_throws "num_emitters must be at least 1, got 0" QD.DeviceCMAEmitter(6; num_emitters=0, sigma0=0.5)
 
     archive = DeviceGridArchive(prob; dims=(10, 10), device=Array)
     xs = [QD.random_solution(Xoshiro(k), prob) for k in 1:30]
     QD.add_batch!(archive, xs, [QD.evaluate(prob, x) for x in xs])
-    test_emitter(DeviceCMAEmitter(6; num_emitters=3, sigma0=0.5), deepcopy(archive), prob)
+    test_emitter(QD.DeviceCMAEmitter(6; num_emitters=3, sigma0=0.5), deepcopy(archive), prob)
 
     # the searches start from x0, or from elites of the archive
-    near = DeviceCMAEmitter(6; num_emitters=3, sigma0=1e-6, x0=fill(0.25, 6))
+    near = QD.DeviceCMAEmitter(6; num_emitters=3, sigma0=1e-6, x0=fill(0.25, 6))
     batch = QD.ask(Xoshiro(1), near, archive)
     @test batch isa QD.DeviceBatch{Float64}
     @test all(x -> maximum(abs, x .- 0.25) < 1e-4, batch)
     elite_set = [x for (x, _) in QD.elites(archive)]
-    from_elites = DeviceCMAEmitter(6; num_emitters=5, sigma0=1e-6)
+    from_elites = QD.DeviceCMAEmitter(6; num_emitters=5, sigma0=1e-6)
     @test all(x -> any(e -> maximum(abs, x - e) < 1e-4, elite_set), QD.ask(Xoshiro(2), from_elites, archive))
     @test collect(QD.ask(Xoshiro(3), deepcopy(near), archive)) == collect(QD.ask(Xoshiro(3), deepcopy(near), archive))
 
-    @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(DeviceCMAEmitter(6; num_emitters=2, sigma0=0.5), [], [], [])
+    @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(QD.DeviceCMAEmitter(6; num_emitters=2, sigma0=0.5), [], [], [])
     asked = deepcopy(near)
     b = QD.ask(Xoshiro(1), asked, archive)
     @test_throws "expected 27 solutions, evaluations and results but got 2, 2 and 2" QD.tell!(asked, b[1:2], b[1:2], b[1:2])
     @test_throws "a DeviceCMAEmitter adds its candidates to a device archive such as a DeviceGridArchive, not a GridArchive" QD.ask(Xoshiro(1), near, GridArchive(prob; dims=(2, 2)))
-    @test_throws "the solutions of the archive have 6 entries but the emitter has dimension 4" QD.ask(Xoshiro(1), DeviceCMAEmitter(4; num_emitters=2, sigma0=0.5), archive)
+    @test_throws "the solutions of the archive have 6 entries but the emitter has dimension 4" QD.ask(Xoshiro(1), QD.DeviceCMAEmitter(4; num_emitters=2, sigma0=0.5), archive)
 
     # CMA-ME on a device: reproducible, with restarts, close to the host in quality
     alg = CMAME(prob; dims=(10, 10), sigma0=0.5, num_emitters=8, device=Array)
     @test alg.archive isa DeviceGridArchive
-    @test only(alg.emitters) isa DeviceCMAEmitter
+    @test only(alg.emitters) isa QD.DeviceCMAEmitter
     result = solve(prob, alg; budget=10_000, rng=Xoshiro(1))
     @test result.n_evals >= 10_000
     @test solve(prob, alg; budget=10_000, rng=Xoshiro(1)).history == result.history
@@ -433,8 +433,8 @@ end
     @test all(s -> s.iterations == only(state.emitters).searches[1].iterations, only(state.emitters).searches)
 
     # every ranker and strategy runs, on JLArrays as well, over a grid or a CVT archive
-    for kwargs in ((; ranker=TwoStageRandomDirectionRanker()), (; ranker=ObjectiveRanker(), selection=MuSelection()),
-                   (; strategy=SepCMAES), (; strategy=OpenAIES, restart=ConvergenceRestart()))
+    for kwargs in ((; ranker=QD.TwoStageRandomDirectionRanker()), (; ranker=QD.ObjectiveRanker(), selection=QD.MuSelection()),
+                   (; strategy=QD.SepCMAES), (; strategy=QD.OpenAIES, restart=QD.ConvergenceRestart()))
         jl = CMAME(prob; dims=(10, 10), sigma0=0.5, num_emitters=4, device=JLArray, genotype=Vector{Float32},
                    fitness=Float32, kwargs...)
         @test coverage(solve(prob, jl; budget=3_000, rng=Xoshiro(2)).archive) > 0.2

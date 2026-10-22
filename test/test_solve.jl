@@ -5,7 +5,7 @@
     @test length(alg.archive) == 0
 
     result = solve(prob, alg; budget=5_000, rng=Xoshiro(1))
-    @test result isa QDResult
+    @test result isa QD.QDResult
     @test result.n_evals == 5_000
     @test length(alg.archive) == 0   # the algorithm is not modified
     @test length(result.archive) > 10
@@ -29,7 +29,7 @@ end
     alg = MAPElites(prob; dims=(5, 5), batch_size=10)
     calls = Int[]
     state = init(prob, alg; budget=100, rng=Xoshiro(1), callback=s -> push!(calls, s.n_evals))
-    @test state isa QDState
+    @test state isa QD.QDState
     @test state.n_evals == 10        # initial population: one batch
     @test calls == [10]
     step!(state)

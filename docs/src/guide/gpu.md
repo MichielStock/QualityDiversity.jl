@@ -36,7 +36,7 @@ a batch to the GPU and back every round costs more than it saves. Then the whole
 can stay on the device:
 
 ```julia
-using CUDA, QualityDiversity
+using CUDA, QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 
 prob = Rastrigin(100)
@@ -46,9 +46,9 @@ result = solve(prob, alg; budget=10_000_000, rng=Xoshiro(1))
 ```
 
 With `device`, [`MAPElites`](@ref) builds a [`DeviceGridArchive`](@ref), whose cells are
-in arrays of that type, and a [`DeviceVariationEmitter`](@ref), which draws parents and
+in arrays of that type, and a [`DeviceVariationEmitter`](@ref QualityDiversity.DeviceVariationEmitter), which draws parents and
 mutates them in a kernel. [`CMAME`](@ref) accepts `device` too and builds a
-[`DeviceCMAEmitter`](@ref), many CMA-ES searches whose candidates are evaluated and
+[`DeviceCMAEmitter`](@ref QualityDiversity.DeviceCMAEmitter), many CMA-ES searches whose candidates are evaluated and
 added together. For a CVT archive, build a [`DeviceCVTArchive`](@ref) and pass it to
 `MAPElites(archive)`.
 
@@ -57,7 +57,8 @@ added together. For a CVT archive, build a [`DeviceCVTArchive`](@ref) and pass i
   `using KernelAbstractions`, which is how the tests run them.
 - **Evaluation.** By default the problem's `evaluate` runs in a kernel, one solution
   per thread, so it must compile for the device: no allocation and no error messages
-  built from values. [`Rastrigin`](@ref), [`Sphere`](@ref) and a [`QDProblem`](@ref)
+  built from values. [`Rastrigin`](@ref QualityDiversity.Benchmarks.Rastrigin),
+  [`Sphere`](@ref QualityDiversity.Benchmarks.Sphere) and a [`QDProblem`](@ref)
   with a simple function work. Otherwise define `evaluate_batch(prob,
   xs::DeviceBatch)` and work on `parent(xs)`, a matrix with one solution per column.
 - **Precision.** Consumer GPUs compute `Float64` many times more slowly than `Float32`,

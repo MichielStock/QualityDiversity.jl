@@ -29,6 +29,6 @@ solve
 init
 step!
 solve!
-QDState
-QDResult
+QualityDiversity.QDState
+QualityDiversity.QDResult
 ```

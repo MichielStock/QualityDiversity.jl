@@ -88,22 +88,22 @@ end
 end
 
 @testset "gradient optimizers" begin
-    @test_throws "learning_rate must be positive and finite, got 0" GradientAscent(0)
-    @test_throws "learning_rate must be positive and finite, got Inf" AdamAscent(; learning_rate=Inf)
-    @test_throws "beta1 must be in [0, 1), got 1" AdamAscent(; beta1=1)
-    @test_throws "beta2 must be in [0, 1), got -0.1" AdamAscent(; beta2=-0.1)
-    @test_throws "epsilon must be positive and finite, got 0" AdamAscent(; epsilon=0)
-    @test AdamAscent().learning_rate == 0.002
-    @test AdamAscent(; learning_rate=0.1).learning_rate == 0.1     # a keyword, as for OpenAIES
-    @test_throws MethodError AdamAscent(0.1)
+    @test_throws "learning_rate must be positive and finite, got 0" QD.GradientAscent(0)
+    @test_throws "learning_rate must be positive and finite, got Inf" QD.AdamAscent(; learning_rate=Inf)
+    @test_throws "beta1 must be in [0, 1), got 1" QD.AdamAscent(; beta1=1)
+    @test_throws "beta2 must be in [0, 1), got -0.1" QD.AdamAscent(; beta2=-0.1)
+    @test_throws "epsilon must be positive and finite, got 0" QD.AdamAscent(; epsilon=0)
+    @test QD.AdamAscent().learning_rate == 0.002
+    @test QD.AdamAscent(; learning_rate=0.1).learning_rate == 0.1     # a keyword, as for OpenAIES
+    @test_throws MethodError QD.AdamAscent(0.1)
 
     state = QD.AscentState(2)
     QD.reset_ascent!(state, [1.0, 2.0])
-    QD.ascend!(state, GradientAscent(0.5), [2.0, -4.0])
+    QD.ascend!(state, QD.GradientAscent(0.5), [2.0, -4.0])
     @test state.theta == [2.0, 0.0]
     # Adam's first step moves every entry by the learning rate, up to epsilon.
     QD.reset_ascent!(state, [1.0, 2.0])
-    QD.ascend!(state, AdamAscent(; learning_rate=0.1), [3.0, -0.5])
+    QD.ascend!(state, QD.AdamAscent(; learning_rate=0.1), [3.0, -0.5])
     @test state.theta ≈ [1.1, 1.9] atol = 1e-6
     @test state.t == 1
     QD.reset_ascent!(state, [0.0, 0.0])
@@ -183,12 +183,12 @@ end
 
 @testset "GradientArborescenceEmitter matches pyribs" begin
     for (name, optimizer, thetas, branches, orders, parents) in
-        (("adam", AdamAscent(; learning_rate=0.05), mega_adam_thetas, mega_adam_branches, mega_adam_orders, mega_adam_parents),
-         ("ascent", GradientAscent(0.5), mega_ascent_thetas, mega_ascent_branches, mega_ascent_orders, mega_ascent_parents))
+        (("adam", QD.AdamAscent(; learning_rate=0.05), mega_adam_thetas, mega_adam_branches, mega_adam_orders, mega_adam_parents),
+         ("ascent", QD.GradientAscent(0.5), mega_ascent_thetas, mega_ascent_branches, mega_ascent_orders, mega_ascent_parents))
         @testset "$name" begin
             emitter = GradientArborescenceEmitter(mega_x0; num_descriptors=2, sigma0=1.0, optimizer,
                                                   strategy=(dim; kwargs...) -> ScriptedStrategy(mega_coefficients),
-                                                  restart=ConvergenceRestart())
+                                                  restart=QD.ConvergenceRestart())
             archive = GridArchive((10, 10), ((-2, 2), (-2, 2)); outside=ClampOutside())
             for r in eachindex(thetas)
                 xs = mega_round!(emitter, archive, mega_problem)
@@ -231,7 +231,7 @@ end
     @test_throws "tell! must follow the ask" QD.ask_gradients(Xoshiro(1), emitter, archive)
     @test_throws "expected 7 solutions, evaluations and results but got 1, 7 and 7" QD.tell!(emitter, xs[1:1], xs, xs)
     # A batch that the archive rejects entirely restarts the search from an elite.
-    rejected = [AddResult(QD.Rejected, -1.0) for _ in xs]
+    rejected = [QD.AddResult(QD.Rejected, -1.0) for _ in xs]
     QD.tell!(emitter, xs, QD.evaluate_batch(prob, xs), rejected)
     @test emitter.restarts == 1 && emitter.iterations == 1
     @test emitter.ascent.theta == fill(0.3, 4)    # no parent, no step
@@ -245,10 +245,10 @@ end
     @test raw.jacobian == only(jacobians)
 
     filled() = (a = GridArchive(prob; dims=(5, 5)); QD.add!(a, fill(0.3, 4), QD.evaluate(prob, fill(0.3, 4))); a)
-    for optimizer in (AdamAscent(), GradientAscent(1.0)), ranker in (TwoStageImprovementRanker(), ImprovementRanker())
+    for optimizer in (QD.AdamAscent(), QD.GradientAscent(1.0)), ranker in (QD.TwoStageImprovementRanker(), QD.ImprovementRanker())
         test_emitter(GradientArborescenceEmitter(4; num_descriptors=2, sigma0=0.5, optimizer, ranker), filled(), prob)
     end
-    test_emitter(GradientArborescenceEmitter(4; num_descriptors=2, sigma0=0.5, strategy=SepCMAES, batch_size=6), filled(), prob)
+    test_emitter(GradientArborescenceEmitter(4; num_descriptors=2, sigma0=0.5, strategy=QD.SepCMAES, batch_size=6), filled(), prob)
     test_emitter(GradientArborescenceEmitter(4; num_descriptors=2, sigma0=0.5), GradientArchive(ThresholdArchive(GridArchive(prob; dims=(5, 5)))) |>
                  (a -> (QD.add!(a, fill(0.3, 4), QD.evaluate_gradient(prob, fill(0.3, 4))...); a)), prob)
 
@@ -258,11 +258,11 @@ end
 @testset "CMAMEGA, CMAMAEGA and OMGMEGA" begin
     prob = Sphere(20)
     algs = (CMAMEGA(prob; dims=(20, 20), sigma0=10.0),
-            CMAMEGA(prob; dims=(20, 20), sigma0=10.0, optimizer=GradientAscent(1.0), num_emitters=2, batch_size=10),
+            CMAMEGA(prob; dims=(20, 20), sigma0=10.0, optimizer=QD.GradientAscent(1.0), num_emitters=2, batch_size=10),
             CMAMAEGA(prob; dims=(20, 20), sigma0=10.0, threshold_min=0),
             OMGMEGA(prob; dims=(20, 20), sigma0=10.0, batch_size=16))
     @test length(algs[2].emitters) == 2 && QD.batch_size(algs[2].emitters[1]) == 10
-    @test algs[3].archive isa ThresholdArchive && algs[3].emitters[1].selection isa MuSelection
+    @test algs[3].archive isa ThresholdArchive && algs[3].emitters[1].selection isa QD.MuSelection
     @test algs[4].archive isa GradientArchive && algs[4].emitters[1] isa GradientOperatorEmitter
     for alg in algs
         state = init(prob, alg; budget=2_000, rng=Xoshiro(1), init_size=20)

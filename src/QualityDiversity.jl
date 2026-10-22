@@ -16,6 +16,10 @@ exported. Extend them with qualified names:
 ```julia
 QualityDiversity.evaluate(p::MyProblem, x) = ...
 ```
+
+The values of keyword arguments, such as the rankers and restart rules of a
+[`CMAEmitter`](@ref), are `public` too: `ranker=QualityDiversity.ObjectiveRanker()`.
+The benchmark problems are in [`QualityDiversity.Benchmarks`](@ref).
 """
 module QualityDiversity
 
@@ -31,8 +35,8 @@ include("metrics.jl")
 include("hypervolume.jl")
 include("problems/qdproblem.jl")
 include("problems/stochastic.jl")
-include("problems/benchmarks.jl")
 include("gradients.jl")
+include("problems/benchmarks.jl")
 include("archives/cell_archive.jl")
 include("archives/grid.jl")
 include("archives/sliding.jl")
@@ -71,31 +75,37 @@ include("solve.jl")
 include("algorithms.jl")
 include("testing.jl")
 
-export Evaluation, AddStatus, AddResult
+# The exported names are the ones a script uses: the five roles, the problem wrappers,
+# the archives, variations, emitters and algorithms, the CommonSolve verbs and the
+# metrics. Everything else that is part of the interface is `public`: the interface
+# functions, the keyword values (rankers, selection and restart rules, policies, the
+# optimizers and evolution strategies), the result and state types, and the Benchmarks
+# submodule. Use them with a qualified name, `QualityDiversity.ObjectiveRanker()`.
 export AbstractQDProblem, AbstractStochasticQDProblem, AbstractArchive, AbstractVariation, AbstractEmitter
-export QDAlgorithm, QDState, QDResult
-export QDProblem, StochasticQDProblem, Sampled, SampledSpread, Average, Median, Rastrigin, Sphere, BiSphere
+export Evaluation, QDAlgorithm, QDProblem, StochasticQDProblem, Sampled, SampledSpread
 export GridArchive, SlidingBoundariesArchive, CVTArchive, CategoricalArchive, UnstructuredArchive, DNSArchive, DensityArchive, ThresholdArchive,
     SpreadArchive, ParetoGridArchive, GradientArchive, DeviceGridArchive, DeviceCVTArchive
-export OutsidePolicy, ThrowOutside, ClampOutside, RejectOutside
-export DuplicatePolicy, RejectDuplicates, KeepDuplicates, FullFrontPolicy, RejectNewcomer, ReplaceCrowded
+export ThrowOutside, ClampOutside, RejectOutside
 export GaussianMutation, IsoLineVariation, PolynomialMutation, UniformCrossover
-export VariationEmitter, CMAEmitter, BanditScheduler, DeviceVariationEmitter, DeviceCMAEmitter
-export GradientArborescenceEmitter, GradientOperatorEmitter, AdamAscent, GradientAscent
-export AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES
-export AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker,
-    TwoStageObjectiveRanker, DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker,
-    AcceptedRandomDirectionRanker
-export FilterSelection, MuSelection
-export ReselectTerminated, ReselectAll
-export NoImprovementRestart, ConvergenceRestart, PeriodicRestart
+export VariationEmitter, CMAEmitter, BanditScheduler, GradientArborescenceEmitter, GradientOperatorEmitter
 export MAPElites, CMAME, CMAMAE, CMAMEGA, CMAMAEGA, OMGMEGA, MOME, MELS, DDS
 export init, step!, solve!, solve
-export qd_score, coverage, max_fitness, mean_fitness, cqd_score, CQDScore
-export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scores
+export qd_score, coverage, max_fitness, mean_fitness, cqd_score, hypervolume, global_hypervolume
 
+@compat public Benchmarks
+@compat public AddStatus, AddResult, QDState, QDResult, CQDScore, num_solutions, max_hypervolume, max_scores
+@compat public Expectation, Average, Median
+@compat public OutsidePolicy, DuplicatePolicy, RejectDuplicates, KeepDuplicates, FullFrontPolicy, RejectNewcomer, ReplaceCrowded
+@compat public DeviceVariationEmitter, DeviceCMAEmitter
+@compat public GradientOptimizer, AdamAscent, GradientAscent
+@compat public AbstractEvolutionStrategy, CMAES, PyribsCMAES, SepCMAES, LMMAES, OpenAIES
+@compat public AbstractRanker, ObjectiveRanker, ImprovementRanker, TwoStageImprovementRanker, TwoStageObjectiveRanker,
+    DirectionRanker, RandomDirectionRanker, TwoStageRandomDirectionRanker, AcceptedRandomDirectionRanker
+@compat public SelectionRule, FilterSelection, MuSelection
+@compat public RestartRule, NoImprovementRestart, ConvergenceRestart, PeriodicRestart
+@compat public ReselectRule, ReselectTerminated, ReselectAll
 @compat public Rejected, Improved, NewCell
-@compat public evaluate, evaluate_batch, evaluate_gradient, evaluate_gradient_batch, evaluations_per_solution, Expectation, expectation, random_solution, default_genotype,
+@compat public evaluate, evaluate_batch, evaluate_gradient, evaluate_gradient_batch, evaluations_per_solution, expectation, random_solution, default_genotype,
     descriptor_bounds, descriptor_categories, fitness_offset, reference_point
 @compat public add!, add_batch!, cell_index, sample_elites, elites, capacity, result_archive
 @compat public vary, n_parents
@@ -104,6 +114,6 @@ export hypervolume, num_solutions, max_hypervolume, global_hypervolume, max_scor
 @compat public Testing
 @compat public reset!, sample!, update!, should_stop
 @compat public RankOneRule, TextbookRankOne, PyribsRankOne
-@compat public ask, tell!, ask_gradients, tell_gradients!, batch_size, restarts, active, ReselectRule, rank_key, reset_ranker!, SelectionRule, RestartRule, GradientOptimizer
+@compat public ask, tell!, ask_gradients, tell_gradients!, batch_size, restarts, active, rank_key, reset_ranker!
 
 end
