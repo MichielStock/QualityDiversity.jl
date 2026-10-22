@@ -202,12 +202,14 @@ function evaluate_gradient(prob::Rastrigin, x::AbstractVector{<:Real})
     ev = evaluate(prob, x)
     n = prob.dim
     h = n ÷ 2
-    jacobian = zeros(3, n)
+    # Every entry is written, so the Jacobian is the only allocation.
+    jacobian = Matrix{Float64}(undef, 3, n)
     for (k, i) in enumerate(eachindex(x))
         xi = Float64(x[i])
-        -RASTRIGIN_LIMIT <= xi <= RASTRIGIN_LIMIT || continue
-        jacobian[1, k] = -(2 * xi + 20π * sin(2π * xi))
-        jacobian[k <= h ? 2 : 3, k] = k <= h ? 1 / h : 1 / (n - h)
+        inside = -RASTRIGIN_LIMIT <= xi <= RASTRIGIN_LIMIT
+        jacobian[1, k] = inside ? -(2 * xi + 20π * sin(2π * xi)) : 0.0
+        jacobian[2, k] = inside && k <= h ? 1 / h : 0.0
+        jacobian[3, k] = inside && k > h ? 1 / (n - h) : 0.0
     end
     return ev, jacobian
 end
@@ -217,11 +219,13 @@ function evaluate_gradient(prob::Sphere, x::AbstractVector{<:Real})
     n = prob.dim
     h = n ÷ 2
     worst = (SPHERE_LIMIT + SPHERE_SHIFT)^2 * n
-    jacobian = zeros(3, n)
+    jacobian = Matrix{Float64}(undef, 3, n)
     for (k, i) in enumerate(eachindex(x))
         xi = Float64(x[i])
+        clip = -SPHERE_LIMIT <= xi <= SPHERE_LIMIT ? 1.0 : -SPHERE_LIMIT / xi^2
         jacobian[1, k] = -200 * (xi - SPHERE_SHIFT) / worst
-        jacobian[k <= h ? 2 : 3, k] = -SPHERE_LIMIT <= xi <= SPHERE_LIMIT ? 1.0 : -SPHERE_LIMIT / xi^2
+        jacobian[2, k] = k <= h ? clip : 0.0
+        jacobian[3, k] = k <= h ? 0.0 : clip
     end
     return ev, jacobian
 end

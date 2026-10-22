@@ -65,6 +65,15 @@ end
     @test allocated(QD.vary, Xoshiro(1), PolynomialMutation(-5.12, 5.12), x) == child
     @test allocated(QD.vary, Xoshiro(1), PolynomialMutation([-5.0, -5.0, -5.0], [5.0, 5.0, 5.0]), x) == child
     @test allocated(QD.vary, Xoshiro(1), UniformCrossover(), x, x) == child
+    @test allocated(QD.vary, Xoshiro(1), GaussianMutation(0.1), x) == child
+    @test allocated(QD.vary, Xoshiro(1), IsoLineVariation(0.01, 0.2), x, x) == child
+    # a Float32 parent gives a Float32 child, with the Float64 σ converted: still one allocation
+    x32 = Float32[0.5, -1.0, 2.0]
+    child32 = allocated(n -> Vector{Float32}(undef, n), 3)
+    @test (@inferred QD.vary(Xoshiro(1), GaussianMutation(0.1), x32)) isa Vector{Float32}
+    @test allocated(QD.vary, Xoshiro(1), GaussianMutation(0.1), x32) == child32
+    @test (@inferred QD.vary(Xoshiro(1), IsoLineVariation(0.01, 0.2), x32, x32)) isa Vector{Float32}
+    @test allocated(QD.vary, Xoshiro(1), IsoLineVariation(0.01, 0.2), x32, x32) == child32
 end
 
 @testset "inference with CMA emitters" begin
@@ -341,6 +350,10 @@ end
     evs, jacobians = QD.evaluate_gradient_batch(prob, xs)
     @inferred QD.evaluate_gradient(prob, xs[1])
     @inferred QD.evaluate_gradient_batch(prob, xs)
+    # the closed-form gradients allocate only the Jacobian
+    jacobian = allocated((m, n) -> Matrix{Float64}(undef, m, n), 3, 4)
+    @test allocated(QD.evaluate_gradient, prob, xs[1]) == jacobian
+    @test allocated(QD.evaluate_gradient, Sphere(4), xs[1]) == jacobian
     archive = GradientArchive(GridArchive(prob; dims=(5, 5)))
     @inferred QD.add_batch!(archive, xs, evs, jacobians)
     @inferred QD.add!(archive, xs[1], evs[1], jacobians[1])
