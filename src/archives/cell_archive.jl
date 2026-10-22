@@ -167,10 +167,15 @@ function add_batch_to_cells!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, 
     n = length(xs)
     results = Vector{AddResult{F}}(undef, n)
     cells = Vector{Int}(undef, n)
+    # Every fitness and phenotype is checked before the archive changes. A phenotype is
+    # converted once and kept, since its conversion can be costly; a fitness is converted
+    # again where it is placed, which inlines to two finiteness checks and costs less than
+    # a buffer.
+    phenotypes = batch_phenotypes(P, n)
     for k in 1:n
         i = cell_index(archive, evs[k].descriptor)
-        fitness = stored_fitness(F, evs[k].fitness)    # throws before the archive changes
-        stored_phenotype(P, evs[k].phenotype)
+        fitness = stored_fitness(F, evs[k].fitness)
+        store_phenotype!(phenotypes, k, stored_phenotype(P, evs[k].phenotype))
         cells[k] = i
         results[k] = i == 0 ? outside_result(F) : classify(archive, i, fitness)
     end
@@ -181,7 +186,7 @@ function add_batch_to_cells!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, 
         i = cells[k]
         fitness = stored_fitness(F, evs[k].fitness)
         if !archive.occupied[i] || fitness > archive.fitness[i]
-            place!(archive, i, xs[k], evs[k].descriptor, fitness, stored_phenotype(P, evs[k].phenotype))
+            place!(archive, i, xs[k], evs[k].descriptor, fitness, batch_phenotype(phenotypes, k))
         end
     end
     return results
