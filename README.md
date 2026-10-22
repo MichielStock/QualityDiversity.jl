@@ -61,7 +61,8 @@ Switching algorithm is one argument:
 result = solve(prob, CMAME(prob; dims=(20, 20), sigma0=0.5); budget=50_000, rng=Xoshiro(1))
 ```
 
-With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
+With a Makie backend loaded, `heatmap(result.archive)` draws the archive (`scatter` for an
+`UnstructuredArchive`); with Tables.jl loaded, `DataFrame(result.archive)` lists its elites.
 
 ### A custom genotype
 
@@ -97,7 +98,7 @@ works through a complete example.
 | Variation | Gaussian, iso-line, polynomial (bounded), uniform crossover; your own for any type |
 | Problems | function wrappers, noisy problems with averaged or spread-aware evaluation, benchmarks |
 | Metrics | QD score, coverage, continuous QD score, hypervolume and MOQD score |
-| Extensions | Makie plots (heatmaps, ECDF, CQD curve); MAP-Elites and CMA-ME with the archive on a GPU; gradients by ForwardDiff |
+| Extensions | Makie plots (heatmaps, scatter, ECDF, CQD curve); archives as Tables.jl tables; MAP-Elites and CMA-ME with the archive on a GPU; gradients by ForwardDiff |
 
 Every run is reproducible from its seed, also with threaded evaluation. Several archives
 and emitters are checked against pyribs and QDax on the same inputs.

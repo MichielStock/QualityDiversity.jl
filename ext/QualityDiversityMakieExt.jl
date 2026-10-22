@@ -7,6 +7,9 @@ of the elite fitness, with the descriptor dimensions on the axes and the empty
 cells left transparent.
 
 - [`GridArchive`](@ref QualityDiversity.GridArchive): one rectangle per cell.
+- [`SlidingBoundariesArchive`](@ref QualityDiversity.SlidingBoundariesArchive): one
+  rectangle per cell, between the current
+  [`boundaries`](@ref QualityDiversity.boundaries).
 - [`CVTArchive`](@ref QualityDiversity.CVTArchive): the Voronoi cells, sampled on a
   `pixels` by `pixels` grid (200 by default; pass `pixels=...`).
 - [`CategoricalArchive`](@ref QualityDiversity.CategoricalArchive): one square per
@@ -18,6 +21,12 @@ cells left transparent.
   `solve` returns it.
 - [`SpreadArchive`](@ref QualityDiversity.SpreadArchive): the archive it wraps.
 - [`DensityArchive`](@ref QualityDiversity.DensityArchive): its result archive.
+
+`scatter(archive)`, `scatter!(ax, archive)` and `plot(archive)` draw an
+[`UnstructuredArchive`](@ref QualityDiversity.UnstructuredArchive) with two descriptor
+dimensions as one point per stored solution, coloured by its fitness, so that
+`Colorbar(fig[1, 2], plot)` shows the scale. The plot holds the scatter as its one child
+and takes the attributes of `scatter`, such as `markersize`.
 
 `ecdfplot(archive)` draws the empirical distribution function of the elite fitness of
 any archive with a single real fitness, as pyribs's `archive_ecdf`: the fraction of
@@ -31,25 +40,28 @@ An archive with another number of descriptor dimensions throws an `ArgumentError
 """
 module QualityDiversityMakieExt
 
-using Makie: Makie, ECDFPlot, Heatmap, Lines
-using QualityDiversity: QualityDiversity, AbstractArchive, CellArchive, CQDScore, GridArchive, CVTArchive,
-    CategoricalArchive, ParetoGridArchive, ThresholdArchive, SpreadArchive, DensityArchive
+using Makie: Makie, ECDFPlot, Heatmap, Lines, Scatter
+using QualityDiversity: QualityDiversity, AbstractArchive, CellArchive, CQDScore, GridArchive,
+    SlidingBoundariesArchive, CVTArchive, CategoricalArchive, ParetoGridArchive, ThresholdArchive,
+    SpreadArchive, DensityArchive, UnstructuredArchive
 using StaticArrays: SVector
 
 const DEFAULT_PIXELS = 200
 
 Makie.plottype(::GridArchive) = Heatmap
+Makie.plottype(::SlidingBoundariesArchive) = Heatmap
 Makie.plottype(::CVTArchive) = Heatmap
 Makie.plottype(::CategoricalArchive) = Heatmap
 Makie.plottype(::ParetoGridArchive) = Heatmap
 Makie.plottype(::ThresholdArchive) = Heatmap
 Makie.plottype(::SpreadArchive) = Heatmap
 Makie.plottype(::DensityArchive) = Heatmap
+Makie.plottype(::UnstructuredArchive) = Scatter
 Makie.plottype(::CQDScore) = Lines
 
-function require_two_dimensions(archive, N)
+function require_two_dimensions(archive, N, plot="a heatmap")
     N == 2 || throw(ArgumentError(
-        "a heatmap needs an archive with 2 descriptor dimensions but this $(nameof(typeof(archive))) has $N"))
+        "$plot needs an archive with 2 descriptor dimensions but this $(nameof(typeof(archive))) has $N"))
     return nothing
 end
 
@@ -69,6 +81,14 @@ function Makie.convert_arguments(::Type{<:Heatmap}, archive::GridArchive{G,F,N})
     return (edges(archive.lower[1], archive.upper[1], archive.dims[1]),
             edges(archive.lower[2], archive.upper[2], archive.dims[2]),
             values)
+end
+
+function Makie.convert_arguments(::Type{<:Heatmap}, archive::SlidingBoundariesArchive{G,F,N}) where {G,F,N}
+    require_two_dimensions(archive, N)
+    # The boundaries are the cell edges: one more than the cells along each dimension,
+    # which Makie takes as edges rather than centers.
+    xedges, yedges = QualityDiversity.boundaries(archive)
+    return (xedges, yedges, reshape(cell_fitness(archive), archive.dims))
 end
 
 function Makie.convert_arguments(::Type{<:Heatmap}, archive::ParetoGridArchive{G,M,N}) where {G,M,N}
@@ -132,6 +152,15 @@ Makie.used_attributes(::Type{P}, archive::DensityArchive) where {P<:Heatmap} =
 
 function Makie.convert_arguments(P::Type{<:Heatmap}, archive::DensityArchive; kwargs...)
     return Makie.convert_arguments(P, QualityDiversity.result_archive(archive); kwargs...)
+end
+
+function Makie.convert_arguments(::Type{<:Scatter}, archive::UnstructuredArchive{G,F,N}) where {G,F,N}
+    require_two_dimensions(archive, N, "a scatter plot")
+    n = length(archive)
+    xs = [archive.descriptors[i][1] for i in 1:n]
+    ys = [archive.descriptors[i][2] for i in 1:n]
+    # A plot spec, since the colour is an attribute that converted arguments cannot carry.
+    return Makie.SpecApi.Scatter(xs, ys; color=Float64.(view(archive.fitness, 1:n)))
 end
 
 function Makie.convert_arguments(P::Type{<:ECDFPlot}, archive::AbstractArchive)

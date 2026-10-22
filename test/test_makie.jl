@@ -1,4 +1,5 @@
-using Makie: Makie, ECDFPlot, Heatmap, Lines, Figure, Axis, heatmap, heatmap!, ecdfplot, lines
+using Makie: Makie, ECDFPlot, Heatmap, Lines, Scatter, Figure, Axis, Colorbar, heatmap, heatmap!, scatter, scatter!,
+    ecdfplot, lines
 
 const MakieExt = Base.get_extension(QualityDiversity, :QualityDiversityMakieExt)
 
@@ -30,6 +31,33 @@ end
     values = convert_heatmap(archive)[3]
     @test eltype(values) === Float64
     @test values[1, 1] == 0.25
+end
+
+@testset "SlidingBoundariesArchive" begin
+    archive = SlidingBoundariesArchive((2, 2), ((0, 1), (0, 1)); remap_frequency=4, buffer_capacity=8)
+    for (f, d) in ((1.0, (0.1, 0.1)), (2.0, (0.2, 0.9)), (3.0, (0.6, 0.5)), (4.0, (0.9, 0.3)))
+        QD.add!(archive, [f], Evaluation(f, SVector(d...)))
+    end
+    @test Makie.plottype(archive) === Heatmap
+    xs, ys, values = convert_heatmap(archive)
+    # the fourth solution remapped the boundaries to the quantiles of the buffer
+    @test xs == [0.1, 0.6, 0.9] && ys == [0.1, 0.5, 0.9]
+    @test (xs, ys) == QD.boundaries(archive)
+    @test size(values) == (2, 2)
+    for (_, ev) in QD.elites(archive)
+        @test values[QD.cell_index(archive, ev.descriptor)] == ev.fitness
+    end
+    @test count(isnan, values) == 4 - length(archive)
+
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plot = heatmap!(ax, archive)
+    @test plot isa Heatmap
+    @test plot[1][] == xs && plot[2][] == ys     # uneven edges are kept as such
+    @test heatmap(archive) isa Makie.FigureAxisPlot
+    @test all(isnan, convert_heatmap(SlidingBoundariesArchive((2, 2), ((0, 1), (0, 1))))[3])
+    @test_throws "but this SlidingBoundariesArchive has 3" convert_heatmap(
+        SlidingBoundariesArchive((2, 2, 2), ((0, 1), (0, 1), (0, 1))))
 end
 
 @testset "CVTArchive" begin
@@ -111,6 +139,37 @@ end
     @test convert_heatmap(archive)[3][1, 1] == 2.0
     cvt = SpreadArchive(CVTArchive([SVector(0.25, 0.5), SVector(0.75, 0.5)], ((0, 1), (0, 1))))
     @test size(convert_heatmap(cvt; pixels=8)[3]) == (8, 8)
+end
+
+@testset "UnstructuredArchive scatter" begin
+    archive = UnstructuredArchive(2; capacity=5, threshold=0.1)
+    QD.add!(archive, [0.0], Evaluation(1.5, SVector(0.2, 0.8)))
+    QD.add!(archive, [0.0], Evaluation(-2.0, SVector(0.7, 0.3)))
+    @test Makie.plottype(archive) === Scatter
+    spec = Makie.convert_arguments(Scatter, archive)
+    @test spec isa Makie.PlotSpec
+    @test spec.args == [[0.2, 0.7], [0.8, 0.3]]
+    @test spec.kwargs[:color] == [1.5, -2.0]
+
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plot = scatter!(ax, archive; markersize=20)
+    points = only(plot.plots)
+    @test points isa Scatter
+    @test points.color[] == [1.5, -2.0]
+    @test points.markersize[] == [20, 20]
+    @test Colorbar(fig[1, 2], plot) isa Colorbar
+    @test scatter(archive) isa Makie.FigureAxisPlot
+    @test Makie.plot(archive) isa Makie.FigureAxisPlot
+
+    empty = UnstructuredArchive(2; capacity=5, threshold=0.1)
+    @test Makie.convert_arguments(Scatter, empty).args == [Float64[], Float64[]]
+    @test scatter!(ax, empty) isa Makie.PlotList
+    f32 = UnstructuredArchive{Vector{Float64},Float32}(2; capacity=5, threshold=0.1)
+    QD.add!(f32, [0.0], Evaluation(0.25f0, SVector(0.1, 0.1)))
+    @test Makie.convert_arguments(Scatter, f32).kwargs[:color] == [0.25]
+    @test_throws "a scatter plot needs an archive with 2 descriptor dimensions but this UnstructuredArchive has 3" Makie.convert_arguments(
+        Scatter, UnstructuredArchive(3; capacity=5, threshold=0.1))
 end
 
 @testset "other dimensions throw" begin

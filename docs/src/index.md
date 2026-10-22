@@ -54,7 +54,8 @@ Switching algorithm is one argument:
 solve(prob, CMAME(prob; dims=(20, 20), sigma0=0.5); budget=50_000)
 ```
 
-With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
+With a Makie backend loaded, `heatmap(result.archive)` draws the archive (`scatter` for an
+`UnstructuredArchive`); with Tables.jl loaded, `DataFrame(result.archive)` lists its elites.
 
 ## What is included
 
@@ -70,8 +71,9 @@ With a Makie backend loaded, `heatmap(result.archive)` draws the archive.
   reproducible on any number of threads.
 - **Metrics:** QD score, coverage, continuous QD score, and hypervolume for several
   objectives.
-- **Plots** through a Makie extension, **GPU** archives through a
-  KernelAbstractions extension, and **gradients** through a ForwardDiff extension.
+- **Plots** through a Makie extension, **tables** of elites through a Tables.jl
+  extension, **GPU** archives through a KernelAbstractions extension, and
+  **gradients** through a ForwardDiff extension.
 - **Conformance checks** in `QualityDiversity.Testing` for the types you define.
 
 ## Where to go next

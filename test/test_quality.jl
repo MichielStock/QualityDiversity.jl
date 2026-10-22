@@ -10,7 +10,11 @@ end
 # public: the CommonSolve verbs are the interface this package extends, and the
 # others are stable, documented Base, Random and Makie functions (`require_one_based_indexing`
 # is declared public from Julia 1.11 on; `plottype` is how an extension tells Makie which
-# plot `plot(x)` draws for its own type). `CellArchive`, `cell_index`, `result_archive`, `elites`, `evaluate`,
+# plot `plot(x)` draws for its own type, and `SpecApi` its documented way to return a plot
+# with attributes from `convert_arguments`; `HasLength` and `HasShape` are the documented
+# iterator-size traits). `istable`, `rowaccess`, `rows`, `schema` and `Schema` are the
+# documented interface of Tables, which declares nothing public.
+# `CellArchive`, `cell_index`, `result_archive`, `elites`, `evaluate`,
 # `DeviceCellArchive`, `AddResultBatch` and the statuses `Rejected`, `Improved` and
 # `NewCell` are declared public with `@compat public`, which ExplicitImports only sees from
 # Julia 1.11 on; the extensions use them. The KernelAbstractions extension implements the device
@@ -21,7 +25,8 @@ end
 # behind `evaluate_gradient`, and calls `jacobian`, the documented interface of ForwardDiff,
 # which does not declare it public.
 const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail,
-                               :require_one_based_indexing, :plottype,
+                               :require_one_based_indexing, :HasLength, :HasShape, :plottype, :SpecApi,
+                               :istable, :rowaccess, :rows, :schema, :Schema,
                                :CellArchive, :cell_index, :result_archive, :elites, :evaluate,
                                :DeviceCellArchive, :AddResultBatch, :Rejected, :Improved, :NewCell,
                                :device_add_batch!, :device_evaluate, :device_evaluate!, :device_vary!,

@@ -61,6 +61,17 @@ UnstructuredArchive
 DNSArchive
 ```
 
+## Tables
+
+Loading Tables.jl (for example through DataFrames or CSV) makes every archive a table
+with one row per elite: `DataFrame(result.archive)` has the columns `genotype`,
+`fitness`, `descriptor_1` to `descriptor_N` and, for an archive that stores one,
+`phenotype`.
+
+```@docs
+Main.QualityDiversityTablesExt
+```
+
 ## Several objectives
 
 ```@docs
