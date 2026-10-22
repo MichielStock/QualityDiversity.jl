@@ -44,38 +44,56 @@ function MAPElites(prob::AbstractQDProblem; dims::Union{Tuple,Nothing}=nothing,
                    outside::OutsidePolicy=ThrowOutside(),
                    phenotype::Type=Nothing,
                    device::Union{Type,Nothing}=nothing)
-    return map_elites(device, prob, dims, bounds, batch_size, variation, genotype, fitness, outside, phenotype)
+    archive = map_elites_archive(device, Val(hasmethod(descriptor_categories, Tuple{typeof(prob)})),
+                                 prob, dims, bounds, genotype, fitness, outside, phenotype)
+    return variation_algorithm(archive; batch_size, variation)
 end
 
-function map_elites(::Nothing, prob, dims, bounds, batch_size, variation, genotype, fitness, outside, phenotype)
-    archive = default_archive(Val(hasmethod(descriptor_categories, Tuple{typeof(prob)})),
-                              prob, dims, bounds, genotype, fitness, outside, phenotype)
-    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
-end
-
-function map_elites(device::Type, prob, dims, bounds, batch_size, variation, genotype, fitness, outside, phenotype)
-    hasmethod(descriptor_categories, Tuple{typeof(prob)}) &&
-        throw(ArgumentError("a DeviceGridArchive needs a problem with descriptor_bounds; one with descriptor_categories runs on the host"))
+# The archive of `MAPElites(prob; ...)`: a grid over the descriptor bounds, on the host or
+# on `device`, or a CategoricalArchive for a problem with descriptor categories.
+function map_elites_archive(device, ::Val{false}, prob, dims, bounds, genotype, fitness, outside, phenotype)
     dims === nothing &&
         throw(ArgumentError("dims is required for a problem with descriptor_bounds: pass the number of cells along each dimension, e.g. dims=(20, 20)"))
-    phenotype === Nothing ||
-        throw(ArgumentError("a DeviceGridArchive stores no phenotypes; build it without phenotype"))
-    archive = DeviceGridArchive(prob; dims, device, bounds=something(bounds, descriptor_bounds(prob)),
-                                genotype, fitness, outside)
-    return QDAlgorithm(archive, (DeviceVariationEmitter(variation; batch_size),))
+    return grid_archive(prob; dims, bounds=something(bounds, descriptor_bounds(prob)),
+                        genotype, fitness, outside, phenotype, device)
 end
 
-function default_archive(::Val{false}, prob, dims, bounds, genotype, fitness, outside, phenotype)
-    dims === nothing &&
-        throw(ArgumentError("dims is required for a problem with descriptor_bounds: pass the number of cells along each dimension, e.g. dims=(20, 20)"))
-    return GridArchive(prob; dims, bounds=something(bounds, descriptor_bounds(prob)),
-                       genotype, fitness, outside, phenotype)
-end
-
-function default_archive(::Val{true}, prob, dims, bounds, genotype, fitness, outside, phenotype)
+function map_elites_archive(::Nothing, ::Val{true}, prob, dims, bounds, genotype, fitness, outside, phenotype)
     (dims === nothing && bounds === nothing) ||
         throw(ArgumentError("dims and bounds do not apply to a problem with descriptor_categories; its cells are the combinations of categories"))
     return CategoricalArchive(prob; genotype, fitness, outside, phenotype)
+end
+
+function map_elites_archive(::Type, ::Val{true}, prob, dims, bounds, genotype, fitness, outside, phenotype)
+    throw(ArgumentError("a DeviceGridArchive needs a problem with descriptor_bounds; one with descriptor_categories runs on the host"))
+end
+
+# The grid of the `(prob; ...)` constructors: a GridArchive, or with `device` an array type
+# a DeviceGridArchive in arrays of that type, which stores no phenotypes.
+function grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype, device=nothing)
+    return grid_archive(device, prob, dims, bounds, genotype, fitness, outside, phenotype)
+end
+
+grid_archive(::Nothing, prob, dims, bounds, genotype, fitness, outside, phenotype) =
+    GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+
+function grid_archive(device::Type, prob, dims, bounds, genotype, fitness, outside, phenotype)
+    phenotype === Nothing ||
+        throw(ArgumentError("a DeviceGridArchive stores no phenotypes; build it without phenotype"))
+    return DeviceGridArchive(prob; dims, device, bounds, genotype, fitness, outside)
+end
+
+# `archive` with one VariationEmitter, or a DeviceVariationEmitter for an archive on a device.
+variation_algorithm(archive::AbstractArchive; batch_size, variation) =
+    QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+
+variation_algorithm(archive::DeviceCellArchive; batch_size, variation) =
+    QDAlgorithm(archive, (DeviceVariationEmitter(variation; batch_size),))
+
+# `num_emitters` emitters made by `make`, as the tuple that QDAlgorithm takes.
+function emitter_tuple(make, num_emitters::Integer)
+    num_emitters >= 1 || throw(ArgumentError("num_emitters must be at least 1, got $num_emitters"))
+    return Tuple(make() for _ in 1:num_emitters)
 end
 
 """
@@ -98,12 +116,7 @@ result = solve(prob, MAPElites(archive); budget=100_000, rng=Xoshiro(2))
 """
 function MAPElites(archive::AbstractArchive; batch_size::Integer=64,
                    variation::AbstractVariation=GaussianMutation(0.1))
-    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
-end
-
-function MAPElites(archive::DeviceCellArchive; batch_size::Integer=64,
-                   variation::AbstractVariation=GaussianMutation(0.1))
-    return QDAlgorithm(archive, (DeviceVariationEmitter(variation; batch_size),))
+    return variation_algorithm(archive; batch_size, variation)
 end
 
 """
@@ -147,17 +160,8 @@ function CMAME(prob::AbstractQDProblem; dims::Tuple, sigma0::Real,
                fitness::Type{<:Real}=Float64,
                outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing,
                device::Union{Type,Nothing}=nothing, kwargs...)
-    archive = cma_me_archive(device, prob, dims, bounds, genotype, fitness, outside, phenotype)
+    archive = grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype, device)
     return CMAME(archive; sigma0, dim=solution_dim(prob), kwargs...)
-end
-
-cma_me_archive(::Nothing, prob, dims, bounds, genotype, fitness, outside, phenotype) =
-    GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
-
-function cma_me_archive(device::Type, prob, dims, bounds, genotype, fitness, outside, phenotype)
-    phenotype === Nothing ||
-        throw(ArgumentError("a DeviceGridArchive stores no phenotypes; build it without phenotype"))
-    return DeviceGridArchive(prob; dims, device, bounds, genotype, fitness, outside)
 end
 
 """
@@ -169,9 +173,7 @@ CMA-ME over any archive, such as a [`CVTArchive`](@ref): `archive` with `num_emi
 searches of one [`DeviceCMAEmitter`](@ref).
 """
 function CMAME(archive::AbstractArchive; sigma0::Real, dim::Integer, num_emitters::Integer=5, kwargs...)
-    num_emitters >= 1 || throw(ArgumentError("num_emitters must be at least 1, got $num_emitters"))
-    emitters = Tuple(CMAEmitter(dim; sigma0, kwargs...) for _ in 1:num_emitters)
-    return QDAlgorithm(archive, emitters)
+    return QDAlgorithm(archive, emitter_tuple(() -> CMAEmitter(dim; sigma0, kwargs...), num_emitters))
 end
 
 function CMAME(archive::DeviceCellArchive; sigma0::Real, dim::Integer, num_emitters::Integer=5, kwargs...)
@@ -203,7 +205,7 @@ function CMAMAE(prob::AbstractQDProblem; dims::Tuple, sigma0::Real, threshold_mi
                 genotype::Type=default_genotype(prob),
                 fitness::Type{<:AbstractFloat}=Float64,
                 outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
-    grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+    grid = grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype)
     archive = ThresholdArchive(grid; learning_rate, threshold_min)
     return CMAME(archive; sigma0, dim=solution_dim(prob), num_emitters, ranker, selection, restart, kwargs...)
 end
@@ -244,7 +246,7 @@ function DDS(rng::AbstractRNG, prob::AbstractQDProblem; dims::Tuple, sigma0::Rea
              genotype::Type=default_genotype(prob),
              fitness::Type{<:AbstractFloat}=Float64,
              outside::OutsidePolicy=ClampOutside(), phenotype::Type=Nothing, kwargs...)
-    grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+    grid = grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype)
     archive = DensityArchive(rng, grid; bandwidth, buffer_size)
     return CMAME(archive; sigma0, dim=solution_dim(prob), num_emitters, batch_size, ranker, selection,
                  restart, kwargs...)
@@ -281,7 +283,7 @@ function CMAMEGA(prob::AbstractQDProblem; dims::Tuple, sigma0::Real,
                  genotype::Type=default_genotype(prob),
                  fitness::Type{<:Real}=Float64,
                  outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
-    archive = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+    archive = grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype)
     return CMAMEGA(archive; sigma0, dim=solution_dim(prob), kwargs...)
 end
 
@@ -294,9 +296,8 @@ CMA-MEGA over any archive with `SVector` descriptors, such as a [`CVTArchive`](@
 """
 function CMAMEGA(archive::AbstractArchive{G,F,SVector{N,Float64}}; sigma0::Real, dim::Integer,
                  num_emitters::Integer=1, kwargs...) where {G,F,N}
-    num_emitters >= 1 || throw(ArgumentError("num_emitters must be at least 1, got $num_emitters"))
-    emitters = Tuple(GradientArborescenceEmitter(dim; num_descriptors=N, sigma0, kwargs...) for _ in 1:num_emitters)
-    return QDAlgorithm(archive, emitters)
+    make() = GradientArborescenceEmitter(dim; num_descriptors=N, sigma0, kwargs...)
+    return QDAlgorithm(archive, emitter_tuple(make, num_emitters))
 end
 
 function CMAMEGA(archive::AbstractArchive; kwargs...)
@@ -327,7 +328,7 @@ function CMAMAEGA(prob::AbstractQDProblem; dims::Tuple, sigma0::Real, threshold_
                   genotype::Type=default_genotype(prob),
                   fitness::Type{<:AbstractFloat}=Float64,
                   outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
-    grid = GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype)
+    grid = grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype)
     archive = ThresholdArchive(grid; learning_rate, threshold_min)
     return CMAMEGA(archive; sigma0, dim=solution_dim(prob), ranker, selection, restart, kwargs...)
 end
@@ -351,7 +352,7 @@ function OMGMEGA(prob::AbstractQDProblem; dims::Tuple, sigma::Real,
                  genotype::Type=default_genotype(prob),
                  fitness::Type{<:Real}=Float64,
                  outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing, kwargs...)
-    archive = GradientArchive(GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype))
+    archive = GradientArchive(grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype))
     return OMGMEGA(archive; sigma, kwargs...)
 end
 
@@ -408,7 +409,7 @@ function MOME(prob::AbstractQDProblem; dims::Tuple,
               full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing)
     archive = ParetoGridArchive(prob; dims, reference_point, max_front, bounds, genotype, outside,
                                 duplicates, full_front, phenotype)
-    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+    return variation_algorithm(archive; batch_size, variation)
 end
 
 """
@@ -418,7 +419,7 @@ MOME over a given archive: `archive` with one [`VariationEmitter`](@ref).
 """
 function MOME(archive::ParetoGridArchive; batch_size::Integer=64,
               variation::AbstractVariation=GaussianMutation(0.1))
-    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+    return variation_algorithm(archive; batch_size, variation)
 end
 
 """
@@ -451,8 +452,8 @@ function MELS(prob::SampledSpread; dims::Tuple, batch_size::Integer=64,
               bounds::Tuple=descriptor_bounds(prob), genotype::Type=default_genotype(prob),
               fitness::Type{<:Real}=Float64, outside::OutsidePolicy=ThrowOutside(),
               phenotype::Type=Nothing)
-    archive = SpreadArchive(GridArchive(prob; dims, bounds, genotype, fitness, outside, phenotype))
-    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+    archive = SpreadArchive(grid_archive(prob; dims, bounds, genotype, fitness, outside, phenotype))
+    return variation_algorithm(archive; batch_size, variation)
 end
 
 function MELS(prob::AbstractQDProblem; kwargs...)
@@ -467,5 +468,5 @@ MELS over a given archive, such as a [`SpreadArchive`](@ref) around a [`CVTArchi
 """
 function MELS(archive::SpreadArchive; batch_size::Integer=64,
               variation::AbstractVariation=GaussianMutation(0.1))
-    return QDAlgorithm(archive, (VariationEmitter(variation; batch_size),))
+    return variation_algorithm(archive; batch_size, variation)
 end

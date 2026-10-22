@@ -130,14 +130,9 @@ function SlidingBoundariesArchive{G,F}(dims::Tuple, bounds::Tuple; remap_frequen
                                        buffer_capacity::Integer=1000,
                                        outside::OutsidePolicy=ClampOutside(),
                                        phenotype::Type=Nothing) where {G,F<:Real}
-    N = length(dims)
-    length(bounds) == N ||
-        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
-    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
-    lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
-    upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return SlidingBoundariesArchive{G,F,N,typeof(outside),phenotype}(map(Int, dims), lower, upper, outside,
-                                                                    Int(remap_frequency), Int(buffer_capacity))
+    lower, upper = grid_box(dims, bounds)
+    return SlidingBoundariesArchive{G,F,length(dims),typeof(outside),phenotype}(
+        map(Int, dims), lower, upper, outside, Int(remap_frequency), Int(buffer_capacity))
 end
 
 function SlidingBoundariesArchive{G}(dims::Tuple, bounds::Tuple; kwargs...) where {G}
