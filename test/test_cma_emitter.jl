@@ -105,12 +105,15 @@ end
     @test QD.ask(Xoshiro(1), CMAEmitter(3; sigma0=0.5), archive) == xs          # reproducible from the rng
     @test QD.ask(Xoshiro(2), CMAEmitter(3; sigma0=0.5), archive) != xs
 
+    @test_throws "ask was called again before tell! reported the results of the last batch" QD.ask(Xoshiro(1), emitter, archive)
+
     evs = QD.evaluate_batch(QDProblem(x -> (-sum(abs2, x), (x[1], x[2])); init=rng -> zeros(3),
                                       bounds=((-4, 4), (-4, 4))), xs)
     results = QD.add_batch!(archive, xs, evs)
     @test QD.tell!(emitter, xs, evs, results) === nothing
     @test emitter.iterations == 1
     @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(emitter, xs, evs, results)
+    @test length(QD.ask(Xoshiro(1), emitter, archive)) == QD.batch_size(emitter)    # ask is allowed again after tell!
 
     fresh = CMAEmitter(3; sigma0=0.5)
     @test_throws "tell! needs the results of the batch that the last ask returned" QD.tell!(fresh, xs, evs, results)

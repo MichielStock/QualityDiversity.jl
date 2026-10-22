@@ -187,7 +187,9 @@ function place_threshold!(archive::ThresholdArchive, i, x, descriptor, fitness, 
     end
     previous = inner.fitness[i]
     _store!(inner, i, x, fitness, descriptor, phenotype)
-    _add_to_sum!(inner, Float64(fitness) - Float64(previous))
+    # Two compensated steps, as in `place!` of a `CellArchive`.
+    _add_to_sum!(inner, Float64(fitness))
+    _add_to_sum!(inner, -Float64(previous))
     if fitness >= inner.fitness_max
         inner.fitness_max = fitness
         archive.max_stale = false

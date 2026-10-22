@@ -68,4 +68,9 @@ end
     @test alg isa QDAlgorithm{DummyArchive,Tuple{DummyEmitter,DummyEmitter}}
     @test_throws MethodError QDAlgorithm(DummyArchive(), [DummyEmitter()])
     @test QD.tell!(DummyEmitter(), [], [], []) === nothing
+    # an emitter with state keeps the batch it asked for, so one instance cannot run twice
+    cma = CMAEmitter(2; sigma0=0.5)
+    @test_throws "emitters[1] and emitters[3] are the same CMAEmitter; every emitter with state must be a separate instance" QDAlgorithm(DummyArchive(), (cma, DummyEmitter(), cma))
+    @test QDAlgorithm(DummyArchive(), (cma, CMAEmitter(2; sigma0=0.5))) isa QDAlgorithm
+    @test QDAlgorithm(DummyArchive(), Tuple(CMAEmitter(2; sigma0=0.5) for _ in 1:3)).emitters isa NTuple{3,CMAEmitter}
 end

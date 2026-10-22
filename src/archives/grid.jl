@@ -33,10 +33,10 @@ afterwards.
 the archive keeps the number of elites, the sum of their fitness and their
 maximum fitness up to date inside `add!`, which already knows what changed.
 A cell is only replaced by a strictly better solution, so the maximum never
-decreases and a running maximum is exact. The sum changes by
-`new fitness - old fitness` for an improved cell and by the fitness for a new
-cell. It is accumulated in `Float64` with compensated (Neumaier) summation, so
-the rounding error stays within about one rounding of the exact sum however
+decreases and a running maximum is exact. The fitness of a new cell is added
+to the sum, and for an improved cell the new fitness is added and the old one
+subtracted, each as a step of a compensated (Neumaier) summation in `Float64`,
+so the rounding error stays within about one rounding of the exact sum however
 many updates there have been; a plain running sum drifts by hundreds of units
 in the last place after millions of updates. The value agrees with a fresh pass
 over the elites, which the generic metrics for any [`AbstractArchive`](@ref)

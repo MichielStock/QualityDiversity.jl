@@ -39,11 +39,14 @@ or infinite component throws an `ArgumentError`.
 
 The nearest neighbour is found by a pass over the stored descriptors, so `add!`
 and `cell_index` take time linear in the number of stored solutions, and do not
-allocate. A solution is stored without copying, so the caller must not modify
-it afterwards. The archive keeps running totals, as [`GridArchive`](@ref)
-does, so `qd_score`, `max_fitness` and `mean_fitness` take constant time. The
-maximum is exact because a stored solution is only ever replaced by a better
-one.
+allocate. The archive has no [`add_batch!`](@ref QualityDiversity.add_batch!)
+of its own: the default inserts the solutions of a batch one at a time with
+`add!`, so the result of a solution depends on the solutions before it in the
+batch, unlike in a [`GridArchive`](@ref). A solution is stored without copying,
+so the caller must not modify it afterwards. The archive keeps running totals,
+as [`GridArchive`](@ref) does, so `qd_score`, `max_fitness` and `mean_fitness`
+take constant time. The maximum is exact because a stored solution is only ever
+replaced by a better one.
 
 # Example
 
@@ -188,7 +191,9 @@ function add!(archive::UnstructuredArchive{G,F,N,P}, x,
         previous = archive.fitness[weakest]
         fitness > previous || return AddResult(Rejected, fitness_gain(fitness, previous))
         _store!(archive, weakest, x, fitness, point, phenotype)
-        _add_to_sum!(archive, Float64(fitness) - Float64(previous))
+        # Two compensated steps, as in `place!` of a `CellArchive`.
+        _add_to_sum!(archive, Float64(fitness))
+        _add_to_sum!(archive, -Float64(previous))
         archive.fitness_max = max(archive.fitness_max, fitness)
         return AddResult(NewCell, fitness)
     end
@@ -196,7 +201,8 @@ function add!(archive::UnstructuredArchive{G,F,N,P}, x,
     improvement = fitness_gain(fitness, previous)
     fitness > previous || return AddResult(Rejected, improvement)
     _store!(archive, nearest, x, fitness, point, phenotype)
-    _add_to_sum!(archive, Float64(fitness) - Float64(previous))
+    _add_to_sum!(archive, Float64(fitness))
+    _add_to_sum!(archive, -Float64(previous))
     archive.fitness_max = max(archive.fitness_max, fitness)
     return AddResult(Improved, improvement)
 end

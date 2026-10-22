@@ -54,8 +54,11 @@ Gradient Assistance and Crowding Exploration").
 
 The crowding distance is that of NSGA-II: for each objective, the gap between the two
 neighbours of a solution in that objective divided by the range of the objective over these
-solutions, summed over the objectives. The solutions with the smallest and the largest value
-of an objective have an infinite distance, so the ends of the front are never removed. An
+solutions, summed over the objectives. The solution with the smallest value of an objective
+and the one with the largest have an infinite distance, so the ends of the front are never
+removed; when several solutions share an extreme value, only one of them is protected in
+that objective, the first stored among those at the smallest value and the last stored among
+those at the largest, and the others get a finite distance like any solution between. An
 objective in which all of them are equal adds nothing. On a tie the new solution is removed,
 and otherwise the one stored first among those tied.
 
@@ -391,10 +394,13 @@ function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor, phenotyp
     archive.counts[i] = kept + 1
     archive.num_solutions += kept + 1 - n
     volume = scratch_volume(archive, kept + 1)
-    change = volume - archive.volumes[i]
+    previous = archive.volumes[i]
     archive.volumes[i] = volume
-    add_to_volume!(archive, change)
-    return change
+    # Added and subtracted as two compensated steps: their difference would round,
+    # outside the compensation.
+    add_to_volume!(archive, volume)
+    add_to_volume!(archive, -previous)
+    return volume - previous
 end
 
 # Neumaier's compensated summation of the running total.
@@ -516,9 +522,10 @@ end
 """
     global_hypervolume(archive::ParetoGridArchive)
 
-Hypervolume of the Pareto front of all the solutions of the archive, from every cell. It
-compares all solutions with each other, so it takes time quadratic in
-[`num_solutions`](@ref). Zero for an empty archive.
+Hypervolume of the Pareto front of all the solutions of the archive, from every cell,
+computed with [`hypervolume`](@ref): for `n` solutions, [`num_solutions`](@ref), and `M`
+objectives it takes time of the order of `n log n` for two objectives and `n^(M-1) log n`
+for more. Zero for an empty archive.
 """
 function global_hypervolume(archive::ParetoGridArchive)
     points = [ev.fitness for (_, ev) in elites(archive)]

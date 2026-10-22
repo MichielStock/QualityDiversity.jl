@@ -108,10 +108,11 @@ a vector of `Float64` converts to.
   inside them.
 
 `ask` draws a batch, and the next call of `tell!` must be with the results for that
-batch. `tell!` ranks the candidates, adapts the distribution and decides on a
-restart; the restart itself happens at the following `ask`, which has the random
-number generator and the archive to choose the new start from. The emitter has the
-properties `iterations`, the number of batches told, and `restarts`.
+batch; a second `ask` before that is an error. `tell!` ranks the candidates, adapts the
+distribution and decides on a restart; the restart itself happens at the following
+`ask`, which has the random number generator and the archive to choose the new start
+from. The emitter has the properties `iterations`, the number of batches told, and
+`restarts`.
 
 # Example
 
@@ -202,6 +203,8 @@ inside the bounds of the strategy if it lies outside them (the first call uses `
 the emitter has one).
 """
 function ask(rng::AbstractRNG, emitter::CMAEmitter, archive::AbstractArchive{G}) where {G}
+    emitter.asked &&
+        throw(ArgumentError("ask was called again before tell! reported the results of the last batch"))
     needs_start(emitter) && start_search!(rng, emitter, archive, start_mean(rng, emitter, archive))
     es = draw_batch!(rng, emitter)
     xs = Vector{G}(undef, es.batch_size)
