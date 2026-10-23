@@ -68,7 +68,7 @@ emit("sep_mean", fmt(mean))
 emit("sep_sigma", repr(float(sig)))
 emit("sep_var", fmt(var))
 # ---------------- LM-MA-ES (Loshchilov et al. 2019) ----------------------------
-n, lam, m = 8, 6, 3
+n, lam, m = 12, 6, 3
 x0 = rng.normal(size=n); s0 = 0.5
 cs_ = 2*lam/n; cd = np.array([1/(1.5**j * n) for j in range(m)]); ccv = np.array([lam/(4.0**j * n) for j in range(m)])
 mean, sig, ps = x0.copy(), s0, np.zeros(n); M = np.zeros((m, n))

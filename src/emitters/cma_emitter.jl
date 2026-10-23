@@ -89,7 +89,8 @@ a vector of `Float64` converts to.
   default (rounded up to an even number for [`OpenAIES`](@ref)).
 - `strategy`: the optimizer, a subtype of [`AbstractEvolutionStrategy`](@ref) or a
   function with the same arguments as its constructors. It is [`CMAES`](@ref) by
-  default; [`SepCMAES`](@ref) and [`LMMAES`](@ref) scale to a high dimension, and
+  default; [`SepCMAES`](@ref) and [`LMMAES`](@ref) scale to a high dimension (`LMMAES`
+  only works there: it needs at least twice as many parameters as `batch_size`), and
   [`OpenAIES`](@ref) follows a gradient estimate. For an option of a strategy pass
   a function, such as `(dim; kwargs...) -> LMMAES(dim; kwargs..., n_vectors=8)`.
 - `ranker`: how the candidates are ordered, [`TwoStageImprovementRanker`](@ref) by

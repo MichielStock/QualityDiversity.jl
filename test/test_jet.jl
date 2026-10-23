@@ -52,7 +52,7 @@ using JET: JET
     JET.@test_opt target_modules = (QualityDiversity,) step!(cma_state)
     JET.@test_opt target_modules = (QualityDiversity,) QD.ask(Xoshiro(1), cma_state.emitters[1], cma_state.archive)
     for kwargs in ((; ranker=QD.TwoStageRandomDirectionRanker()), (; strategy=QD.SepCMAES), (; strategy=QD.OpenAIES),
-                   (; strategy=QD.LMMAES, batch_size=3))
+                   (; strategy=QD.LMMAES, batch_size=2))
         other = CMAME(prob; dims=(5, 5), sigma0=1.0, num_emitters=2, kwargs...)
         other_state = init(prob, other; budget=200, rng=Xoshiro(1))
         JET.@test_opt target_modules = (QualityDiversity,) step!(other_state)

@@ -12,11 +12,20 @@ vectors `M_j` stretch one after the other, `d ← (1 - c_d,j) d + c_d,j M_j (M_j
 After a generation the vectors and the path of the step size move toward the
 recombined `z` of the parents, and the step size follows the cumulative step size
 rule. The learning rates are `c_σ = 2 batch_size / dim`, `c_d,j = 1 / (1.5^(j-1) dim)`
-and `c_c,j = batch_size / (4^(j-1) dim)`, as in pyribs. They require `batch_size < dim`,
-and `n_vectors` is at most `dim`. The paper assumes a batch much smaller than the
-dimension: when `2 batch_size > dim`, `c_σ` exceeds 1 and the path of the step size
-changes sign every generation, so keep the batch well below the dimension or use
-[`CMAES`](@ref). The solutions of a batch are not mirrored.
+and `c_c,j = batch_size / (4^(j-1) dim)`, as in pyribs; `n_vectors` is at most `dim`.
+The solutions of a batch are not mirrored.
+
+# A high dimension only
+
+LM-MA-ES is meant for hundreds of parameters or more, where the covariance matrix of
+[`CMAES`](@ref) costs too much, and it requires a batch of at most half the dimension,
+`2 batch_size ≤ dim`. Each generation the path of the step size keeps a fraction
+`1 - c_σ` of itself; with a larger batch `c_σ` exceeds 1, the fraction is negative, the
+path changes sign every generation and the step size follows noise instead of the
+search. The constructor therefore throws for such a batch. With the default batch,
+`4 + floor(3 log(dim))`, this means `dim ≥ 26`. For fewer parameters use
+[`CMAES`](@ref) or [`SepCMAES`](@ref), or pass a smaller `batch_size`. pyribs refuses
+only `batch_size > dim`.
 
 The arguments, `sample!`, `update!` and `should_stop` are those of
 [`AbstractEvolutionStrategy`](@ref). `should_stop` also reports a step size below
@@ -48,8 +57,7 @@ end
 function LMMAES(dim::Integer; sigma0::Real, batch_size::Integer=default_batch_size(dim),
                 n_vectors::Integer=batch_size, lower=-Inf, upper=Inf)
     lo, hi = check_strategy_arguments(dim, sigma0, batch_size, lower, upper)
-    batch_size < dim ||
-        throw(ArgumentError("batch_size ($batch_size) must be less than the dimension ($dim) for LMMAES; use CMAES or SepCMAES for a low dimension"))
+    2 * batch_size <= dim || throw(ArgumentError(lmmaes_batch_message(dim, batch_size)))
     1 <= n_vectors <= dim ||
         throw(ArgumentError("n_vectors must be between 1 and the dimension ($dim), got $n_vectors"))
     c_d = [1 / (1.5^(j - 1) * dim) for j in 1:n_vectors]
@@ -58,6 +66,17 @@ function LMMAES(dim::Integer; sigma0::Real, batch_size::Integer=default_batch_si
                   2 * batch_size / dim, c_d, c_c, zeros(dim), Float64(sigma0), zeros(dim),
                   zeros(dim, n_vectors), 0,
                   zeros(dim, batch_size), zeros(dim, batch_size), zeros(dim, batch_size))
+end
+
+# See #45: pyribs accepts any batch up to the dimension.
+function lmmaes_batch_message(dim, batch_size)
+    c_sigma = round(2 * batch_size / dim; digits=2)
+    smaller = dim >= 4 ? "pass batch_size ≤ $(dim ÷ 2), or " : ""
+    return "LMMAES needs a batch of at most half the dimension, but batch_size is $batch_size " *
+           "and the dimension $dim: the learning rate of its step size, 2 batch_size / dim = " *
+           "$c_sigma, would exceed 1, so the step size would stop adapting. LMMAES is meant for " *
+           "a high dimension (at least 26 with the default batch); $(smaller)use CMAES or " *
+           "SepCMAES. See the help of QualityDiversity.LMMAES."
 end
 
 function reset!(es::LMMAES, x0::AbstractVector{<:Real})

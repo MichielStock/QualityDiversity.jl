@@ -34,6 +34,12 @@ A few rules of thumb:
   mutation. `sigma0`, the initial step size, has no default because it depends on the
   scale of the solutions; a tenth to a half of the range of a parameter is a usual
   start.
+- **The optimizer of the CMA emitters** is the `strategy` keyword.
+  [`CMAES`](@ref QualityDiversity.CMAES), the default, suits up to a few hundred
+  parameters. Beyond that, [`SepCMAES`](@ref QualityDiversity.SepCMAES) and
+  [`LMMAES`](@ref QualityDiversity.LMMAES) cost less per solution. `LMMAES` works only in
+  a high dimension: it needs at least twice as many parameters as the batch size, so at
+  least 26 with the default batch, and throws otherwise.
 - **CMA-ME or CMA-MAE:** CMA-MAE keeps searching where it has already found good
   solutions, which CMA-ME abandons once a region is covered. It needs `threshold_min`,
   the lowest fitness the problem can produce.
