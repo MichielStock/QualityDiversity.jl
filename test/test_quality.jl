@@ -37,7 +37,7 @@ const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :pr
     @test ExplicitImports.check_all_qualified_accesses_are_public(QualityDiversity; ignore=NON_PUBLIC_ON_PURPOSE) === nothing
 end
 
-# JET is pinned to minor versions of Julia (see the compat entry in Project.toml) and
+# JET is pinned to minor versions of Julia (see the compat entry in test/Project.toml) and
 # breaks on new Julia releases, which should not block the other CI jobs. Aqua and
 # ExplicitImports always run; the JET tests run only when QD_JET is "1", which CI sets
 # for one job. They live in their own file because `JET.@test_opt` is a macro: the
