@@ -1,12 +1,12 @@
 """
     CVTArchive{G,F}(centroids, bounds; outside=ThrowOutside(), phenotype=Nothing)
-    CVTArchive{G,F}(rng, cells, bounds; samples=100_000, outside=ThrowOutside(),
-                    phenotype=Nothing)
+    CVTArchive{G,F}(cells, bounds; rng=Random.default_rng(), samples=100_000,
+                    max_iterations=100, outside=ThrowOutside(), phenotype=Nothing)
     CVTArchive{G}(...)
     CVTArchive(...)
-    CVTArchive(rng, prob::AbstractQDProblem; cells, bounds=descriptor_bounds(prob),
-               samples=100_000, genotype=default_genotype(prob), fitness=Float64,
-               outside=ThrowOutside(), phenotype=Nothing)
+    CVTArchive(prob::AbstractQDProblem; cells, rng=Random.default_rng(), bounds=nothing,
+               samples=100_000, max_iterations=100, genotype=default_genotype(prob),
+               fitness=Float64, outside=ThrowOutside(), phenotype=Nothing)
 
 Archive that divides descriptor space into the Voronoi cells of a set of
 centroids and keeps the highest-fitness solution found in each cell. A
@@ -20,9 +20,13 @@ chosen from `samples` points drawn uniformly from the box `bounds` by k-means
 (Lloyd's algorithm, seeded with k-means++), which makes the cells equal in
 expected population. The iterations stop after `max_iterations` (100) or when
 one lowers the total squared distance from the samples to their centroids by
-less than 0.1%. The second form draws random numbers, so it takes an
-`rng` first; the same seed gives the same centroids. `centroids(archive)`
-returns them, and passing them back rebuilds the same archive.
+less than 0.1%. The second form draws its random numbers from `rng`; the same
+seed gives the same centroids. For a reproducible run, seed the archive as well as
+`solve`, e.g. `rng=Xoshiro(1)`: without it, `rng` is `Random.default_rng()`, which the
+seed of `solve` does not set. `centroids(archive)` returns the centroids, and passing them
+back rebuilds the same archive. The last form takes the bounds from
+[`descriptor_bounds(prob)`](@ref QualityDiversity.descriptor_bounds) unless `bounds`
+is given.
 
 `bounds` is a tuple with one `(lo, hi)` pair per descriptor dimension. Given
 centroids must lie inside the box and be distinct. `G` is the genotype type,
@@ -44,10 +48,17 @@ metrics take constant time.
 ```jldoctest
 julia> using QualityDiversity, Random
 
-julia> archive = CVTArchive(Xoshiro(1), 50, ((0, 1), (0, 1)); samples=5_000);
+julia> archive = CVTArchive(50, ((0, 1), (0, 1)); rng=Xoshiro(1), samples=5_000);
 
 julia> length(archive), QualityDiversity.capacity(archive)
 (0, 50)
+
+julia> a = CVTArchive(50, ((0, 1), (0, 1)); samples=5_000);    # no seed
+
+julia> b = CVTArchive(50, ((0, 1), (0, 1)); samples=5_000);
+
+julia> QualityDiversity.centroids(a) == QualityDiversity.centroids(b)    # other cells
+false
 ```
 """
 mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy,P} <: CellArchive{G,F,SVector{N,Float64},P}
@@ -128,7 +139,7 @@ function CVTArchive{G,F}(centroids::AbstractVector{<:AbstractVector{<:Real}}, bo
     return CVTArchive{G,F,length(bounds),typeof(outside),phenotype}(points, lower, upper, outside)
 end
 
-function CVTArchive{G,F}(rng::AbstractRNG, cells::Integer, bounds::Tuple;
+function CVTArchive{G,F}(cells::Integer, bounds::Tuple; rng::AbstractRNG=Random.default_rng(),
                          samples::Integer=100_000, max_iterations::Integer=100,
                          outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing) where {G,F<:Real}
     lower, upper = box(bounds)
@@ -140,12 +151,13 @@ CVTArchive{G}(args...; kwargs...) where {G} = CVTArchive{G,Float64}(args...; kwa
 
 CVTArchive(args...; kwargs...) = CVTArchive{Vector{Float64}}(args...; kwargs...)
 
-function CVTArchive(rng::AbstractRNG, prob::AbstractQDProblem; cells::Integer,
-                    bounds::Tuple=descriptor_bounds(prob),
+function CVTArchive(prob::AbstractQDProblem; cells::Integer, rng::AbstractRNG=Random.default_rng(),
+                    bounds::Union{Tuple,Nothing}=nothing,
                     genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
-                    samples::Integer=100_000, outside::OutsidePolicy=ThrowOutside(),
-                    phenotype::Type=Nothing)
-    return CVTArchive{genotype,fitness}(rng, cells, bounds; samples, outside, phenotype)
+                    samples::Integer=100_000, max_iterations::Integer=100,
+                    outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing)
+    return CVTArchive{genotype,fitness}(cells, problem_bounds(prob, bounds); rng, samples, max_iterations,
+                                        outside, phenotype)
 end
 
 """

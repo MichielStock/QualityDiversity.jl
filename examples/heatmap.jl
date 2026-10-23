@@ -31,7 +31,7 @@ prob = Rastrigin(10)
 bounds = QualityDiversity.descriptor_bounds(prob)
 variation = GaussianMutation(0.5)
 grid = solve(prob, MAPElites(prob; dims=(40, 40), batch_size=100, variation); budget=100_000, rng=Xoshiro(1))
-cvt = solve(prob, MAPElites(CVTArchive(Xoshiro(1), 1_000, bounds); batch_size=100, variation);
+cvt = solve(prob, MAPElites(CVTArchive(1_000, bounds; rng=Xoshiro(1)); batch_size=100, variation);
             budget=100_000, rng=Xoshiro(1))
 
 # ## Heatmaps

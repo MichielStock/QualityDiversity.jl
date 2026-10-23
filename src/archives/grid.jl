@@ -2,9 +2,8 @@
     GridArchive{G,F}(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
     GridArchive{G}(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
     GridArchive(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
-    GridArchive(prob::AbstractQDProblem; dims, bounds=descriptor_bounds(prob),
-                genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside(),
-                phenotype=Nothing)
+    GridArchive(prob::AbstractQDProblem; dims, bounds=nothing, genotype=default_genotype(prob),
+                fitness=Float64, outside=ThrowOutside(), phenotype=Nothing)
 
 Archive that divides descriptor space into a regular grid and keeps the
 highest-fitness solution found in each cell.
@@ -104,11 +103,10 @@ function GridArchive(dims::Tuple, bounds::Tuple; kwargs...)
     return GridArchive{Vector{Float64}}(dims, bounds; kwargs...)
 end
 
-function GridArchive(prob::AbstractQDProblem; dims::Tuple,
-                     bounds::Tuple=descriptor_bounds(prob),
+function GridArchive(prob::AbstractQDProblem; dims::Tuple, bounds::Union{Tuple,Nothing}=nothing,
                      genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                      outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing)
-    return GridArchive{genotype,fitness}(dims, bounds; outside, phenotype)
+    return GridArchive{genotype,fitness}(dims, problem_bounds(prob, bounds); outside, phenotype)
 end
 
 """

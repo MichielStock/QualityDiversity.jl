@@ -2,7 +2,7 @@ include("reference/pareto.jl")
 include("reference/crowding.jl")
 
 pareto_archive(; dims=(3, 3), ref=[0.0, 0.0], kwargs...) =
-    ParetoGridArchive{Vector{Float64}}(dims, ((0, 1), (0, 1)), ref; kwargs...)
+    ParetoGridArchive{Vector{Float64}}(dims, ((0, 1), (0, 1)); reference_point=ref, kwargs...)
 
 ev2(a, b, d=(0.2, 0.2)) = Evaluation(SVector(Float64(a), Float64(b)), SVector(Float64(d[1]), Float64(d[2])))
 
@@ -34,7 +34,7 @@ ev2(a, b, d=(0.2, 0.2)) = Evaluation(SVector(Float64(a), Float64(b)), SVector(Fl
 end
 
 @testset "ParetoGridArchive construction" begin
-    a = ParetoGridArchive((4, 5), ((0, 1), (-1, 1)), [0.0, 0.0, 0.0]; max_front=7)
+    a = ParetoGridArchive((4, 5), ((0, 1), (-1, 1)); reference_point=[0.0, 0.0, 0.0], max_front=7)
     @test a isa ParetoGridArchive{Vector{Float64},3,2} && a isa QD.AbstractArchive{Vector{Float64},SVector{3,Float64},SVector{2,Float64}}
     @test QD.capacity(a) == 20 && length(a) == 0 && QD.num_solutions(a) == 0 && a.max_front == 7
     @test QD.descriptor_bounds(a) == ((0.0, 1.0), (-1.0, 1.0)) && QD.reference_point(a) == SVector(0.0, 0.0, 0.0)
@@ -42,9 +42,13 @@ end
     b = ParetoGridArchive(prob; dims=(5, 5), reference_point=QD.reference_point(prob), genotype=SVector{4,Float64})
     @test b isa ParetoGridArchive{SVector{4,Float64},2} && b.max_front == 50 && QD.capacity(b) == 25
     @test_throws "dims[2] is 0 but every dimension needs at least one cell" pareto_archive(dims=(3, 0))
-    @test_throws "bounds[1] is (1.0, 0.0) but lo must be finite and less than hi" ParetoGridArchive{Vector{Float64}}((2,), ((1, 0),), [0.0, 0.0])
-    @test_throws "dims has 2 entries but bounds has 1" ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1),), [0.0, 0.0])
-    @test_throws "the reference point has 1 entries but several objectives need at least 2" ParetoGridArchive{Vector{Float64}}((2,), ((0, 1),), [0.0])
+    @test_throws "bounds[1] is (1.0, 0.0) but lo must be finite and less than hi" ParetoGridArchive{Vector{Float64}}((2,), ((1, 0),); reference_point=[0.0, 0.0])
+    @test_throws "dims has 2 entries but bounds has 1" ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1),); reference_point=[0.0, 0.0])
+    @test_throws "the reference point has 1 entries but several objectives need at least 2" ParetoGridArchive{Vector{Float64}}((2,), ((0, 1),); reference_point=[0.0])
+    # the reference point is a required keyword, as for MOME; it is never positional
+    @test_throws UndefKeywordError ParetoGridArchive((2, 2), ((0, 1), (0, 1)))
+    @test_throws MethodError ParetoGridArchive((2, 2), ((0, 1), (0, 1)), [0.0, 0.0])
+    @test_throws UndefKeywordError ParetoGridArchive(prob; dims=(2, 2))
     @test_throws "the reference point must be finite" pareto_archive(ref=[0.0, -Inf])
     @test_throws "max_front must be at least 1, got 0" pareto_archive(max_front=0)
 end
@@ -176,7 +180,7 @@ end
     @test QD.add!(a, [2.0], ev2(0.8, 0.2)).status == QD.Rejected && ids(a) == [1.0]
     # an objective in which every solution is equal adds nothing to the distance
     ev3(f...) = Evaluation(SVector(Float64.(f)...), SVector(0.2, 0.2))
-    a = ParetoGridArchive{Float64}((2, 2), ((0, 1), (0, 1)), zeros(3); max_front=3, full_front=ReplaceCrowded())
+    a = ParetoGridArchive{Float64}((2, 2), ((0, 1), (0, 1)); reference_point=zeros(3), max_front=3, full_front=ReplaceCrowded())
     for (k, t) in enumerate((0.1, 0.2, 0.9))
         QD.add!(a, Float64(k), ev3(t, 1 - t, 0.5))
     end
@@ -190,8 +194,7 @@ end
 @testset "fronts kept as by MOME-PGX" begin
     for c in crowding_cases
         m = c.objectives
-        a = ParetoGridArchive{Int}((1,), ((0.0, 1.0),), fill(-10.0, m); max_front=c.max_front,
-                                   duplicates=KeepDuplicates(), full_front=ReplaceCrowded())
+        a = ParetoGridArchive{Int}((1,), ((0.0, 1.0),); reference_point=fill(-10.0, m), max_front=c.max_front, duplicates=KeepDuplicates(), full_front=ReplaceCrowded())
         for i in 1:length(c.fitness)÷m
             QD.add!(a, i - 1, Evaluation(SVector{m,Float64}(c.fitness[(i-1)*m+1:i*m]), SVector(0.5)))
         end
@@ -202,7 +205,7 @@ end
 @testset "fronts kept as by QDax" begin
     for c in front_cases
         m = c.objectives
-        a = ParetoGridArchive{Int}((1,), ((0.0, 1.0),), fill(-10.0, m); max_front=c.max_front)
+        a = ParetoGridArchive{Int}((1,), ((0.0, 1.0),); reference_point=fill(-10.0, m), max_front=c.max_front)
         for i in 1:length(c.fitness)÷m
             QD.add!(a, i - 1, Evaluation(SVector{m,Float64}(c.fitness[(i-1)*m+1:i*m]), SVector(0.5)))
         end
@@ -315,7 +318,7 @@ end
     # A changed cell adds its new hypervolume and subtracts the old one as two compensated
     # steps, so the total with its error term tracks the exact sum far below one rounding
     # even when their difference is not representable (volumes below 2 against 2^53).
-    b = ParetoGridArchive{Vector{Float64}}((1000,), ((0, 1),), [0.0, 0.0])
+    b = ParetoGridArchive{Vector{Float64}}((1000,), ((0, 1),); reference_point=[0.0, 0.0])
     rng = Xoshiro(3)
     exact = BigFloat(0)
     for c in 1:1000
@@ -356,7 +359,7 @@ end
     @test MOME(own; batch_size=5).archive === own
     @test_throws "dims" MOME(prob)
     @test_throws "Rastrigin does not define reference_point" MOME(Rastrigin(4); dims=(4, 4))
-    @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MOME(ParetoGridArchive{Vector{Float64}}((3,), ((0, 1),), [-1e3, -1e3])); budget=100)
+    @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MOME(ParetoGridArchive{Vector{Float64}}((3,), ((0, 1),); reference_point=[-1e3, -1e3])); budget=100)
 
     result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
     @test result.archive isa ParetoGridArchive && result.n_evals >= 6_000
@@ -390,7 +393,7 @@ end
     # C beats both stored solutions; D beats neither of them, so against the full front
     # before the batch it is rejected, but after C took their place it enters.
     for full_front in (RejectNewcomer(), ReplaceCrowded())
-        make() = (a = ParetoGridArchive((1,), ((0, 1),), [0.0, 0.0]; max_front=2, full_front);
+        make() = (a = ParetoGridArchive((1,), ((0, 1),); reference_point=[0.0, 0.0], max_front=2, full_front);
                   QD.add_batch!(a, [[1.0], [2.0]], [Evaluation([1.0, 3.0], SVector(0.5)), Evaluation([3.0, 1.0], SVector(0.5))]);
                   a)
         batch = [Evaluation([4.0, 4.0], SVector(0.5)), Evaluation([5.0, 0.5], SVector(0.5))]

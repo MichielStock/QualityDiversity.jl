@@ -53,7 +53,7 @@ end
     @test length(a) == 0 && QD.capacity(a) == 4
     @test all(isnan, QD.spreads(a)) && length(QD.spreads(a)) == 4
     @test QD.descriptor_bounds(a) == ((0.0, 1.0), (0.0, 1.0))
-    @test SpreadArchive(CVTArchive(Xoshiro(1), 5, ((0, 1), (0, 1)); samples=100, phenotype=Int)) isa
+    @test SpreadArchive(CVTArchive(5, ((0, 1), (0, 1)); samples=100, phenotype=Int, rng=Xoshiro(1))) isa
           SpreadArchive{Vector{Float64},Float64,2,Int}
     full = GridArchive((2, 2), ((0, 1), (0, 1)))
     QD.add!(full, [0.0], Evaluation(1.0, SVector(0.1, 0.1)))
@@ -196,7 +196,7 @@ end
     test_archive(() -> SpreadArchive(GridArchive(prob; dims=(1, 1))), prob; batchwise...)
     test_archive(() -> SpreadArchive(GridArchive(prob; dims=(6, 6), fitness=Float32, genotype=Vector{Float32})), prob; batchwise...)
     test_archive(() -> SpreadArchive(GridArchive(prob; dims=(6, 6), outside=RejectOutside())), prob; batchwise...)
-    test_archive(() -> SpreadArchive(CVTArchive(Xoshiro(1), prob; cells=30, samples=3_000)), prob; batchwise...)
+    test_archive(() -> SpreadArchive(CVTArchive(prob; cells=30, samples=3_000, rng=Xoshiro(1))), prob; batchwise...)
 
     single = SampledSpread(noisy; num_samples=1)
     test_archive(() -> SpreadArchive(GridArchive(single; dims=(6, 6))), single; batchwise...)
@@ -231,7 +231,7 @@ end
     again = solve(prob, alg; budget=4_000, rng=Xoshiro(1))
     @test collect(QD.elites(again.archive)) == collect(QD.elites(result.archive))
 
-    cvt = MELS(SpreadArchive(CVTArchive(Xoshiro(1), prob; cells=20, samples=2_000)); batch_size=16)
+    cvt = MELS(SpreadArchive(CVTArchive(prob; cells=20, samples=2_000, rng=Xoshiro(1))); batch_size=16)
     @test length(solve(prob, cvt; budget=2_000, rng=Xoshiro(2)).archive) > 3
 
     @test MELS(prob; dims=(5, 5), phenotype=Int).archive isa SpreadArchive{Vector{Float64},Float64,2,Int}

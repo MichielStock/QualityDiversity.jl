@@ -9,7 +9,7 @@ include("reference/threshold.jl")
     @test QD.capacity(a) == 16 && length(a) == 0 && coverage(a) == 0
     @test QD.thresholds(a) == fill(-Inf, 16)
 
-    b = ThresholdArchive(CVTArchive{Vector{Float32},Float32}(Xoshiro(1), 10, ((0, 1), (0, 1)); samples=200);
+    b = ThresholdArchive(CVTArchive{Vector{Float32},Float32}(10, ((0, 1), (0, 1)); samples=200, rng=Xoshiro(1));
                          learning_rate=0.25, threshold_min=-3)
     @test b isa ThresholdArchive{Vector{Float32},Float32}
     @test b.learning_rate === 0.25f0 && b.threshold_min === -3.0f0 && QD.thresholds(b) == fill(-3.0f0, 10)
@@ -41,7 +41,7 @@ include("reference/threshold.jl")
     @test_throws "result must be empty but holds 1 solutions" ThresholdArchive(grid; learning_rate=0.5, threshold_min=0, result=full)
     @test_throws "result must be a GridArchive of the same type as the archive it belongs to, got a CVTArchive" ThresholdArchive(
         GridArchive((2, 2), ((0, 1), (0, 1))); learning_rate=0.5, threshold_min=0,
-        result=CVTArchive(Xoshiro(1), 4, ((0, 1), (0, 1)); samples=100))
+        result=CVTArchive(4, ((0, 1), (0, 1)); samples=100, rng=Xoshiro(1)))
     g = GridArchive((2, 2), ((0, 1), (0, 1)))
     @test_throws "result must be a different archive from the one it belongs to" ThresholdArchive(g; learning_rate=0.5, threshold_min=0, result=g)
 end
@@ -200,7 +200,7 @@ end
 @testset "ThresholdArchive with learning rate 1 is the wrapped archive" begin
     rng = Xoshiro(3)
     for make in (() -> GridArchive((6, 6), ((0, 1), (0, 1))),
-                 () -> CVTArchive(Xoshiro(1), 30, ((0, 1), (0, 1)); samples=1_000))
+                 () -> CVTArchive(30, ((0, 1), (0, 1)); samples=1_000, rng=Xoshiro(1)))
         plain = make()
         wrapped = ThresholdArchive(make())
         for k in 1:3_000

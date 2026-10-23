@@ -167,7 +167,7 @@ end
     for phenotype in (Nothing, Int)
         grid = GridArchive{SVector{3,Float64}}((10, 10), ((-1, 1), (-1, 1)); phenotype)
         # a buffer that is full, so that reservoir sampling runs
-        archive = DensityArchive(Xoshiro(1), grid; bandwidth=0.2, buffer_size=40)
+        archive = DensityArchive(grid; bandwidth=0.2, buffer_capacity=40, rng=Xoshiro(1))
         pevs = [Evaluation(ev.fitness, ev.descriptor, phenotype === Int ? 1 : nothing) for ev in evs]
         QD.add_batch!(archive, xs, pevs)
         @inferred QD.density(archive, pevs[1].descriptor)
@@ -178,7 +178,7 @@ end
         @test allocated(QD.add!, archive, xs[1], pevs[1]) == 0
     end
     prob4 = Rastrigin(4)
-    state = init(prob4, DDS(Xoshiro(1), prob4; dims=(5, 5), sigma0=0.5, bandwidth=0.5, num_emitters=2); budget=10_000, rng=Xoshiro(1))
+    state = init(prob4, DDS(prob4; dims=(5, 5), sigma0=0.5, bandwidth=0.5, num_emitters=2, rng=Xoshiro(1)); budget=10_000, rng=Xoshiro(1))
     @inferred step!(state)
 end
 
@@ -207,7 +207,7 @@ end
     prob = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]));
                      init=rng -> SVector{3,Float64}(2 .* rand(rng, 3) .- 1),
                      bounds=((-1, 1), (-1, 1)))
-    centroids = QD.centroids(CVTArchive(Xoshiro(1), prob; cells=200, samples=5_000))
+    centroids = QD.centroids(CVTArchive(prob; cells=200, samples=5_000, rng=Xoshiro(1)))
     for outside in (ThrowOutside(), ClampOutside(), RejectOutside())
         archive = CVTArchive{SVector{3,Float64}}(centroids, ((-1, 1), (-1, 1)); outside)
         x = QD.random_solution(Xoshiro(1), prob)
@@ -230,7 +230,7 @@ end
                      bounds=((-1, 1), (-1, 1)))
     # full and not full, so that both the free-slot and the eviction path run
     for capacity in (200, 5)
-        archive = UnstructuredArchive{SVector{3,Float64}}(2; capacity, threshold=0.1)
+        archive = UnstructuredArchive{SVector{3,Float64}}(2; capacity, novelty_threshold=0.1)
         for i in 1:20
             QD.add!(archive, QD.random_solution(Xoshiro(i), prob), Evaluation(-i, rand(Xoshiro(i), SVector{2,Float64})))
         end
@@ -332,8 +332,7 @@ end
     @test allocated(QD.add!, archive, x, ev) == 0
     @test allocated(QD.add!, archive, x, Evaluation(ev.fitness .- 1, ev.descriptor)) == 0
     # nor does replacing the most crowded solution of a full front, with an isbits genotype
-    crowded = ParetoGridArchive{Int}((1,), ((0, 1),), [0.0, 0.0]; max_front=3, duplicates=KeepDuplicates(),
-                                     full_front=ReplaceCrowded())
+    crowded = ParetoGridArchive{Int}((1,), ((0, 1),); reference_point=[0.0, 0.0], max_front=3, duplicates=KeepDuplicates(), full_front=ReplaceCrowded())
     on_line(t) = Evaluation(SVector(t, 1 - t), SVector(0.5))
     for (k, t) in enumerate((0.1, 0.2, 0.9))
         QD.add!(crowded, k, on_line(t))
@@ -358,8 +357,8 @@ end
     @inferred QD.add_batch!(archive, xs, evs, jacobians)
     @inferred QD.add!(archive, xs[1], evs[1], jacobians[1])
     @test allocated(QD.cell_index, archive, evs[1].descriptor) == 0
-    @inferred QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma=1.0), archive)
-    for alg in (CMAMEGA(prob; dims=(5, 5), sigma0=1.0), OMGMEGA(prob; dims=(5, 5), sigma=1.0))
+    @inferred QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma0=1.0), archive)
+    for alg in (CMAMEGA(prob; dims=(5, 5), sigma0=1.0), OMGMEGA(prob; dims=(5, 5), sigma0=1.0))
         state = init(prob, alg; budget=10_000, rng=Xoshiro(1))
         @inferred step!(state)
     end

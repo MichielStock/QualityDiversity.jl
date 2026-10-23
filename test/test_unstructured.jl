@@ -2,28 +2,31 @@ brute_nearest_slot(archive, d) =
     argmin([sum(abs2, SVector{2,Float64}(d) - e.descriptor) for (_, e) in QD.elites(archive)])
 
 @testset "UnstructuredArchive construction" begin
-    a = UnstructuredArchive(2; capacity=10, threshold=0.5)
+    a = UnstructuredArchive(2; capacity=10, novelty_threshold=0.5)
     @test a isa UnstructuredArchive{Vector{Float64},Float64,2}
     @test a isa QD.AbstractArchive{Vector{Float64},Float64,SVector{2,Float64}}
     @test length(a) == 0 && QD.capacity(a) == 10 && coverage(a) == 0
-    @test UnstructuredArchive{Vector{Float32}}(3; capacity=4, threshold=1) isa
+    @test UnstructuredArchive{Vector{Float32}}(3; capacity=4, novelty_threshold=1) isa
           UnstructuredArchive{Vector{Float32},Float64,3}
-    @test UnstructuredArchive{Vector{Float32},Float32}(3; capacity=4, threshold=1) isa
+    @test UnstructuredArchive{Vector{Float32},Float32}(3; capacity=4, novelty_threshold=1) isa
           UnstructuredArchive{Vector{Float32},Float32,3}
-    b = UnstructuredArchive(Rastrigin(4); capacity=7, threshold=0.25, fitness=Float32)
+    b = UnstructuredArchive(Rastrigin(4); capacity=7, novelty_threshold=0.25, fitness=Float32)
     @test b isa UnstructuredArchive{Vector{Float64},Float32,2} && b.threshold == 0.25
-    @test UnstructuredArchive(2; capacity=3, threshold=0).threshold == 0.0
+    @test UnstructuredArchive(2; capacity=3, novelty_threshold=0).threshold == 0.0
 
-    @test_throws "capacity must be at least 1, got 0" UnstructuredArchive(2; capacity=0, threshold=1)
-    @test_throws "ndims must be at least 1, got 0" UnstructuredArchive(0; capacity=3, threshold=1)
-    @test_throws "threshold must be finite and at least 0, got -1" UnstructuredArchive(2; capacity=3, threshold=-1)
-    @test_throws "threshold must be finite and at least 0, got NaN" UnstructuredArchive(2; capacity=3, threshold=NaN)
-    @test_throws "threshold must be finite and at least 0, got Inf" UnstructuredArchive(2; capacity=3, threshold=Inf)
+    @test_throws "capacity must be at least 1, got 0" UnstructuredArchive(2; capacity=0, novelty_threshold=1)
+    @test_throws "ndims must be at least 1, got 0" UnstructuredArchive(0; capacity=3, novelty_threshold=1)
+    @test_throws "novelty_threshold must be finite and at least 0, got -1" UnstructuredArchive(2; capacity=3, novelty_threshold=-1)
+    @test_throws "novelty_threshold must be finite and at least 0, got NaN" UnstructuredArchive(2; capacity=3, novelty_threshold=NaN)
+    @test_throws "novelty_threshold must be finite and at least 0, got Inf" UnstructuredArchive(2; capacity=3, novelty_threshold=Inf)
+    @test_throws UndefKeywordError UnstructuredArchive(2; capacity=3, threshold=1)
+    labels = QDProblem(x -> (0.0, (1, :a)); init=rng -> rand(rng, 2), categories=(1:2, [:a]))
+    @test_throws "has descriptor_categories, not descriptor_bounds" UnstructuredArchive(labels; capacity=3, novelty_threshold=1)
 end
 
 @testset "UnstructuredArchive novelty and local competition" begin
     ev(f, d) = Evaluation(f, SVector{2,Float64}(d))
-    a = UnstructuredArchive(2; capacity=10, threshold=1.0)
+    a = UnstructuredArchive(2; capacity=10, novelty_threshold=1.0)
 
     @test QD.cell_index(a, [0.0, 0.0]) == 0
     r = QD.add!(a, [1.0], ev(-5.0, (0, 0)))
@@ -50,7 +53,7 @@ end
     @test r.status == QD.NewCell && length(a) == 3
 
     # with threshold 0 only an identical descriptor competes
-    z = UnstructuredArchive(2; capacity=10, threshold=0)
+    z = UnstructuredArchive(2; capacity=10, novelty_threshold=0)
     @test QD.add!(z, [1.0], ev(1.0, (0.5, 0.5))).status == QD.NewCell
     @test QD.add!(z, [2.0], ev(0.0, (0.5, 0.5 + 1e-12))).status == QD.NewCell
     @test QD.add!(z, [3.0], ev(0.5, (0.5, 0.5))).status == QD.Rejected
@@ -60,7 +63,7 @@ end
 
 @testset "UnstructuredArchive when full" begin
     ev(f, d) = Evaluation(f, SVector{2,Float64}(d))
-    a = UnstructuredArchive(2; capacity=3, threshold=1.0)
+    a = UnstructuredArchive(2; capacity=3, novelty_threshold=1.0)
     for (i, f) in enumerate((-3.0, -1.0, -2.0))
         QD.add!(a, [Float64(i)], ev(f, (10i, 0)))
     end
@@ -88,7 +91,7 @@ end
     # Both replacements add the new fitness and subtract the old one as two compensated
     # steps, so the total with its error term tracks the exact sum far below one rounding
     # even when their difference is not representable (magnitudes below 1 against 2^53).
-    b = UnstructuredArchive(2; capacity=500, threshold=0.5)
+    b = UnstructuredArchive(2; capacity=500, novelty_threshold=0.5)
     rng = Xoshiro(3)
     exact = BigFloat(0)
     for i in 1:500
@@ -107,7 +110,7 @@ end
 
 @testset "UnstructuredArchive cell_index finds the nearest stored descriptor" begin
     rng = Xoshiro(5)
-    a = UnstructuredArchive(2; capacity=50, threshold=0.05)
+    a = UnstructuredArchive(2; capacity=50, novelty_threshold=0.05)
     for _ in 1:300
         QD.add!(a, [0.0], Evaluation(-rand(rng), rand(rng, SVector{2,Float64})))
     end
@@ -118,14 +121,14 @@ end
         @test QD.cell_index(a, collect(d)) == QD.cell_index(a, d)
     end
     # equally near: the lowest slot
-    t = UnstructuredArchive(1; capacity=5, threshold=0.1)
+    t = UnstructuredArchive(1; capacity=5, novelty_threshold=0.1)
     QD.add!(t, [1.0], Evaluation(0.0, SVector(0.0)))
     QD.add!(t, [2.0], Evaluation(0.0, SVector(2.0)))
     @test QD.cell_index(t, [1.0]) == 1
 end
 
 @testset "UnstructuredArchive rejects bad descriptors" begin
-    a = UnstructuredArchive(2; capacity=5, threshold=1.0)
+    a = UnstructuredArchive(2; capacity=5, novelty_threshold=1.0)
     @test_throws "descriptor has 3 dimensions but the archive has 2" QD.cell_index(a, [0.0, 0.0, 0.0])
     @test_throws "descriptor has 1 dimensions but the archive has 2" QD.add!(a, [1.0], Evaluation(1.0, SVector(0.0)))
     @test_throws "descriptor component 2 is NaN, which is not finite" QD.cell_index(a, [0.0, NaN])
@@ -139,7 +142,7 @@ end
 
 @testset "UnstructuredArchive running metrics" begin
     rng = Xoshiro(11)
-    a = UnstructuredArchive(2; capacity=200, threshold=0.04)
+    a = UnstructuredArchive(2; capacity=200, novelty_threshold=0.04)
     function check(a)
         @test coverage(a) == length(a) / QD.capacity(a)
         @test qd_score(a; offset=0) ≈ generic_qd_score(a; offset=0) rtol = 1e-14
@@ -161,7 +164,7 @@ end
 end
 
 @testset "UnstructuredArchive sampling" begin
-    a = UnstructuredArchive(2; capacity=20, threshold=0.1)
+    a = UnstructuredArchive(2; capacity=20, novelty_threshold=0.1)
     for i in 1:5
         QD.add!(a, [Float64(i)], Evaluation(0.0, SVector(i / 5, 0.0)))
     end
@@ -174,7 +177,7 @@ end
 
 @testset "MAPElites over an UnstructuredArchive" begin
     prob = Rastrigin(6)
-    archive = UnstructuredArchive(prob; capacity=300, threshold=0.8)
+    archive = UnstructuredArchive(prob; capacity=300, novelty_threshold=0.8)
     alg = MAPElites(archive; batch_size=50, variation=IsoLineVariation(0.05, 0.3))
     result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
     @test result.n_evals == 6_000
@@ -184,12 +187,12 @@ end
     @test issorted(r.max_fitness for r in result.history)
     @test solve(prob, alg; budget=6_000, rng=Xoshiro(1)).history == result.history
 
-    wrong = UnstructuredArchive(1; capacity=10, threshold=0.1)
+    wrong = UnstructuredArchive(1; capacity=10, novelty_threshold=0.1)
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)
 end
 
 @testset "UnstructuredArchive replaces the first of equally weak solutions" begin
-    a = UnstructuredArchive(1; capacity=3, threshold=0.1)
+    a = UnstructuredArchive(1; capacity=3, novelty_threshold=0.1)
     for (x, f, d) in (([1.0], 1.0, 0.0), ([2.0], 0.0, 0.5), ([3.0], 0.0, 1.0))
         QD.add!(a, x, Evaluation(f, SVector(d)))
     end

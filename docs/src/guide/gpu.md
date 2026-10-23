@@ -79,5 +79,5 @@ archives run on the CPU.
 A GPU pays off for large batches. On the benchmark of the
 [comparison](comparison.md), MAP-Elites with batches of 100 or fewer is faster on one
 CPU core than on a GPU, and with batches of 10 000 the GPU is about 26 times faster.
-A device CMA-ME is slower than the CPU with the five searches of the CMA-ME paper and
+A device CMA-ME is slower than the CPU with the five searches of the default and
 faster with hundreds.

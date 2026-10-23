@@ -1,32 +1,32 @@
 """
-    GradientOperatorEmitter(; sigma, batch_size=64, normalize=true)
+    GradientOperatorEmitter(; sigma0, batch_size=64, normalize=true)
 
 Emitter of OMG-MEGA (Fontaine and Nikolaidis, 2021, "Differentiable Quality Diversity"),
 MAP-Elites with a gradient step in place of a random mutation. It works on a
 [`GradientArchive`](@ref), which keeps the gradients of every elite. For each candidate it
 draws an elite `θ` uniformly over the occupied cells and coefficients `c` from a normal
-distribution with mean zero and standard deviation `sigma`, takes the absolute value of
+distribution with mean zero and standard deviation `sigma0`, takes the absolute value of
 `c₀` so that the step never lowers the fitness to first order, and returns
 `θ + c₀∇f + Σⱼ cⱼ∇mⱼ`, with the gradients of the fitness, `∇f`, and of the descriptor
 components, `∇mⱼ`, at `θ`, normalized to unit length unless `normalize=false`. The paper
-finds the normalization essential and uses `sigma` from `1` to `10`.
+finds the normalization essential and uses `sigma0` from `1` to `10`.
 
-`sigma` is the standard deviation of the coefficients, as in pyribs; QDax takes its
-square. The solutions must be real vectors.
+`sigma0` is the standard deviation of the coefficients, `sigma_g` in pyribs; QDax takes
+its square. The solutions must be real vectors.
 """
 struct GradientOperatorEmitter <: AbstractEmitter
     sigma::Float64
     batch_size::Int
     normalize::Bool
     function GradientOperatorEmitter(sigma::Real, batch_size::Integer, normalize::Bool)
-        sigma > 0 && isfinite(sigma) || throw(ArgumentError("sigma must be positive and finite, got $sigma"))
+        sigma > 0 && isfinite(sigma) || throw(ArgumentError("sigma0 must be positive and finite, got $sigma"))
         batch_size >= 1 || throw(ArgumentError("batch_size must be at least 1, got $batch_size"))
         return new(sigma, batch_size, normalize)
     end
 end
 
-GradientOperatorEmitter(; sigma::Real, batch_size::Integer=64, normalize::Bool=true) =
-    GradientOperatorEmitter(sigma, batch_size, normalize)
+GradientOperatorEmitter(; sigma0::Real, batch_size::Integer=64, normalize::Bool=true) =
+    GradientOperatorEmitter(sigma0, batch_size, normalize)
 
 batch_size(emitter::GradientOperatorEmitter) = emitter.batch_size
 

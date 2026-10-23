@@ -17,6 +17,9 @@ stored_descriptors(a) = [Tuple(ev.descriptor) for (_, ev) in QD.elites(a)]
     @test_throws "k must be at least 1, got 0" DNSArchive(2; capacity=5, k=0)
     @test_throws "ndims must be at least 1, got 0" DNSArchive(0; capacity=5, k=3)
     @test_throws "expected F<:AbstractFloat" DNSArchive{Vector{Float64},Int}(2; capacity=5, k=3)   # Inf needs a float
+    @test_throws "expected F<:AbstractFloat" DNSArchive(Rastrigin(4); capacity=5, k=3, fitness=Int)
+    labels = QDProblem(x -> (0.0, (1, :a)); init=rng -> rand(rng, 2), categories=(1:2, [:a]))
+    @test_throws "has descriptor_categories, not descriptor_bounds" DNSArchive(labels; capacity=5, k=3)
 end
 
 @testset "DNSArchive scores" begin

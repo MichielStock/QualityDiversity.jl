@@ -70,7 +70,7 @@ end
     batchwise = (; sequential_batch=false)
     test_archive(() -> GridArchive(labelled; dims=(6, 6), phenotype=String), labelled; batchwise...)
     test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), bounds; phenotype=Int), counted; batchwise...)
-    centroids = QD.centroids(CVTArchive(Xoshiro(1), labelled; cells=30, samples=3_000))
+    centroids = QD.centroids(CVTArchive(labelled; cells=30, samples=3_000, rng=Xoshiro(1)))
     test_archive(() -> CVTArchive(centroids, bounds; phenotype=String), labelled; batchwise...)
     test_archive(() -> CVTArchive{SVector{3,Float64}}(centroids, bounds; phenotype=Int), counted; batchwise...)
     test_archive(() -> CategoricalArchive((-1:1, -1:1); phenotype=String),
@@ -81,8 +81,8 @@ end
     test_archive(() -> ThresholdArchive(GridArchive(labelled; dims=(6, 6), phenotype=String); learning_rate=0.5, threshold_min=-3),
                  labelled; sequential_batch=false, elitist=false)
     test_archive(() -> ThresholdArchive(GridArchive{SVector{3,Float64}}((6, 6), bounds; phenotype=Int)), counted; batchwise...)
-    test_archive(() -> UnstructuredArchive(labelled; capacity=100, threshold=0.2, phenotype=String), labelled)
-    test_archive(() -> UnstructuredArchive{SVector{3,Float64}}(2; capacity=100, threshold=0.2, phenotype=Int), counted)
+    test_archive(() -> UnstructuredArchive(labelled; capacity=100, novelty_threshold=0.2, phenotype=String), labelled)
+    test_archive(() -> UnstructuredArchive{SVector{3,Float64}}(2; capacity=100, novelty_threshold=0.2, phenotype=Int), counted)
 
     bisphere = BiSphere(4)
     objectives = QDProblem(x -> (ev = QD.evaluate(bisphere, x); (ev.fitness, ev.descriptor, label(x)));
@@ -93,8 +93,8 @@ end
 end
 
 @testset "archives without a phenotype store none" begin
-    for archive in (GridArchive(plain; dims=(4, 4)), CVTArchive(Xoshiro(1), plain; cells=5, samples=100),
-                    UnstructuredArchive(plain; capacity=10, threshold=0.1),
+    for archive in (GridArchive(plain; dims=(4, 4)), CVTArchive(plain; cells=5, samples=100, rng=Xoshiro(1)),
+                    UnstructuredArchive(plain; capacity=10, novelty_threshold=0.1),
                     ParetoGridArchive(BiSphere(2); dims=(2, 2), reference_point=[0.0, 0.0]))
         @test archive isa QD.AbstractArchive{<:Any,<:Any,<:Any,Nothing}
         @test sizeof(archive.phenotypes) == 0
@@ -109,11 +109,11 @@ end
     without = QD.evaluate(plain, x)
     for (make_plain, make_labelled) in (
             (() -> GridArchive(plain; dims=(4, 4)), () -> GridArchive(plain; dims=(4, 4), phenotype=String)),
-            (() -> CVTArchive(Xoshiro(1), plain; cells=5, samples=100), () -> CVTArchive(Xoshiro(1), plain; cells=5, samples=100, phenotype=String)),
+            (() -> CVTArchive(plain; cells=5, samples=100, rng=Xoshiro(1)), () -> CVTArchive(plain; cells=5, samples=100, phenotype=String, rng=Xoshiro(1))),
             (() -> CategoricalArchive((-1:1, -1:1)), () -> CategoricalArchive((-1:1, -1:1); phenotype=String)),
             (() -> ThresholdArchive(GridArchive(plain; dims=(4, 4)); learning_rate=0.5, threshold_min=-3),
              () -> ThresholdArchive(GridArchive(plain; dims=(4, 4), phenotype=String); learning_rate=0.5, threshold_min=-3)),
-            (() -> UnstructuredArchive(plain; capacity=10, threshold=0.1), () -> UnstructuredArchive(plain; capacity=10, threshold=0.1, phenotype=String)))
+            (() -> UnstructuredArchive(plain; capacity=10, novelty_threshold=0.1), () -> UnstructuredArchive(plain; capacity=10, novelty_threshold=0.1, phenotype=String)))
         descriptor = make_plain() isa CategoricalArchive ? (0, 0) : with.descriptor
         @test_throws "the evaluation has a phenotype of type String but the archive stores none; build the archive with phenotype=String" QD.add!(make_plain(), x, Evaluation(with.fitness, descriptor, with.phenotype))
         @test_throws "the evaluation has no phenotype but the archive stores phenotypes of type String" QD.add!(make_labelled(), x, Evaluation(with.fitness, descriptor))
@@ -149,7 +149,7 @@ end
         @test length(result.archive) > 0
         @test all(((x, ev),) -> ev.phenotype == label(x), QD.elites(result.archive))
     end
-    archive = UnstructuredArchive(labelled; capacity=50, threshold=0.2, phenotype=String)
+    archive = UnstructuredArchive(labelled; capacity=50, novelty_threshold=0.2, phenotype=String)
     result = solve(labelled, MAPElites(archive); budget=2_000, rng=Xoshiro(1))
     @test all(((x, ev),) -> ev.phenotype == label(x), QD.elites(result.archive))
 

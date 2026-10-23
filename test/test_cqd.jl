@@ -2,7 +2,7 @@ include("reference/cqd.jl")
 
 # An archive that stores every solution it is given, at its own descriptor.
 function all_elites(fitness, descriptors)
-    archive = UnstructuredArchive(length(first(descriptors)); capacity=length(fitness), threshold=0.0)
+    archive = UnstructuredArchive(length(first(descriptors)); capacity=length(fitness), novelty_threshold=0.0)
     for (f, d) in zip(fitness, descriptors)
         QD.add!(archive, [0.0], Evaluation(f, SVector{length(d)}(d)))
     end
@@ -87,7 +87,7 @@ end
     # other bounds
     s = cqd_score(Xoshiro(3), a; num_targets=50, fitness_range=(0, 1), bounds=((0.5, 0.5), (0, 0)))
     @test s.per_penalty[end] ≈ 1.0                       # every target is at the best elite
-    u = UnstructuredArchive(1; capacity=4, threshold=0.0)
+    u = UnstructuredArchive(1; capacity=4, novelty_threshold=0.0)
     QD.add!(u, [0.0], Evaluation(1.0, SVector(0.3)))
     @test cqd_score(Xoshiro(1), u; num_targets=3, fitness_range=(0, 1), distance_max=1, bounds=((0, 1),)).num_targets == 3
 end
@@ -109,7 +109,7 @@ end
     @test_throws "bounds has 2 entries but the archive has 1" cqd_score(Xoshiro(1), a; num_targets=2, fitness_range=(0, 1), bounds=((0, 1), (0, 1)))
     @test_throws "bounds must be finite (lo, hi) pairs with lo <= hi" cqd_score(Xoshiro(1), a; num_targets=2, fitness_range=(0, 1), bounds=((1, 0),))
 
-    u = UnstructuredArchive(1; capacity=4, threshold=0.0)
+    u = UnstructuredArchive(1; capacity=4, novelty_threshold=0.0)
     QD.add!(u, [0.0], Evaluation(1.0, SVector(0.3)))
     @test_throws "UnstructuredArchive does not report the bounds of its descriptor space; pass distance_max" cqd_score(u; targets=[[0.0]], fitness_range=(0, 1))
     @test_throws "pass bounds" cqd_score(Xoshiro(1), u; num_targets=3, fitness_range=(0, 1), distance_max=1)

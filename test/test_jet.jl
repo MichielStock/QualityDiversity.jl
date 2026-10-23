@@ -25,7 +25,7 @@ using JET: JET
     JET.@test_opt target_modules = (QualityDiversity,) QD.add!(dns.archive, [0.0, 0.0, 0.0, 0.0],
                                                             Evaluation(1.0, SVector(0.0, 0.0)))
 
-    dds = init(prob, DDS(Xoshiro(1), prob; dims=(5, 5), sigma0=0.5, bandwidth=0.5, num_emitters=2); budget=10_000,
+    dds = init(prob, DDS(prob; dims=(5, 5), sigma0=0.5, bandwidth=0.5, num_emitters=2, rng=Xoshiro(1)); budget=10_000,
                rng=Xoshiro(1))
     JET.@test_opt target_modules = (QualityDiversity,) step!(dds)
 
@@ -63,7 +63,7 @@ using JET: JET
     for alg in (CMAMEGA(prob; dims=(5, 5), sigma0=1.0, num_emitters=2),
                 CMAMEGA(prob; dims=(5, 5), sigma0=1.0, optimizer=GradientAscent(1.0)),
                 CMAMAEGA(prob; dims=(5, 5), sigma0=1.0, threshold_min=-500.0),
-                OMGMEGA(prob; dims=(5, 5), sigma=1.0, batch_size=8))
+                OMGMEGA(prob; dims=(5, 5), sigma0=1.0, batch_size=8))
         mega_state = init(prob, alg; budget=200, rng=Xoshiro(1))
         JET.@test_opt target_modules = (QualityDiversity,) step!(mega_state)
         JET.@test_opt target_modules = (QualityDiversity,) QD.ask(Xoshiro(1), mega_state.emitters[1], mega_state.archive)

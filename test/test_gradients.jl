@@ -89,11 +89,13 @@ end
 
 @testset "gradient optimizers" begin
     @test_throws "learning_rate must be positive and finite, got 0" GradientAscent(0)
-    @test_throws "learning_rate must be positive and finite, got Inf" AdamAscent(Inf)
+    @test_throws "learning_rate must be positive and finite, got Inf" AdamAscent(; learning_rate=Inf)
     @test_throws "beta1 must be in [0, 1), got 1" AdamAscent(; beta1=1)
     @test_throws "beta2 must be in [0, 1), got -0.1" AdamAscent(; beta2=-0.1)
     @test_throws "epsilon must be positive and finite, got 0" AdamAscent(; epsilon=0)
     @test AdamAscent().learning_rate == 0.002
+    @test AdamAscent(; learning_rate=0.1).learning_rate == 0.1     # a keyword, as for OpenAIES
+    @test_throws MethodError AdamAscent(0.1)
 
     state = QD.AscentState(2)
     QD.reset_ascent!(state, [1.0, 2.0])
@@ -101,7 +103,7 @@ end
     @test state.theta == [2.0, 0.0]
     # Adam's first step moves every entry by the learning rate, up to epsilon.
     QD.reset_ascent!(state, [1.0, 2.0])
-    QD.ascend!(state, AdamAscent(0.1), [3.0, -0.5])
+    QD.ascend!(state, AdamAscent(; learning_rate=0.1), [3.0, -0.5])
     @test state.theta ≈ [1.1, 1.9] atol = 1e-6
     @test state.t == 1
     QD.reset_ascent!(state, [0.0, 0.0])
@@ -113,7 +115,7 @@ end
     @test_throws "the archive to wrap must be empty but holds 1 solutions" GradientArchive((g = grid(); QD.add!(g, [0.0], Evaluation(1.0, SVector(0.1, 0.1))); g))
     @test_throws "a SlidingBoundariesArchive moves its elites" GradientArchive(SlidingBoundariesArchive((4, 4), ((0, 1), (0, 1))))
     @test_throws "a GradientArchive wraps a cell archive with SVector descriptors" GradientArchive(CategoricalArchive((1:3,)))
-    @test_throws "not a UnstructuredArchive" GradientArchive(UnstructuredArchive(2; threshold=0.1, capacity=10))
+    @test_throws "not a UnstructuredArchive" GradientArchive(UnstructuredArchive(2; novelty_threshold=0.1, capacity=10))
 
     a = GradientArchive(grid())
     @test QD.capacity(a) == 16 && length(a) == 0
@@ -154,16 +156,16 @@ end
 end
 
 @testset "GradientOperatorEmitter" begin
-    @test_throws "sigma must be positive and finite, got 0" GradientOperatorEmitter(; sigma=0)
-    @test_throws "batch_size must be at least 1, got 0" GradientOperatorEmitter(; sigma=1, batch_size=0)
-    @test_throws "only a GradientArchive keeps, not a GridArchive" QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma=1), GridArchive((2,), ((0, 1),)))
-    @test_throws "cannot sample elites from an empty archive" QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma=1), GradientArchive(GridArchive((2,), ((0, 1),))))
+    @test_throws "sigma0 must be positive and finite, got 0" GradientOperatorEmitter(; sigma0=0)
+    @test_throws "batch_size must be at least 1, got 0" GradientOperatorEmitter(; sigma0=1, batch_size=0)
+    @test_throws "only a GradientArchive keeps, not a GridArchive" QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma0=1), GridArchive((2,), ((0, 1),)))
+    @test_throws "cannot sample elites from an empty archive" QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma0=1), GradientArchive(GridArchive((2,), ((0, 1),))))
 
     a = GradientArchive(GridArchive((4, 4), ((0, 1), (0, 1))))
     jacobian = [3.0 4.0; 0.0 2.0; -1.0 0.0]
     QD.add!(a, [1.0, 1.0], Evaluation(1.0, SVector(0.1, 0.1)), jacobian)
     for normalize in (true, false)
-        child = only(QD.ask(Xoshiro(7), GradientOperatorEmitter(; sigma=2.0, batch_size=1, normalize), a))
+        child = only(QD.ask(Xoshiro(7), GradientOperatorEmitter(; sigma0=2.0, batch_size=1, normalize), a))
         rng = Xoshiro(7)
         rand(rng, a.inner.occupied_idx)
         c = 2.0 .* [randn(rng) for _ in 1:3]
@@ -171,17 +173,17 @@ end
         rows = normalize ? jacobian ./ ([5.0, 2.0, 1.0] .+ QD.GRADIENT_EPSILON) : jacobian
         @test child ≈ [1.0, 1.0] .+ rows' * c
     end
-    @test length(QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma=1), a)) == 64
+    @test length(QD.ask(Xoshiro(1), GradientOperatorEmitter(; sigma0=1), a)) == 64
 
     prob = smooth_problem(4)
     archive = GradientArchive(GridArchive(prob; dims=(5, 5)))
     QD.add_batch!(archive, [fill(0.1, 4), fill(-0.2, 4)], QD.evaluate_gradient_batch(prob, [fill(0.1, 4), fill(-0.2, 4)])...)
-    test_emitter(GradientOperatorEmitter(; sigma=0.5, batch_size=8), archive, prob)
+    test_emitter(GradientOperatorEmitter(; sigma0=0.5, batch_size=8), archive, prob)
 end
 
 @testset "GradientArborescenceEmitter matches pyribs" begin
     for (name, optimizer, thetas, branches, orders, parents) in
-        (("adam", AdamAscent(0.05), mega_adam_thetas, mega_adam_branches, mega_adam_orders, mega_adam_parents),
+        (("adam", AdamAscent(; learning_rate=0.05), mega_adam_thetas, mega_adam_branches, mega_adam_orders, mega_adam_parents),
          ("ascent", GradientAscent(0.5), mega_ascent_thetas, mega_ascent_branches, mega_ascent_orders, mega_ascent_parents))
         @testset "$name" begin
             emitter = GradientArborescenceEmitter(mega_x0; num_descriptors=2, sigma0=1.0, optimizer,
@@ -258,7 +260,7 @@ end
     algs = (CMAMEGA(prob; dims=(20, 20), sigma0=10.0),
             CMAMEGA(prob; dims=(20, 20), sigma0=10.0, optimizer=GradientAscent(1.0), num_emitters=2, batch_size=10),
             CMAMAEGA(prob; dims=(20, 20), sigma0=10.0, threshold_min=0),
-            OMGMEGA(prob; dims=(20, 20), sigma=10.0, batch_size=16))
+            OMGMEGA(prob; dims=(20, 20), sigma0=10.0, batch_size=16))
     @test length(algs[2].emitters) == 2 && QD.batch_size(algs[2].emitters[1]) == 10
     @test algs[3].archive isa ThresholdArchive && algs[3].emitters[1].selection isa MuSelection
     @test algs[4].archive isa GradientArchive && algs[4].emitters[1] isa GradientOperatorEmitter
@@ -277,8 +279,8 @@ end
 
     # CVT archive and a QDProblem differentiated by ForwardDiff.
     smooth = smooth_problem(6)
-    cvt = CVTArchive(Xoshiro(1), 30, QD.descriptor_bounds(smooth); samples=3_000)
-    for alg in (CMAMEGA(cvt; sigma0=1.0, dim=6), OMGMEGA(GradientArchive(cvt); sigma=1.0, batch_size=8))
+    cvt = CVTArchive(30, QD.descriptor_bounds(smooth); samples=3_000, rng=Xoshiro(1))
+    for alg in (CMAMEGA(cvt; sigma0=1.0, dim=6), OMGMEGA(GradientArchive(cvt); sigma0=1.0, batch_size=8))
         result = solve(smooth, alg; budget=500, rng=Xoshiro(2))
         @test length(result.archive) > 5
     end
@@ -286,7 +288,7 @@ end
 
     noisy = StochasticQDProblem((rng, x) -> (sum(x), (x[1], x[2])); init=rng -> rand(rng, 2), bounds=((0, 1), (0, 1)))
     @test_throws "differentiable quality diversity takes deterministic problems, but StochasticQDProblem is stochastic" init(noisy, CMAMEGA(noisy; dims=(4, 4), sigma0=1.0); budget=100)
-    @test_throws "differentiable quality diversity takes deterministic problems" init(noisy, OMGMEGA(noisy; dims=(4, 4), sigma=1.0); budget=100)
+    @test_throws "differentiable quality diversity takes deterministic problems" init(noisy, OMGMEGA(noisy; dims=(4, 4), sigma0=1.0); budget=100)
     labelled = QDProblem(x -> (sum(x), (1, 2)); init=rng -> rand(rng, 2), categories=(1:3, 1:3))
     alg = QDAlgorithm(GridArchive((3, 3), ((0, 3), (0, 3))), (GradientArborescenceEmitter(2; num_descriptors=2, sigma0=1.0),))
     @test_throws "needs real descriptors, but QDProblem has descriptor_categories" init(labelled, alg; budget=100)
@@ -304,6 +306,6 @@ end
                            (BadGradient(2, 1.0), "must be 3×2, one row for the fitness and one per descriptor dimension, but it is 2×2"))
         state = init(bad, CMAMEGA(bad; dims=(4, 4), sigma0=1.0); budget=100, rng=Xoshiro(1))
         @test_throws message step!(state)
-        @test_throws message init(bad, OMGMEGA(bad; dims=(4, 4), sigma=1.0); budget=100)
+        @test_throws message init(bad, OMGMEGA(bad; dims=(4, 4), sigma0=1.0); budget=100)
     end
 end

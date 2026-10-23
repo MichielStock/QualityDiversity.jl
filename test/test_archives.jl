@@ -104,7 +104,7 @@ end
 
     # unsigned fitness: a worse solution is rejected with zero improvement, not wrapped around
     for archive in (GridArchive{Vector{Float64},UInt8}((2,), ((0, 1),)),
-                    UnstructuredArchive{Vector{Float64},UInt8}(1; capacity=4, threshold=0.5))
+                    UnstructuredArchive{Vector{Float64},UInt8}(1; capacity=4, novelty_threshold=0.5))
         @test QD.add!(archive, [1.0], Evaluation(UInt8(5), SVector(0.1))) == AddResult(QD.NewCell, UInt8(5))
         @test QD.add!(archive, [2.0], Evaluation(UInt8(3), SVector(0.1))) == AddResult(QD.Rejected, UInt8(0))
         @test QD.add!(archive, [3.0], Evaluation(UInt8(9), SVector(0.1))) == AddResult(QD.Improved, UInt8(4))
@@ -120,7 +120,7 @@ end
 @testset "add_batch! of the cell archives" begin
     ev(f, d) = Evaluation(f, d)
     makers = (() -> GridArchive((6, 6), ((0, 1), (0, 1))),
-              () -> CVTArchive(Xoshiro(1), 20, ((0, 1), (0, 1)); samples=1_000),
+              () -> CVTArchive(20, ((0, 1), (0, 1)); samples=1_000, rng=Xoshiro(1)),
               () -> GridArchive{Vector{Float32},Float32}((6, 6), ((0, 1), (0, 1)); outside=RejectOutside()))
     for make in makers
         a = make()

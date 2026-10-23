@@ -72,26 +72,36 @@ end
 
 @testset "CVTArchive construction" begin
     bounds = ((0, 1), (-1, 1))
-    a = CVTArchive(Xoshiro(1), 40, bounds; samples=4_000)
+    a = CVTArchive(40, bounds; samples=4_000, rng=Xoshiro(1))
     @test a isa CVTArchive{Vector{Float64},Float64,2,ThrowOutside}
     @test a isa QD.CellArchive && a isa AbstractArchive{Vector{Float64},Float64,SVector{2,Float64}}
     @test QD.capacity(a) == 40 && length(a) == 0
     @test length(QD.centroids(a)) == 40
     @test all(c -> 0 <= c[1] <= 1 && -1 <= c[2] <= 1, QD.centroids(a))
-    @test CVTArchive(Xoshiro(1), 40, bounds; samples=4_000).centroids == a.centroids      # same seed
-    @test CVTArchive(Xoshiro(2), 40, bounds; samples=4_000).centroids != a.centroids
+    @test CVTArchive(40, bounds; samples=4_000, rng=Xoshiro(1)).centroids == a.centroids      # same seed
+    @test CVTArchive(40, bounds; samples=4_000, rng=Xoshiro(2)).centroids != a.centroids
 
     # the parametric forms agree
-    @test CVTArchive{Int}(Xoshiro(1), 5, bounds; samples=500) isa CVTArchive{Int,Float64,2}
-    @test CVTArchive{Int,Float32}(Xoshiro(1), 5, bounds; samples=500) isa CVTArchive{Int,Float32,2}
-    @test CVTArchive(Xoshiro(1), Rastrigin(4); cells=7, samples=700) isa CVTArchive{Vector{Float64},Float64,2}
-    z = CVTArchive(Xoshiro(1), Rastrigin(4); cells=7, samples=700, bounds=((-1, 1), (-1, 1)))
+    @test CVTArchive{Int}(5, bounds; samples=500, rng=Xoshiro(1)) isa CVTArchive{Int,Float64,2}
+    @test CVTArchive{Int,Float32}(5, bounds; samples=500, rng=Xoshiro(1)) isa CVTArchive{Int,Float32,2}
+    @test CVTArchive(Rastrigin(4); cells=7, samples=700, rng=Xoshiro(1)) isa CVTArchive{Vector{Float64},Float64,2}
+    z = CVTArchive(Rastrigin(4); cells=7, samples=700, bounds=((-1, 1), (-1, 1)), rng=Xoshiro(1))
     @test all(c -> all(abs.(c) .<= 1), QD.centroids(z))
     # a descriptor with more than 127 dimensions, widest along the last one
-    wide = CVTArchive(Xoshiro(1), 4, ntuple(i -> i == 130 ? (0, 1000) : (0, 1), 130); samples=40)
+    wide = CVTArchive(4, ntuple(i -> i == 130 ? (0, 1000) : (0, 1), 130); rng=Xoshiro(1), samples=40)
     @test wide isa CVTArchive{Vector{Float64},Float64,130} && QD.capacity(wide) == 4
     @test wide.tree.axis[2] == 130
     @test QD.add!(wide, [1.0], Evaluation(1.0, rand(Xoshiro(2), SVector{130,Float64}))).status == QD.NewCell
+
+    # rng is a keyword with the default generator as its default, and max_iterations
+    # reaches k-means from every form
+    @test CVTArchive(7, bounds; samples=700) isa CVTArchive{Vector{Float64},Float64,2}
+    @test QD.capacity(CVTArchive(Rastrigin(4); cells=7, samples=700)) == 7
+    one_step = CVTArchive(Rastrigin(4); cells=7, samples=700, max_iterations=1, rng=Xoshiro(1))
+    @test one_step.centroids != CVTArchive(Rastrigin(4); cells=7, samples=700, rng=Xoshiro(1)).centroids
+    @test one_step.centroids == CVTArchive(7, QD.descriptor_bounds(Rastrigin(4)); samples=700, max_iterations=1, rng=Xoshiro(1)).centroids
+    @test_throws MethodError CVTArchive(Xoshiro(1), 7, bounds)
+    @test_throws MethodError CVTArchive(Xoshiro(1), Rastrigin(4); cells=7)
 
     # given centroids, as vectors or tuples of numbers, and rebuilt from another archive
     given = CVTArchive{Vector{Float64},Float64}([[0.1, 0.0], [0.9, 0.5], [0.5, -0.5]], bounds)
@@ -100,20 +110,20 @@ end
     rebuilt = CVTArchive(QD.centroids(a), bounds)
     @test all(QD.cell_index(rebuilt, d) == QD.cell_index(a, d) for d in eachcol(rand(Xoshiro(1), 2, 500)))
 
-    @test_throws "cells must be at least 1, got 0" CVTArchive(Xoshiro(1), 0, bounds)
-    @test_throws "samples (10) must be at least cells (20)" CVTArchive(Xoshiro(1), 20, bounds; samples=10)
+    @test_throws "cells must be at least 1, got 0" CVTArchive(0, bounds; rng=Xoshiro(1))
+    @test_throws "samples (10) must be at least cells (20)" CVTArchive(20, bounds; samples=10, rng=Xoshiro(1))
     @test_throws "centroid 2 is (2.0, 0.0), outside the bounds" CVTArchive([[0.5, 0.0], [2.0, 0.0]], bounds)
     @test_throws "two centroids are identical, at (0.5, 0.0)" CVTArchive([[0.5, 0.0], [0.1, 0.1], [0.5, 0.0]], bounds)
     @test_throws "need at least one centroid" CVTArchive(Vector{Float64}[], bounds)
     @test_throws "centroid 1 has 3 entries but bounds has 2" CVTArchive([[0.5, 0.0, 0.0]], bounds)
     @test_throws "bounds[1] is (1.0, 1.0)" CVTArchive([[1.0, 0.0]], ((1, 1), (0, 1)))
-    @test_throws "bounds must have at least one entry" CVTArchive(Xoshiro(1), 3, ())
+    @test_throws "bounds must have at least one entry" CVTArchive(3, (); rng=Xoshiro(1))
 end
 
 @testset "CVTArchive.cell_index" begin
     rng = Xoshiro(5)
     bounds = ((0, 1), (-1, 1), (10, 20))
-    a = CVTArchive(rng, 60, bounds; samples=6_000)
+    a = CVTArchive(60, bounds; samples=6_000, rng)
     for _ in 1:500
         d = SVector(rand(rng), 2rand(rng) - 1, 10 + 10rand(rng))
         @test QD.cell_index(a, d) == brute_nearest(QD.centroids(a), d)
@@ -137,7 +147,7 @@ end
 
 @testset "CVTArchive stores and reports like any cell archive" begin
     rng = Xoshiro(2)
-    a = CVTArchive(rng, 30, ((0, 1), (0, 1)); samples=3_000)
+    a = CVTArchive(30, ((0, 1), (0, 1)); samples=3_000, rng)
     ev(f, d) = Evaluation(f, SVector{2,Float64}(d))
     @test QD.add!(a, [1.0], ev(-3.0, (0.1, 0.1))).status == QD.NewCell
     @test QD.add!(a, [2.0], ev(-1.0, (0.1, 0.1))).status == QD.Improved
@@ -158,7 +168,7 @@ end
 
 @testset "MAPElites over a CVTArchive" begin
     prob = Rastrigin(6)
-    archive = CVTArchive(Xoshiro(1), prob; cells=100, samples=5_000)
+    archive = CVTArchive(prob; cells=100, samples=5_000, rng=Xoshiro(1))
     alg = MAPElites(archive; batch_size=50, variation=IsoLineVariation(0.05, 0.3))
     @test alg isa QDAlgorithm && alg.archive === archive
     result = solve(prob, alg; budget=6_000, rng=Xoshiro(1))
@@ -171,7 +181,7 @@ end
     @test MAPElites(archive).emitters[1].batch_size == 64
 
     # the archive and the problem must agree on the number of descriptor dimensions
-    wrong = CVTArchive(Xoshiro(1), 10, ((0, 1),); samples=100)
+    wrong = CVTArchive(10, ((0, 1),); samples=100, rng=Xoshiro(1))
     @test_throws "the problem has 2 descriptor dimensions but the archive has 1" init(prob, MAPElites(wrong); budget=100)
 end
 

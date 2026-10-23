@@ -242,6 +242,18 @@ function descriptor_ndims(prob::AbstractQDProblem)
     return length(descriptor_bounds(prob))
 end
 
+# The box of a `(prob; bounds=nothing)` constructor: `bounds` when given, and the
+# `descriptor_bounds` of the problem otherwise. A problem with categories has none, so
+# the error says so instead of the `MethodError` of `descriptor_bounds`.
+problem_bounds(prob::AbstractQDProblem, bounds::Tuple) = bounds
+
+function problem_bounds(prob::AbstractQDProblem, ::Nothing)
+    hasmethod(descriptor_bounds, Tuple{typeof(prob)}) && return descriptor_bounds(prob)
+    hasmethod(descriptor_categories, Tuple{typeof(prob)}) &&
+        throw(ArgumentError("$(nameof(typeof(prob))) has descriptor_categories, not descriptor_bounds: its descriptors are labels, which only a CategoricalArchive holds; MAPElites builds one"))
+    throw(ArgumentError("$(nameof(typeof(prob))) does not define descriptor_bounds: define it for the problem, or pass bounds=((lo, hi), ...)"))
+end
+
 """
     reference_point(prob::AbstractQDProblem)
 

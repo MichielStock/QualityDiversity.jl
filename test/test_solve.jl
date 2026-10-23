@@ -103,7 +103,7 @@ end
     @test solve(words, alg; budget=80, rng=Xoshiro(1)).archive isa GridArchive{String}
     # every constructor that takes a problem agrees, and `genotype` still overrides
     for a in (GridArchive(static; dims=(4, 4)), SlidingBoundariesArchive(static; dims=(4, 4)),
-              CVTArchive(Xoshiro(1), static; cells=5), UnstructuredArchive(static; capacity=5, threshold=0.1),
+              CVTArchive(static; cells=5, rng=Xoshiro(1)), UnstructuredArchive(static; capacity=5, novelty_threshold=0.1),
               DNSArchive(static; capacity=5, k=2), CMAME(static; dims=(4, 4), sigma0=1.0).archive)
         @test a isa QD.AbstractArchive{SVector{3,Float64}}
     end
@@ -130,9 +130,16 @@ end
     @test result.n_evals == 2_000
     @test 0 < length(result.archive) <= 25
 
-    # with the default policy, a narrower archive fails on the first descriptor outside it
+    # with the default policy, a narrower archive puts a descriptor outside it in the
+    # nearest cell, as pyribs does; ThrowOutside() fails on the first one
     narrow = MAPElites(prob; dims=(5, 5), bounds=((-1, 1), (-1, 1)), batch_size=20)
-    @test_throws "outside the archive bounds" solve(prob, narrow; budget=2_000, rng=Xoshiro(1))
+    @test narrow.archive.outside === ClampOutside()
+    clamped = solve(prob, narrow; budget=2_000, rng=Xoshiro(1))
+    @test clamped.n_evals == 2_000
+    @test 0 < length(clamped.archive) <= 25
+    @test any(ev -> any(abs.(ev.descriptor) .> 1), last.(QD.elites(clamped.archive)))   # stored as evaluated
+    throwing = MAPElites(prob; dims=(5, 5), bounds=((-1, 1), (-1, 1)), batch_size=20, outside=ThrowOutside())
+    @test_throws "outside the archive bounds" solve(prob, throwing; budget=2_000, rng=Xoshiro(1))
 end
 
 @testset "init checks the archive against the problem" begin
