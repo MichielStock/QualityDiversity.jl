@@ -98,6 +98,18 @@ end
     @test QD.boundaries(a) == ([-2.0, 0.6, 3.0],)
     @test Dict(only(ev.descriptor) => only(x) for (x, ev) in QD.elites(a)) == Dict(-2.0 => 3.0, 0.6 => 4.0)
 
+    # clamping only chooses the cell: an elite whose descriptor has left the buffer keeps it,
+    # and sits in an edge cell that does not contain it
+    e = SlidingBoundariesArchive((4,), ((0, 10),); remap_frequency=5, buffer_capacity=5)
+    offer!(e, 100, (12.0,))
+    foreach(d -> offer!(e, 0, (d,)), 1:4)
+    @test QD.boundaries(e) == ([1.0, 2.0, 3.0, 4.0, 12.0],)
+    foreach(d -> offer!(e, 0, (d,)), 1:5)
+    @test QD.descriptor_bounds(e) == ((1.0, 5.0),)
+    (x, ev), = Iterators.filter(((x, ev),) -> ev.fitness == 100, QD.elites(e))
+    @test ev.descriptor == SVector(12.0)
+    @test QD.cell_index(e, ev.descriptor) == 4
+
     # with RejectOutside a solution outside is discarded for good: its result says so, it
     # does not enter the buffer, and a remap neither moves toward it nor adds it
     r = SlidingBoundariesArchive((2,), ((0, 1),); outside=RejectOutside(), remap_frequency=4)
