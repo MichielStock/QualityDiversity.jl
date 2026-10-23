@@ -3,14 +3,16 @@
 
 Tables.jl support for archives. With Tables loaded, every
 [`AbstractArchive`](@ref QualityDiversity.AbstractArchive) is a table with one row per
-elite, in the order of [`elites`](@ref QualityDiversity.elites), so `DataFrame(archive)`
-and `Tables.rowtable(archive)` work. The columns are
+elite of its [`result_archive`](@ref QualityDiversity.result_archive), in the order of
+[`elites`](@ref QualityDiversity.elites), so `DataFrame(archive)` and
+`Tables.rowtable(archive)` work. A `ThresholdArchive` thus shows the best solution
+found in each cell, as its heatmap does. The columns are
 
-- `genotype`: the stored genotype, not a copy;
+- `genotype`: a copy of the stored genotype, so changing it leaves the archive as it is;
 - `fitness`: the fitness, a single column also for a vector of objectives;
 - `descriptor_1`, ..., `descriptor_N`: one column per descriptor dimension, for an
   `SVector` or a tuple descriptor;
-- `phenotype`: the stored phenotype, only for an archive that stores one.
+- `phenotype`: a copy of the stored phenotype, only for an archive that stores one.
 
 The column types follow from the type parameters of the archive, so an empty archive
 has the same columns as a full one. An archive whose descriptor type has no length in
@@ -31,7 +33,7 @@ julia> Tables.columntable(archive)
 """
 module QualityDiversityTablesExt
 
-using QualityDiversity: QualityDiversity, AbstractArchive, elites
+using QualityDiversity: QualityDiversity, AbstractArchive, elites, result_archive
 using StaticArrays: StaticVector
 using Tables: Tables
 
@@ -45,7 +47,9 @@ struct ArchiveRows{names,types,P,E}
     elites::E
 end
 
-function Tables.rows(archive::AbstractArchive{G,F,D,P}) where {G,F,D,P}
+Tables.rows(archive::AbstractArchive) = archive_rows(result_archive(archive))
+
+function archive_rows(archive::AbstractArchive{G,F,D,P}) where {G,F,D,P}
     dtypes = descriptor_types(D)
     N = length(dtypes)
     names = (:genotype, :fitness, ntuple(i -> Symbol(:descriptor_, i), N)..., phenotype_name(P)...)
@@ -67,8 +71,10 @@ phenotype_name(::Type) = (:phenotype,)
 phenotype_type(::Type{Nothing}) = ()
 phenotype_type(::Type{P}) where {P} = (P,)
 
-row_values(x, ev, ::Type{Nothing}) = (x, ev.fitness, Tuple(ev.descriptor)...)
-row_values(x, ev, ::Type) = (x, ev.fitness, Tuple(ev.descriptor)..., ev.phenotype)
+# Copies, so that a table can be changed without changing the archive; `deepcopy`, since
+# a genotype or phenotype of a user's type need not define `copy`.
+row_values(x, ev, ::Type{Nothing}) = (deepcopy(x), ev.fitness, Tuple(ev.descriptor)...)
+row_values(x, ev, ::Type) = (deepcopy(x), ev.fitness, Tuple(ev.descriptor)..., deepcopy(ev.phenotype))
 
 Tables.istable(::Type{<:ArchiveRows}) = true
 Tables.rowaccess(::Type{<:ArchiveRows}) = true

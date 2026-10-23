@@ -27,8 +27,11 @@ end
     @test df.fitness == [ev.fitness for (_, ev) in QD.elites(archive)]
     @test df.descriptor_1 == [ev.descriptor[1] for (_, ev) in QD.elites(archive)]
     @test df.descriptor_2 == [ev.descriptor[2] for (_, ev) in QD.elites(archive)]
-    # the genotypes themselves, not copies
-    @test df.genotype[1] === archive.genotypes[QD.cell_index(archive, SVector(0.5, 10.5))]
+    # copies: changing a genotype of the table leaves the archive as it is
+    i = QD.cell_index(archive, SVector(0.5, 10.5))
+    @test df.genotype[1] == archive.genotypes[i] && df.genotype[1] !== archive.genotypes[i]
+    df.genotype[1][1] = 99.0
+    @test archive.genotypes[i] == [1.0, 2.0]
 
     names_ = (:genotype, :fitness, :descriptor_1, :descriptor_2)
     types = Tuple{Vector{Float64},Float64,Float64,Float64}
@@ -41,7 +44,7 @@ end
     @test eltype(rows) === NamedTuple{names_,types}
     @test length(rows) == 2
     row, state = @inferred Nothing iterate(rows)
-    @test row === first(Tables.rowtable(archive))
+    @test row == first(Tables.rowtable(archive))
 end
 
 @testset "fitness type" begin
@@ -62,6 +65,24 @@ end
     @test Tables.rowtable(archive)[2].phenotype == "CCC"
 end
 
+@testset "copies of phenotypes" begin
+    archive = GridArchive((2, 2), ((0, 1), (0, 1)); phenotype=Vector{Int})
+    QD.add!(archive, [0.0], Evaluation(1.0, SVector(0.1, 0.1), [1, 2]))
+    row = first(Tables.rowtable(archive))
+    push!(row.phenotype, 3)
+    @test only(QD.elites(archive))[2].phenotype == [1, 2]
+end
+
+@testset "ThresholdArchive shows its result archive" begin
+    archive = ThresholdArchive(GridArchive((2, 2), ((0, 1), (0, 1))); learning_rate=0.5, threshold_min=0.0)
+    QD.add!(archive, [1.0], Evaluation(10.0, SVector(0.1, 0.1)))
+    QD.add!(archive, [2.0], Evaluation(6.0, SVector(0.1, 0.1)))    # passes the threshold 5
+    @test [ev.fitness for (_, ev) in QD.elites(archive)] == [6.0]
+    df = DataFrame(archive)
+    @test df.fitness == [10.0] && df.genotype == [[1.0]]
+    @test Tables.columntable(archive) == Tables.columntable(QD.result_archive(archive))
+end
+
 @testset "CategoricalArchive" begin
     archive = CategoricalArchive((0:5, [:alkane, :aromatic, :ring]); phenotype=Int)
     QD.add!(archive, [0.0], Evaluation(1.5, (3, :ring), 7))
@@ -80,7 +101,7 @@ end
     QD.add!(archive, [2.0], Evaluation(SVector(2.0, 2.0), SVector(0.8, 0.2)))
     df = DataFrame(archive)
     @test names(df) == ["genotype", "fitness", "descriptor_1", "descriptor_2"]
-    @test nrow(df) == num_solutions(archive) == 3 && length(archive) == 2
+    @test nrow(df) == QD.num_solutions(archive) == 3 && length(archive) == 2
     @test eltype(df.fitness) === SVector{2,Float64}
     @test df.fitness == [ev.fitness for (_, ev) in QD.elites(archive)]
     @test df.genotype == [x for (x, _) in QD.elites(archive)]
