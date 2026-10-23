@@ -315,4 +315,22 @@ end
     @test naive > 100 * running    # a plain running sum is much less accurate
     running32, _ = sum_error(Float32)
     @test running32 <= 4 * eps()
+
+    # An improvement adds the new fitness and subtracts the old one as two compensated
+    # steps, so the total with its error term tracks the exact sum far below one rounding
+    # even when the difference of the two is not representable: here an elite of magnitude
+    # below 1 is replaced by one near 2^53, whose unit in the last place is 2.
+    a = GridArchive((1000,), ((0, 1),))
+    rng = Xoshiro(3)
+    exact = BigFloat(0)
+    for c in 1:1000
+        d = SVector((c - 0.5) / 1000)
+        QD.add!(a, [0.0], Evaluation(-rand(rng), d))
+        new = 2.0^53 * (1 + rand(rng))
+        QD.add!(a, [0.0], Evaluation(new, d))
+        exact += new
+    end
+    two_terms = BigFloat(a.fitness_sum) + BigFloat(a.fitness_sum_error)
+    @test abs(two_terms - exact) <= 1e-24 * exact    # the rounded differences would give about 1e-17
+    @test qd_score(a) == Float64(exact)
 end

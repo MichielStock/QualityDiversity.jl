@@ -144,6 +144,15 @@ stored_phenotype(::Type{Nothing}, ::Nothing) = nothing
 # code it would have without the field, bounds check included.
 store_phenotype!(phenotypes::AbstractVector, i, phenotype) = (phenotypes[i] = phenotype; nothing)
 store_phenotype!(::Vector{Nothing}, i, ::Nothing) = nothing
+store_phenotype!(::Nothing, i, ::Nothing) = nothing
+
+# The phenotypes of a batch as the archive stores them, converted once with
+# `stored_phenotype` before the archive changes. An archive without phenotypes keeps no
+# buffer, so that its batch methods allocate nothing for one.
+batch_phenotypes(::Type{Nothing}, n) = nothing
+batch_phenotypes(::Type{P}, n) where {P} = Vector{P}(undef, n)
+batch_phenotype(::Nothing, k) = nothing
+batch_phenotype(phenotypes::Vector, k) = phenotypes[k]
 
 # Moves the phenotype in slot `from` to slot `to`.
 move_phenotype!(phenotypes::AbstractVector, to, from) = (phenotypes[to] = phenotypes[from]; nothing)

@@ -13,6 +13,8 @@ to a buffer of `buffer_capacity` entries that stays a uniform sample of all the
 descriptors seen, by reservoir sampling (Li, 1994, Algorithm L) with the generator `rng`.
 The archive keeps its own copy of `rng`, since `add!` takes no generator; `init` copies
 the archive, so a run is reproducible from the seed of `rng` and the seed of the run.
+For a reproducible run, seed the archive as well as `solve`, e.g. `rng=Xoshiro(1)`:
+without it, `rng` is `Random.default_rng()`, which the seed of `solve` does not set.
 
 The density at a descriptor `y` is the Gaussian kernel density estimate of the buffer,
 

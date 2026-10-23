@@ -100,11 +100,20 @@ end
 
 evaluate(prob::QDProblem, x) = evaluation_of(prob.space, prob.f(x))
 
-# In a device kernel the descriptor stays as the function returned it; the kernel
-# writes its components into the descriptor matrix of the batch.
-function device_evaluate(prob::QDProblem, x)
-    result = prob.f(x)
-    return Evaluation(result[1], result[2])
+# The evaluation inside a device kernel. The descriptor stays as the function returned
+# it, a tuple or an `SVector` whose components the kernel writes into the descriptor
+# matrix of the batch, and the phenotype is kept as `evaluate` keeps it, though a
+# device batch stores none. The length check of `make_evaluation` stays out: its
+# message is built from values, which a kernel cannot do, and `default_evaluate_batch`
+# checks the number of components on the host, from the descriptor type, before the
+# kernel runs.
+device_evaluate(prob::QDProblem, x) = device_evaluation_of(prob.f(x))
+
+device_evaluation_of(result::Tuple{Any,Any}) = Evaluation(result[1], result[2])
+device_evaluation_of(result::Tuple{Any,Any,Any}) = Evaluation(result[1], result[2], result[3])
+
+function device_evaluation_of(result)
+    throw(ArgumentError("the function of the problem must return a (fitness, descriptor) or (fitness, descriptor, phenotype) tuple"))
 end
 
 random_solution(rng::AbstractRNG, prob::QDProblem) = prob.init(rng)

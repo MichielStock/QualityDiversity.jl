@@ -14,8 +14,10 @@ standard deviations must be non-negative and finite; `σ_line = 0` leaves a Gaus
 mutation of `p1`, and both zero a copy of `p1`.
 
 The two parents must have the same indices. `vary(rng, op, p1, p2)` returns a
-new array of floating-point numbers with those indices, made with `similar` from
-`p1` (a `Vector` for a `Vector`), and leaves the parents unchanged.
+new array with those indices, made with `similar` from `p1` (a `Vector` for a
+`Vector`), whose entries have the floating-point type that the entries of the two
+parents promote to: `Float32` for two `Vector{Float32}`s. The standard deviations
+are converted to that type. The parents are left unchanged.
 
 # Example
 
@@ -53,11 +55,13 @@ end
 function vary(rng::AbstractRNG, op::IsoLineVariation,
               p1::AbstractVector{<:Real}, p2::AbstractVector{<:Real})
     check_parent_axes(p1, p2)
-    T = float(promote_type(eltype(p1), eltype(p2), typeof(op.σ_iso)))
-    line = op.σ_line * randn(rng, T)
+    # The child keeps the float type of the parents, as `GaussianMutation` does.
+    T = float(promote_type(eltype(p1), eltype(p2)))
+    σ_iso = convert(T, op.σ_iso)
+    line = convert(T, op.σ_line) * randn(rng, T)
     child = similar(p1, T)
     for i in eachindex(child, p1, p2)
-        child[i] = p1[i] + op.σ_iso * randn(rng, T) + line * (p2[i] - p1[i])
+        child[i] = p1[i] + σ_iso * randn(rng, T) + line * (p2[i] - p1[i])
     end
     return child
 end

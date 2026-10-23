@@ -221,6 +221,12 @@ end
     @test Array(evs.fitness) == [-sum(abs2, x) for x in eachcol(X)]
     @test Array(evs.descriptors) == X[1:2, :]
     @test isempty(QD.evaluate_batch(f32, QD.DeviceBatch(zeros(Float32, 3, 0))))
+    # a phenotype goes through the kernel and is left out of the batch, which stores none
+    labelled = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]), :ring); init=rng -> rand(rng, 3), bounds=((0, 1), (0, 1)))
+    X = rand(rng, 3, 4)
+    evs = QD.evaluate_batch(labelled, QD.DeviceBatch(X))
+    @test evs isa QD.EvaluationBatch{2,Float64}
+    @test collect(evs) == [Evaluation(-sum(abs2, x), SVector(x[1], x[2])) for x in eachcol(X)]
 
     wrong = QDProblem(x -> (-sum(abs2, x), (x[1], x[2], x[3])); init=rng -> rand(rng, 3), bounds=((0, 1), (0, 1)))
     @test_throws "the descriptor of QDProblem has 3 dimensions but its bounds have 2" QD.evaluate_batch(wrong, QD.DeviceBatch(rand(3, 2)))

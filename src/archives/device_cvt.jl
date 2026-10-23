@@ -14,7 +14,9 @@ type `F`. `device` is the array type to store them in, such as `CuArray`; see
 
 The centroids are given, or chosen on the host by k-means from `samples` uniform points of
 the box `bounds`, exactly as for a `CVTArchive`: the same centroids, or the same generator
-and seed, give the same cells, and `centroids(archive)` returns them. The last form takes
+and seed, give the same cells, and `centroids(archive)` returns them. For a reproducible
+run, seed the archive as well as `solve`, e.g. `rng=Xoshiro(1)`: without it, `rng` is
+`Random.default_rng()`, which the seed of `solve` does not set. The last form takes
 `T` from `genotype`, `F` from `fitness` and `dim` from
 [`random_solution(rng, prob)`](@ref QualityDiversity.random_solution).
 

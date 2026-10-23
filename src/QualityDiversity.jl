@@ -27,7 +27,7 @@ using CommonSolve: CommonSolve, init, step!, solve!, solve
 using Compat: @compat
 using LinearAlgebra: Diagonal, I, Symmetric, eigen, mul!, norm
 using Random: Random, AbstractRNG, randn!
-using StaticArrays: SVector
+using StaticArrays: SVector, pushfirst
 
 include("evaluation.jl")
 include("interfaces.jl")

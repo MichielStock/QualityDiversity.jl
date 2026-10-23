@@ -9,12 +9,12 @@
 struct CentroidTree{N}
     points::Vector{SVector{N,Float64}}   # in the order of the cells
     order::Vector{Int}                   # indices of `points`, arranged as a tree
-    axis::Vector{Int8}                   # split axis of the node at each position of `order`
+    axis::Vector{Int}                    # split axis of the node at each position of `order`
 end
 
 function CentroidTree(points::Vector{SVector{N,Float64}}) where {N}
     order = collect(1:length(points))
-    axis = ones(Int8, length(points))
+    axis = ones(Int, length(points))
     build!(order, axis, points, 1, length(points))
     return CentroidTree{N}(points, order, axis)
 end
