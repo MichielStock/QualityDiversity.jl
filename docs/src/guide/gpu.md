@@ -61,10 +61,8 @@ added together. For a CVT archive, build a [`DeviceCVTArchive`](@ref) and pass i
   [`Sphere`](@ref QualityDiversity.Benchmarks.Sphere) and a [`QDProblem`](@ref)
   with a simple function work. Otherwise define `evaluate_batch(prob,
   xs::DeviceBatch)` and work on `parent(xs)`, a matrix with one solution per column.
-- **Precision.** Consumer GPUs compute `Float64` many times more slowly than `Float32`,
-  so pass `genotype=Vector{Float32}` and `fitness=Float32`. The cell of a descriptor is
-  always computed in `Float64`, so that device and CPU archives assign the same cells;
-  a GPU without `Float64`, such as an Apple GPU, cannot run the device archives.
+- **Precision.** On consumer GPUs use `Float32` solutions and fitness, and a problem
+  that computes in `Float32`; see [Float32 on a GPU](@ref).
 - **Reproducibility.** A run is reproducible from its seed on a given device, whatever
   the scheduling of the threads, but its random numbers differ from those of the CPU
   path.
@@ -74,6 +72,74 @@ added together. For a CVT archive, build a [`DeviceCVTArchive`](@ref) and pass i
 The device archives support MAP-Elites with [`GaussianMutation`](@ref) and
 [`IsoLineVariation`](@ref), and CMA-ME. Stochastic problems, phenotypes and the other
 archives run on the CPU.
+
+## Float32 on a GPU
+
+Consumer GPUs compute `Float64` many times more slowly than `Float32`, so on them a run
+should use `Float32` wherever the precision is enough. Four things have a precision,
+and they are set in different places:
+
+| What | Type on a consumer GPU | Set by |
+|---|---|---|
+| solutions | `Float32` | `genotype=Vector{Float32}` |
+| fitness stored in the archive | `Float32` | `fitness=Float32` |
+| the arithmetic of the evaluation | whatever the problem's code computes in | the problem |
+| descriptors, bounds and the cell lookup | always `Float64` | the archive |
+
+**Descriptors stay `Float64`.** A device archive and a CPU archive put every solution in
+the same cell. That needs the descriptor at full precision: a descriptor just below a
+cell boundary, such as `0.499999999` with a boundary at `0.5`, rounds to `0.5f0` in
+`Float32` and would land in the next cell. Descriptors are a few numbers per solution,
+so keeping them in `Float64` costs little. A GPU without `Float64`, such as an Apple GPU,
+cannot run the device archives.
+
+**The arithmetic is set by the problem, not by `genotype`.** With
+`genotype=Vector{Float32}` the problem receives `Float32` solutions, but nothing makes
+its code compute in `Float32`. A single `Float64` value, such as the literal `10.0` or
+`5.12`, promotes the whole computation to `Float64`. The run is then correct but slow,
+and nothing reports it, since the archive converts the fitness to `Float32` when it
+stores it.
+
+Write the scoring function in the element type of the solution:
+
+```julia
+using QualityDiversity
+
+function rastrigin(x::AbstractVector{T}) where {T<:AbstractFloat}
+    limit = T(5.12)                          # 5.12 alone is a Float64
+    total = zero(T)
+    for xi in x
+        xi = clamp(xi, -limit, limit)
+        total += xi^2 - 10 * cospi(2 * xi)   # integers keep the type T
+    end
+    h = length(x) ÷ 2
+    first_half = sum(view(x, 1:h)) / h
+    second_half = sum(view(x, h+1:length(x))) / (length(x) - h)
+    return -(10 * length(x) + total), (first_half, second_half)
+end
+
+prob = QDProblem(rastrigin; init=rng -> 10 .* rand(rng, Float32, 20) .- 5,
+                 bounds=((-5.12, 5.12), (-5.12, 5.12)))
+```
+
+Integers, `zero(T)`, `one(T)`, `T(...)` and `Float32` literals such as `5.12f0` keep the
+type; `Float64` literals and `Float64(...)` do not.
+
+Check the precision on the CPU before running on a GPU: one `Float32` solution must give
+a `Float32` fitness.
+
+```julia
+x = rand(Float32, 20)
+typeof(QualityDiversity.evaluate(prob, x).fitness)   # Float32; Float64 means the code promotes
+```
+
+The descriptor of that evaluation is an `SVector{2,Float64}` whatever the code computes
+in, since descriptors are always `Float64`.
+
+The built-in [`Rastrigin`](@ref QualityDiversity.Benchmarks.Rastrigin) and
+[`Sphere`](@ref QualityDiversity.Benchmarks.Sphere) compute in `Float64`, also with
+`Float32` solutions, so the example at the top of this page evaluates in `Float64`. For
+a fast run on a consumer GPU, write the problem as above.
 
 ## When it pays off
 

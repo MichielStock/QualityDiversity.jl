@@ -93,11 +93,13 @@ The device is chosen by the array type that the archive is built with: `CuArray`
 kernels on the CPU. The kernels that insert solutions and that vary them in a
 [`DeviceVariationEmitter`](@ref) are written with KernelAbstractions.jl, which every GPU
 package above loads; with `Array` load it yourself (`using KernelAbstractions`). The cell
-of a descriptor is computed in `Float64`, as on the host, so that both assign the same
-cells; a device without `Float64`, such as an Apple GPU, cannot run it.
+of a descriptor is computed in `Float64`, as on the host, and descriptors are stored and
+passed between kernels in the element type of the descriptor type, `Float64`, whatever `T`
+is, so that both assign the same cells; a device without `Float64`, such as an Apple GPU,
+cannot run it.
 
 Storage is one array per field, on the device: the genotypes as a `dim × cells` matrix,
-the descriptors as an `N × cells` matrix of `T`, the fitness values, which cells are
+the descriptors as an `N × cells` matrix of `Float64`, the fitness values, which cells are
 occupied, and the occupied cells in increasing order, from which parents are drawn
 uniformly.
 
@@ -135,7 +137,7 @@ function device_storage(device::Type, ::Type{T}, ::Type{F}, N::Integer, dim::Int
     genotypes = fill!(device{T}(undef, Int(dim), Int(ncells)), zero(T))
     return (occupied=fill!(similar(genotypes, Bool, ncells), false),
             fitness=fill!(similar(genotypes, F, ncells), zero(F)),
-            descriptors=fill!(similar(genotypes, T, N, ncells), zero(T)),
+            descriptors=fill!(similar(genotypes, descriptor_eltype(DeviceCellArchive{T,F,N}), N, ncells), 0),
             genotypes=genotypes,
             occupied_idx=fill!(similar(genotypes, Int32, ncells), Int32(0)),
             # the largest fitness key that enters a cell (zero for none) and the first
@@ -149,6 +151,12 @@ function device_storage(device::Type, ::Type{T}, ::Type{F}, N::Integer, dim::Int
 end
 
 descriptor_bounds(archive::DeviceCellArchive) = Tuple(zip(archive.lower, archive.upper))
+
+# The element type of the descriptors that an archive or a vector of evaluations declares.
+# Device arrays of descriptors have it whatever the genotype type is, so that a descriptor
+# is not rounded on its way to the cell lookup.
+descriptor_eltype(::Type{<:AbstractArchive{G,F,D}}) where {G,F,D} = eltype(D)
+descriptor_eltype(::Type{<:AbstractVector{<:Evaluation{F,D}}}) where {F,D} = eltype(D)
 
 device_eltype(::Type{<:AbstractVector{T}}) where {T<:AbstractFloat} = T
 
@@ -234,7 +242,7 @@ end
 
 function upload_evaluations(archive::DeviceCellArchive{T,F,N}, evs::AbstractVector) where {T,F,N}
     fitness = Vector{F}(undef, length(evs))
-    descriptors = Matrix{T}(undef, N, length(evs))
+    descriptors = Matrix{descriptor_eltype(typeof(archive))}(undef, N, length(evs))
     for (j, ev) in zip(eachindex(fitness), evs)
         stored_phenotype(Nothing, ev.phenotype)    # a device archive stores no phenotypes
         length(ev.descriptor) == N ||
@@ -243,7 +251,7 @@ function upload_evaluations(archive::DeviceCellArchive{T,F,N}, evs::AbstractVect
         descriptors[:, j] = ev.descriptor
     end
     return EvaluationBatch{N}(copyto!(similar(archive.fitness, F, length(fitness)), fitness),
-                              copyto!(similar(archive.genotypes, T, size(descriptors)), descriptors))
+                              copyto!(similar(archive.descriptors, size(descriptors)), descriptors))
 end
 
 # The evaluations and the results of a batch on the host, for emitters that read them
@@ -271,7 +279,7 @@ function default_evaluate_batch(prob::AbstractQDProblem, xs::DeviceBatch{T}) whe
     F = device_fitness_type(E, prob)
     check_device_descriptor(fieldtype(E, :descriptor), N, prob)
     fitness = similar(X, F, length(xs))
-    descriptors = similar(X, T, N, length(xs))
+    descriptors = similar(X, descriptor_eltype(EvaluationBatch{N,F}), N, length(xs))
     device_evaluate!(fitness, descriptors, prob, X)
     return EvaluationBatch{N}(fitness, descriptors)
 end

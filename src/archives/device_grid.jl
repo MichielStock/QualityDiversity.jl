@@ -25,15 +25,15 @@ coverage(result.archive), GridArchive(result.archive)
 ```
 """
 mutable struct DeviceGridArchive{T,F,N,O<:OutsidePolicy,M<:AbstractMatrix{T},V<:AbstractVector{F},
-                                 B<:AbstractVector{Bool},I<:AbstractVector{Int32},K<:AbstractVector{UInt64}} <:
-               DeviceCellArchive{T,F,N}
+                                 B<:AbstractVector{Bool},I<:AbstractVector{Int32},K<:AbstractVector{UInt64},
+                                 D<:AbstractMatrix} <: DeviceCellArchive{T,F,N}
     const dims::NTuple{N,Int}
     const lower::SVector{N,Float64}
     const upper::SVector{N,Float64}
     const outside::O
     const occupied::B
     const fitness::V
-    const descriptors::M
+    const descriptors::D
     const genotypes::M
     # The occupied cells in increasing order; the first `count` entries are valid.
     const occupied_idx::I
@@ -42,10 +42,10 @@ mutable struct DeviceGridArchive{T,F,N,O<:OutsidePolicy,M<:AbstractMatrix{T},V<:
     const winner::I
     const flags::I
 
-    function DeviceGridArchive{T,F,N,O,M,V,B,I,K}(dims, lower, upper, outside, occupied, fitness, descriptors,
+    function DeviceGridArchive{T,F,N,O,M,V,B,I,K,D}(dims, lower, upper, outside, occupied, fitness, descriptors,
                                                   genotypes, occupied_idx, count, best_key,
-                                                  winner, flags) where {T,F,N,O,M,V,B,I,K}
-        return new{T,F,N,O,M,V,B,I,K}(dims, lower, upper, outside, occupied, fitness, descriptors, genotypes,
+                                                  winner, flags) where {T,F,N,O,M,V,B,I,K,D}
+        return new{T,F,N,O,M,V,B,I,K,D}(dims, lower, upper, outside, occupied, fitness, descriptors, genotypes,
                                       occupied_idx, count, best_key, winner, flags)
     end
 end
@@ -61,7 +61,7 @@ function DeviceGridArchive{T,F}(device::Type, dims::Tuple, bounds::Tuple, dim::I
     end
     s = device_storage(device, T, F, N, dim, prod(dims))
     return DeviceGridArchive{T,F,N,typeof(outside),typeof(s.genotypes),typeof(s.fitness),typeof(s.occupied),
-                             typeof(s.occupied_idx),typeof(s.best_key)}(
+                             typeof(s.occupied_idx),typeof(s.best_key),typeof(s.descriptors)}(
         map(Int, dims), lower, upper, outside, s.occupied, s.fitness, s.descriptors, s.genotypes,
         s.occupied_idx, 0, s.best_key, s.winner, s.flags)
 end
