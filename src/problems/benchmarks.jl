@@ -20,9 +20,14 @@ export Rastrigin, Sphere, BiSphere
 
 const RASTRIGIN_LIMIT = 5.12
 
-# The number type a benchmark computes in: `Float64`, or the element type of the solution
+# The number type `evaluate` computes in: `Float64`, or the element type of the solution
 # when that carries more, such as the dual numbers of ForwardDiff or `BigFloat`.
 compute_type(x::AbstractVector) = promote_type(Float64, eltype(x))
+
+# The number type a device kernel computes in: that of the solution, so that `Float32`
+# solutions are scored in `Float32` on a GPU. The fitness can then differ slightly from
+# that of `evaluate`.
+device_compute_type(x::AbstractVector) = float(eltype(x))
 
 """
     Rastrigin(dim)
@@ -36,6 +41,11 @@ the mean of the first `dim ÷ 2` clipped parameters and the mean of the
 remaining ones, which both lie in `[-5.12, 5.12]`.
 
 Solutions are `Vector{Float64}`, drawn uniformly from the clipping box.
+
+`evaluate` computes in `Float64`, or in the element type of the solution when that
+carries more. On a device batch the kernel computes in the element type of the
+solution, so `Float32` solutions are scored in `Float32` there, and their fitness can
+differ from that of `evaluate` in the last digits.
 """
 struct Rastrigin <: AbstractQDProblem
     dim::Int
@@ -49,29 +59,35 @@ end
 function QualityDiversity.evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
     length(x) == prob.dim ||
         throw(ArgumentError("solution has $(length(x)) entries but Rastrigin has dimension $(prob.dim)"))
-    return QualityDiversity.device_evaluate(prob, x)
+    return rastrigin(prob, x, compute_type(x))
 end
 
 # Without the length check, whose message a device kernel cannot build; the archive
 # checks the length of the solutions of a device batch.
 function QualityDiversity.device_evaluate(prob::Rastrigin, x::AbstractVector{<:Real})
+    return rastrigin(prob, x, device_compute_type(x))
+end
+
+# The evaluation computed in `T`: every constant is converted to `T` first, since one
+# `Float64` constant would promote a `Float32` computation.
+function rastrigin(prob::Rastrigin, x::AbstractVector{<:Real}, ::Type{T}) where {T}
     n = prob.dim
     h = n ÷ 2
-    T = compute_type(x)
+    limit = convert(T, RASTRIGIN_LIMIT)
+    two_pi = convert(T, 2π)
     total = zero(T)
     first_half = zero(T)
     second_half = zero(T)
     for i in 1:n
-        xi = clamp(convert(T, x[i]), -RASTRIGIN_LIMIT, RASTRIGIN_LIMIT)
-        total += xi^2 - 10 * cos(2π * xi)
+        xi = clamp(convert(T, x[i]), -limit, limit)
+        total += xi^2 - 10 * cos(two_pi * xi)
         if i <= h
             first_half += xi
         else
             second_half += xi
         end
     end
-    descriptor = SVector(clamp(first_half / h, -RASTRIGIN_LIMIT, RASTRIGIN_LIMIT),
-                         clamp(second_half / (n - h), -RASTRIGIN_LIMIT, RASTRIGIN_LIMIT))
+    descriptor = SVector(clamp(first_half / h, -limit, limit), clamp(second_half / (n - h), -limit, limit))
     return Evaluation(-(10 * n + total), descriptor)
 end
 
@@ -106,6 +122,11 @@ all at the same end of the box. The descriptor lies in `[-5.12 * dim/2, 5.12 * d
 in both dimensions.
 
 Solutions are `Vector{Float64}`, drawn uniformly from `[-5.12, 5.12]`.
+
+`evaluate` computes in `Float64`, or in the element type of the solution when that
+carries more. On a device batch the kernel computes in the element type of the
+solution, so `Float32` solutions are scored in `Float32` there, and their fitness can
+differ from that of `evaluate` in the last digits.
 """
 struct Sphere <: AbstractQDProblem
     dim::Int
@@ -117,27 +138,34 @@ struct Sphere <: AbstractQDProblem
 end
 
 # A parameter inside the box stays; outside it, it is mapped back into the box.
-sphere_clip(x) = -SPHERE_LIMIT <= x <= SPHERE_LIMIT ? x : SPHERE_LIMIT / x
+function sphere_clip(x)
+    limit = convert(typeof(x), SPHERE_LIMIT)
+    return -limit <= x <= limit ? x : limit / x
+end
 
 function QualityDiversity.evaluate(prob::Sphere, x::AbstractVector{<:Real})
     length(x) == prob.dim ||
         throw(ArgumentError("solution has $(length(x)) entries but Sphere has dimension $(prob.dim)"))
-    return QualityDiversity.device_evaluate(prob, x)
+    return sphere(prob, x, compute_type(x))
 end
 
 function QualityDiversity.device_evaluate(prob::Sphere, x::AbstractVector{<:Real})
+    return sphere(prob, x, device_compute_type(x))
+end
+
+function sphere(prob::Sphere, x::AbstractVector{<:Real}, ::Type{T}) where {T}
     n = prob.dim
     h = n ÷ 2
-    T = compute_type(x)
+    shift = convert(T, SPHERE_SHIFT)
     distance = zero(T)
     first_half = zero(T)
     second_half = zero(T)
     for i in 1:n
         xi = convert(T, x[i])
-        distance += (xi - SPHERE_SHIFT)^2
+        distance += (xi - shift)^2
         i <= h ? (first_half += sphere_clip(xi)) : (second_half += sphere_clip(xi))
     end
-    worst = (SPHERE_LIMIT + SPHERE_SHIFT)^2 * n
+    worst = convert(T, (SPHERE_LIMIT + SPHERE_SHIFT)^2 * n)
     return Evaluation(100 * (1 - distance / worst), SVector(first_half, second_half))
 end
 
