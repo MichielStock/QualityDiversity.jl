@@ -242,6 +242,17 @@ end
         @test collect(evs) == [QD.evaluate(prob, x) for x in eachcol(X)]
         @test QD.evaluate_batch(Xoshiro(1), prob, QD.DeviceBatch(X)) == evs
     end
+    # the benchmarks compute in Float32 on a device, and in Float64 in `evaluate`
+    for prob in (Rastrigin(6), Sphere(6))
+        X = 4 .* randn(rng, Float32, 6, 40)
+        evs = QD.evaluate_batch(prob, QD.DeviceBatch(JLArray(X)))
+        @test evs isa QD.EvaluationBatch{2,Float32}
+        @test QD.device_evaluate(prob, X[:, 1]).fitness isa Float32
+        @test QD.evaluate(prob, X[:, 1]).fitness isa Float64
+        host = [QD.evaluate(prob, x) for x in eachcol(X)]
+        @test Array(evs.fitness) ≈ [ev.fitness for ev in host] rtol = 1e-5
+        @test Array(evs.descriptors) ≈ reduce(hcat, [ev.descriptor for ev in host]) rtol = 1e-5
+    end
     f32 = QDProblem(x -> (-sum(abs2, x), (x[1], x[2])); init=rng -> rand(rng, Float32, 3), bounds=((0, 1), (0, 1)))
     X = rand(rng, Float32, 3, 10)
     evs = QD.evaluate_batch(f32, QD.DeviceBatch(JLArray(X)))

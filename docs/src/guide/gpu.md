@@ -137,9 +137,11 @@ The descriptor of that evaluation is an `SVector{2,Float64}` whatever the code c
 in, since descriptors are always `Float64`.
 
 The built-in [`Rastrigin`](@ref QualityDiversity.Benchmarks.Rastrigin) and
-[`Sphere`](@ref QualityDiversity.Benchmarks.Sphere) compute in `Float64`, also with
-`Float32` solutions, so the example at the top of this page evaluates in `Float64`. For
-a fast run on a consumer GPU, write the problem as above.
+[`Sphere`](@ref QualityDiversity.Benchmarks.Sphere) compute on a device in the element
+type of the solution, so the example at the top of this page evaluates in `Float32`.
+Their `evaluate` on the CPU computes in `Float64`, also with `Float32` solutions, so the
+check above does not apply to them, and the same `Float32` solution can get a fitness on
+the device that differs from the CPU one in the last digits.
 
 ## When it pays off
 
