@@ -4,7 +4,8 @@
 # CairoMakie or GLMakie, adds plot recipes for archives, and the package gains no
 # plotting functions of its own. The recipes are
 #
-# - `heatmap(archive)` for an archive with two descriptor dimensions,
+# - `heatmap(archive)` for an archive with two descriptor dimensions, and
+#   `scatter(archive)` for an `UnstructuredArchive`,
 # - `ecdfplot(archive)` for the distribution of the elite fitness, and
 # - `lines(cqd_score(...))` for the continuous QD score against its penalty weight.
 #

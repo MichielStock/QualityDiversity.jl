@@ -5,9 +5,11 @@ using QualityDiversity
 using CairoMakie
 CairoMakie.activate!(type="png")
 using KernelAbstractions
+using Tables
 
-# The Makie extension has a docstring of its own, which the API reference shows.
+# The Makie and Tables extensions have docstrings of their own, which the API reference shows.
 const QualityDiversityMakieExt = Base.get_extension(QualityDiversity, :QualityDiversityMakieExt)
+const QualityDiversityTablesExt = Base.get_extension(QualityDiversity, :QualityDiversityTablesExt)
 
 const EXAMPLES = joinpath(@__DIR__, "..", "examples")
 const GENERATED = joinpath(@__DIR__, "src", "tutorials")
@@ -24,7 +26,7 @@ end
 
 makedocs(;
     sitename="QualityDiversity.jl",
-    modules=[QualityDiversity, QualityDiversityMakieExt],
+    modules=[QualityDiversity, QualityDiversityMakieExt, QualityDiversityTablesExt],
     authors="Ward Claerhout",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
