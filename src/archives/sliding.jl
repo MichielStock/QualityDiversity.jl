@@ -28,7 +28,12 @@ value on a boundary belongs to the cell above it, and a value on the upper bound
 the last cell. A descriptor outside the boundaries is handled by `outside`, as for a
 [`GridArchive`](@ref), but the default is `ClampOutside()`: after a remap the outer
 boundaries are the extremes of the buffer, so new solutions often land outside them.
-Old elites are always clamped during a remap. Every solution that has a cell enters the
+Old elites are always clamped during a remap. Clamping only chooses the cell: the
+archive stores the descriptor the problem returned, and a remap places every solution
+again from it. An elite whose descriptor has left the buffer can lie beyond the new
+boundaries; it then sits in an edge cell, and its descriptor, as
+[`elites`](@ref QualityDiversity.elites) returns it, lies outside that cell and outside
+`descriptor_bounds(archive)`. Every solution that has a cell enters the
 buffer, so with `ClampOutside()` the boundaries grow toward descriptors outside them;
 with `RejectOutside()` a solution outside the boundaries is discarded for good and never
 enters the buffer. A descriptor with a non-finite component throws an `ArgumentError`
