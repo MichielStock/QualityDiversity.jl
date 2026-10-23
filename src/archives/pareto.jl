@@ -191,14 +191,9 @@ function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::Abstr
                               max_front::Integer=50, outside::OutsidePolicy=ThrowOutside(),
                               duplicates::DuplicatePolicy=RejectDuplicates(),
                               full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing) where {G}
-    N = length(dims)
-    length(bounds) == N ||
-        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
-    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
+    lower, upper = grid_box(dims, bounds)
     M = length(reference_point)
-    lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
-    upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return ParetoGridArchive{G,M,N,typeof(outside),phenotype,typeof(duplicates),typeof(full_front)}(
+    return ParetoGridArchive{G,M,length(dims),typeof(outside),phenotype,typeof(duplicates),typeof(full_front)}(
         map(Int, dims), lower, upper, SVector{M,Float64}(reference_point), Int(max_front), outside,
         duplicates, full_front)
 end
@@ -398,18 +393,11 @@ function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor, phenotyp
     archive.volumes[i] = volume
     # Added and subtracted as two compensated steps: their difference would round,
     # outside the compensation.
-    add_to_volume!(archive, volume)
-    add_to_volume!(archive, -previous)
+    archive.volume_sum, archive.volume_sum_error =
+        compensated_add(archive.volume_sum, archive.volume_sum_error, volume)
+    archive.volume_sum, archive.volume_sum_error =
+        compensated_add(archive.volume_sum, archive.volume_sum_error, -previous)
     return volume - previous
-end
-
-# Neumaier's compensated summation of the running total.
-function add_to_volume!(archive::ParetoGridArchive, x::Float64)
-    total = archive.volume_sum
-    updated = total + x
-    archive.volume_sum_error += abs(total) >= abs(x) ? (total - updated) + x : (x - updated) + total
-    archive.volume_sum = updated
-    return nothing
 end
 
 """

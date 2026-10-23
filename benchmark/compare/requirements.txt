@@ -1,3 +1,4 @@
 ribs==0.12.0
-numpy
+numpy==2.5.4
 qdax==0.5.0
+jax==0.11.2

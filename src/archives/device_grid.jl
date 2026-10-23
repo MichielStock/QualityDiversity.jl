@@ -53,10 +53,7 @@ end
 function DeviceGridArchive{T,F}(device::Type, dims::Tuple, bounds::Tuple, dim::Integer;
                                 outside::OutsidePolicy=ThrowOutside()) where {T<:AbstractFloat,F<:Real}
     N = length(dims)
-    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
-    length(bounds) == N ||
-        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
-    lower, upper = box(bounds)
+    lower, upper = grid_box(dims, bounds)
     for i in 1:N
         dims[i] >= 1 ||
             throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))

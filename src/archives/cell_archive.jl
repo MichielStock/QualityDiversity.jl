@@ -77,6 +77,26 @@ function check_bound(i, lo, hi)
     return nothing
 end
 
+# The box `bounds`, one `(lo, hi)` pair per descriptor dimension, as its lower and upper
+# corners; every archive that lays its cells out over a box parses its bounds here.
+function box(bounds::Tuple)
+    N = length(bounds)
+    N >= 1 || throw(ArgumentError("bounds must have at least one entry"))
+    lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
+    upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
+    return lower, upper
+end
+
+# The box of a grid with `dims` cells along each dimension: `box(bounds)` once `dims` and
+# `bounds` are known to have one entry per dimension.
+function grid_box(dims::Tuple, bounds::Tuple)
+    N = length(dims)
+    length(bounds) == N ||
+        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
+    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
+    return box(bounds)
+end
+
 """
     add!(archive::CellArchive, x, ev::Evaluation) -> AddResult
 
@@ -148,10 +168,15 @@ function add_batch_to_cells!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, 
     n = length(xs)
     results = Vector{AddResult{F}}(undef, n)
     cells = Vector{Int}(undef, n)
+    # Every fitness and phenotype is checked before the archive changes. A phenotype is
+    # converted once and kept, since its conversion can be costly; a fitness is converted
+    # again where it is placed, which inlines to two finiteness checks and costs less than
+    # a buffer.
+    phenotypes = batch_phenotypes(P, n)
     for k in 1:n
         i = cell_index(archive, evs[k].descriptor)
-        fitness = stored_fitness(F, evs[k].fitness)    # throws before the archive changes
-        stored_phenotype(P, evs[k].phenotype)
+        fitness = stored_fitness(F, evs[k].fitness)
+        store_phenotype!(phenotypes, k, stored_phenotype(P, evs[k].phenotype))
         cells[k] = i
         results[k] = i == 0 ? outside_result(F) : classify(archive, i, fitness)
     end
@@ -162,20 +187,25 @@ function add_batch_to_cells!(archive::CellArchive{G,F,D,P}, xs::AbstractVector, 
         i = cells[k]
         fitness = stored_fitness(F, evs[k].fitness)
         if !archive.occupied[i] || fitness > archive.fitness[i]
-            place!(archive, i, xs[k], evs[k].descriptor, fitness, stored_phenotype(P, evs[k].phenotype))
+            place!(archive, i, xs[k], evs[k].descriptor, fitness, batch_phenotype(phenotypes, k))
         end
     end
     return results
 end
 
-# Neumaier's compensated summation, for any archive with the fields
-# `fitness_sum` and `fitness_sum_error`: `error` accumulates the low-order part that
-# is lost when `x` is added to `sum`.
-function _add_to_sum!(archive::AbstractArchive, x::Float64)
-    total = archive.fitness_sum
+# One step of Neumaier's compensated summation: `x` added to the running `total`, and
+# `error` grown by the low-order part of the addition that `total` cannot hold.
+function compensated_add(total::Float64, error::Float64, x::Float64)
     updated = total + x
-    archive.fitness_sum_error += abs(total) >= abs(x) ? (total - updated) + x : (x - updated) + total
-    archive.fitness_sum = updated
+    error += abs(total) >= abs(x) ? (total - updated) + x : (x - updated) + total
+    return updated, error
+end
+
+# Adds `x` to the fitness sum of any archive with the fields `fitness_sum` and
+# `fitness_sum_error`.
+function _add_to_sum!(archive::AbstractArchive, x::Float64)
+    archive.fitness_sum, archive.fitness_sum_error =
+        compensated_add(archive.fitness_sum, archive.fitness_sum_error, x)
     return nothing
 end
 

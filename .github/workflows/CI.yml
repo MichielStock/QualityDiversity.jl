@@ -8,19 +8,32 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    name: Julia ${{ matrix.version }}, ${{ matrix.threads }} thread(s)
-    runs-on: ubuntu-latest
+    name: Julia ${{ matrix.version }}, ${{ matrix.threads }} thread(s), ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         version: ['lts', '1']
         threads: [1]
+        os: [ubuntu-latest]
         include:
           # evaluate_batch and the device emitters use threads
           - version: '1'
             threads: 4
+            os: ubuntu-latest
+          - version: '1'
+            threads: 1
+            os: macos-latest
+          # JET is pinned to minor versions of Julia and breaks on new releases, which
+          # should not block the other jobs: test/test_quality.jl runs it only when
+          # QD_JET is "1", set here for this one job
+          - version: '1'
+            threads: 1
+            os: ubuntu-latest
+            jet: '1'
     env:
       JULIA_NUM_THREADS: ${{ matrix.threads }}
+      QD_JET: ${{ matrix.jet }}
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
@@ -29,3 +42,13 @@ jobs:
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+      # coverage from the Linux jobs only; the upload is tokenless on a public
+      # repository, a CODECOV_TOKEN secret only removes rate limits
+      - uses: julia-actions/julia-processcoverage@v1
+        if: matrix.os == 'ubuntu-latest'
+      - uses: codecov/codecov-action@v5
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

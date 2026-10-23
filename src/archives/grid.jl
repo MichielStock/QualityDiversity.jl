@@ -92,13 +92,8 @@ end
 
 function GridArchive{G,F}(dims::Tuple, bounds::Tuple; outside::OutsidePolicy=ThrowOutside(),
                           phenotype::Type=Nothing) where {G,F<:Real}
-    N = length(dims)
-    length(bounds) == N ||
-        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
-    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
-    lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
-    upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return GridArchive{G,F,N,typeof(outside),phenotype}(map(Int, dims), lower, upper, outside)
+    lower, upper = grid_box(dims, bounds)
+    return GridArchive{G,F,length(dims),typeof(outside),phenotype}(map(Int, dims), lower, upper, outside)
 end
 
 function GridArchive{G}(dims::Tuple, bounds::Tuple; kwargs...) where {G}

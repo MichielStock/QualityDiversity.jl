@@ -75,7 +75,9 @@ times the first evaluation of the batch and runs the rest in parallel only if th
 batch would take longer than about 100 µs on one thread: starting the threads costs
 10 to 30 µs, more than a batch of a cheap function. The results do not depend on
 the number of threads. An error that `evaluate` throws comes out as it is, not wrapped
-in the exception of a task.
+in the exception of a task. The element type of the vector is inferred from `evaluate`,
+so a problem whose fitness or descriptor type varies from solution to solution gets a
+`Union` element type.
 
 To evaluate on a GPU, a problem type defines this method: it copies the batch
 to the device, runs array operations or a kernel, and copies the fitness and
