@@ -108,6 +108,34 @@ end
     @test isempty(QD.add_batch!(dev, QD.DeviceBatch(zeros(Float32, 2, 0)), QD.EvaluationBatch{2}(Float32[], zeros(Float32, 2, 0))))
 end
 
+@testset "Float64 descriptors with Float32 genotypes" begin
+    # just below a cell boundary at 0.5, which rounding to Float32 would reach (#47)
+    edge = 0.499999999
+    @test Float32(edge) == 0.5f0
+    prob = QDProblem(x -> (-sum(abs2, x), (edge, 0.5)); init=rng -> rand(rng, Float32, 3), bounds=((0, 1), (0, 1)))
+    X = JLArray(rand(Xoshiro(3), Float32, 3, 4))
+    evs = QD.evaluate_batch(prob, QD.DeviceBatch(X))
+    @test evs.descriptors isa JLArray{Float64}
+    @test all(==(edge), Array(evs.descriptors)[1, :])
+    xs = collect.(eachcol(Array(X)))
+    host_evs = collect(evs)
+    # the second centroid is the nearer, the first wins the tie that rounding would make
+    centroids = [[0.75, 0.5], [0.25, 0.5]]
+    for (host, make) in ((GridArchive{Vector{Float32},Float32}((10, 4), ((0, 1), (0, 1))),
+                          () -> DeviceGridArchive{Float32,Float32}(JLArray, (10, 4), ((0, 1), (0, 1)), 3)),
+                         (CVTArchive{Vector{Float32},Float32}(centroids, ((0, 1), (0, 1))),
+                          () -> DeviceCVTArchive{Float32,Float32}(JLArray, centroids, ((0, 1), (0, 1)), 3)))
+        expected = QD.add_batch!(host, xs, host_evs)
+        for given in (evs, host_evs)
+            dev = make()
+            @test dev.descriptors isa JLArray{Float64}
+            @test collect(QD.add_batch!(dev, QD.DeviceBatch(copy(X)), given)) == expected
+            @test elites_by_cell(host, dev) == elites_by_cell(host, host)
+            @test only(QD.elites(dev))[2].descriptor == SVector(edge, 0.5)
+        end
+    end
+end
+
 @testset "add_batch! errors" begin
     dev = DeviceGridArchive{Float64,Float64}(Array, (4, 4), ((0, 1), (0, 1)), 2)
     QD.add!(dev, [0.1, 0.1], Evaluation(1.0, SVector(0.1, 0.1)))
