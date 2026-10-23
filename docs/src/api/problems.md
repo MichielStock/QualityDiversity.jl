@@ -48,14 +48,18 @@ SampledSpread
 QualityDiversity.DescriptorSamples
 QualityDiversity.Expectation
 QualityDiversity.expectation
-Average
-Median
+QualityDiversity.Average
+QualityDiversity.Median
 ```
 
 ## Benchmarks
 
+The benchmark problems live in the submodule `QualityDiversity.Benchmarks`, which
+exports them; load it with `using QualityDiversity.Benchmarks`.
+
 ```@docs
-Rastrigin
-Sphere
-BiSphere
+QualityDiversity.Benchmarks
+QualityDiversity.Benchmarks.Rastrigin
+QualityDiversity.Benchmarks.Sphere
+QualityDiversity.Benchmarks.BiSphere
 ```

@@ -27,8 +27,8 @@ end
     # descriptor 3 only one at 10, and descriptor 10 none
     a = DNSArchive(1; capacity=3, k=2)
     rs = QD.add_batch!(a, dns_batch(1:4, [(0,), (1,), (3,), (10,)])...)
-    @test rs == [AddResult(QD.Rejected, 2.0), AddResult(QD.NewCell, 5.5), AddResult(QD.NewCell, 7.0),
-                 AddResult(QD.NewCell, Inf)]
+    @test rs == [QD.AddResult(QD.Rejected, 2.0), QD.AddResult(QD.NewCell, 5.5), QD.AddResult(QD.NewCell, 7.0),
+                 QD.AddResult(QD.NewCell, Inf)]
     @test stored_descriptors(a) == [(1.0,), (3.0,), (10.0,)]
     @test max_fitness(a) == 4
     @test mean_fitness(a) == 3
@@ -37,7 +37,7 @@ end
 
     # the next batch is scored against the population, and the stored solutions with it
     rs = QD.add_batch!(a, dns_batch([5], [(2,)])...)
-    @test only(rs) == AddResult(QD.NewCell, Inf)
+    @test only(rs) == QD.AddResult(QD.NewCell, Inf)
     @test stored_descriptors(a) == [(3.0,), (10.0,), (2.0,)]   # 1 is now 1 from a fitter one
 end
 
@@ -53,7 +53,7 @@ end
     # a solution of the batch goes before a stored one with the same score
     b = DNSArchive(1; capacity=2, k=1)
     QD.add_batch!(b, dns_batch([1, 1], [(0,), (4,)])...)
-    @test only(QD.add_batch!(b, dns_batch([1], [(8,)])...)) == AddResult(QD.NewCell, 4.0)
+    @test only(QD.add_batch!(b, dns_batch([1], [(8,)])...)) == QD.AddResult(QD.NewCell, 4.0)
     @test stored_descriptors(b) == [(4.0,), (8.0,)]
 
     # the best solutions can all leave: two equal ones at the same place score 0
@@ -82,7 +82,7 @@ end
 
     empty!(a)
     @test length(a) == 0
-    @test QD.add!(a, xs[1], evs[1]) == AddResult(QD.NewCell, Inf)
+    @test QD.add!(a, xs[1], evs[1]) == QD.AddResult(QD.NewCell, Inf)
 end
 
 @testset "DNSArchive phenotypes" begin

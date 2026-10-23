@@ -10,7 +10,7 @@ end
 # others are stable, documented Base, Random and Makie functions (`require_one_based_indexing`
 # is declared public from Julia 1.11 on; `plottype` is how an extension tells Makie which
 # plot `plot(x)` draws for its own type). `CellArchive`, `cell_index`, `result_archive`, `elites`, `evaluate`,
-# `DeviceCellArchive`, `AddResultBatch` and the statuses `Rejected`, `Improved` and
+# `DeviceCellArchive`, `AddResultBatch`, `CQDScore` and the statuses `Rejected`, `Improved` and
 # `NewCell` are declared public with `@compat public`, which ExplicitImports only sees from
 # Julia 1.11 on; the extensions use them. The KernelAbstractions extension implements the device
 # kernels behind internal functions of the package (`device_add_batch!` to
@@ -22,7 +22,7 @@ end
 const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :promote_op, :tail,
                                :require_one_based_indexing, :plottype,
                                :CellArchive, :cell_index, :result_archive, :elites, :evaluate,
-                               :DeviceCellArchive, :AddResultBatch, :Rejected, :Improved, :NewCell,
+                               :DeviceCellArchive, :AddResultBatch, :CQDScore, :Rejected, :Improved, :NewCell,
                                :device_add_batch!, :device_evaluate, :device_evaluate!, :device_vary!,
                                :refresh_occupied!, :solution_length, :fitness_gain, :outside_improvement, Symbol("@atomic"),
                                :forwarddiff_evaluate_gradient, :differentiable_values, :jacobian)

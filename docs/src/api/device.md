@@ -14,8 +14,6 @@ packages load.
 QualityDiversity.DeviceCellArchive
 DeviceGridArchive
 DeviceCVTArchive
-QualityDiversity.device_storage
-QualityDiversity.solution_length
 ```
 
 ## Batches
@@ -29,6 +27,6 @@ QualityDiversity.AddResultBatch
 ## Emitters
 
 ```@docs
-DeviceVariationEmitter
-DeviceCMAEmitter
+QualityDiversity.DeviceVariationEmitter
+QualityDiversity.DeviceCMAEmitter
 ```

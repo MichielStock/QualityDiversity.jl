@@ -18,7 +18,7 @@ end
     # target 0.5, fitness over 3 and distances 0.4, 0.1, 0.4 over the diagonal 1:
     # θ = 0 recommends the best fitness, 1.0; θ = 0.5 still the first, 1 - 0.2; θ = 1, 1 - 0.4
     r = cqd_score(a; targets=[[0.5]], fitness_range=(0, 3), penalties=3)
-    @test r isa CQDScore
+    @test r isa QD.CQDScore
     @test r.penalties == [0.0, 0.5, 1.0]
     @test r.per_penalty ≈ [1.0, 0.8, 0.6]
     @test r.score ≈ 2.4

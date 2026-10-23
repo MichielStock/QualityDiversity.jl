@@ -60,7 +60,7 @@ batches as a `Vector`, so device emitters cannot be scheduled.
 # Example
 
 ```julia
-prob = Rastrigin(10)
+prob = QualityDiversity.Benchmarks.Rastrigin(10)
 archive = GridArchive(prob; dims=(20, 20))
 pool = (VariationEmitter(GaussianMutation(0.1); batch_size=36),
         VariationEmitter(IsoLineVariation(0.01, 0.1); batch_size=36),

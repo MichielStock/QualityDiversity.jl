@@ -34,7 +34,7 @@ real-vector genotypes, no phenotype, and a `variation` that the device emitter s
 # Example
 
 ```julia
-prob = Rastrigin(10)
+prob = QualityDiversity.Benchmarks.Rastrigin(10)
 result = solve(prob, MAPElites(prob; dims=(20, 20)); budget=100_000, rng=Xoshiro(1))
 coverage(result.archive)
 ```
@@ -127,7 +127,7 @@ with an archive other than the grid, such as a [`CVTArchive`](@ref) or a
 # Example
 
 ```julia
-prob = Rastrigin(10)
+prob = QualityDiversity.Benchmarks.Rastrigin(10)
 archive = CVTArchive(prob; cells=500, rng=Xoshiro(1))
 result = solve(prob, MAPElites(archive); budget=100_000, rng=Xoshiro(2))
 ```
@@ -169,7 +169,7 @@ emitters, hundreds rather than five.
 # Example
 
 ```julia
-prob = Rastrigin(10)
+prob = QualityDiversity.Benchmarks.Rastrigin(10)
 result = solve(prob, CMAME(prob; dims=(20, 20), sigma0=1.0); budget=50_000, rng=Xoshiro(1))
 qd_score(result.archive; offset=fitness_offset(prob))
 ```
@@ -255,7 +255,7 @@ those of
 # Example
 
 ```julia
-prob = Rastrigin(10)
+prob = QualityDiversity.Benchmarks.Rastrigin(10)
 alg = DDS(prob; dims=(20, 20), sigma0=0.5, bandwidth=0.5, rng=Xoshiro(1))
 result = solve(prob, alg; budget=50_000, rng=Xoshiro(2))
 coverage(result.archive)
@@ -299,7 +299,7 @@ are those of [`MAPElites`](@ref) and [`GradientArborescenceEmitter`](@ref).
 # Example
 
 ```julia
-prob = Sphere(100)    # gradients in closed form
+prob = QualityDiversity.Benchmarks.Sphere(100)    # gradients in closed form
 result = solve(prob, CMAMEGA(prob; dims=(100, 100), sigma0=10.0); budget=20_000, rng=Xoshiro(1))
 coverage(result.archive)
 ```
@@ -412,7 +412,7 @@ cell drawn uniformly among the occupied ones. The problem returns a vector of ob
 its fitness. `reference_point` is the corner from which hypervolume is measured; a problem
 can supply it with [`reference_point`](@ref QualityDiversity.reference_point). `duplicates` and
 `full_front` decide about a solution whose objectives equal those of a stored one and about
-one for a full front; see [`ParetoGridArchive`](@ref). With `full_front=ReplaceCrowded()` the
+one for a full front; see [`ParetoGridArchive`](@ref). With `full_front=QualityDiversity.ReplaceCrowded()` the
 archive keeps fronts as MOME-PGX does (Janmohamed et al., 2023), whose crowding-based
 selection of parents and policy-gradient variation are not part of this constructor.
 
@@ -422,7 +422,7 @@ hypervolume of a cell and the number of solutions.
 # Example
 
 ```julia
-prob = BiSphere(10)
+prob = QualityDiversity.Benchmarks.BiSphere(10)
 result = solve(prob, MOME(prob; dims=(20, 20)); budget=50_000, rng=Xoshiro(1))
 qd_score(result.archive), global_hypervolume(result.archive)
 ```

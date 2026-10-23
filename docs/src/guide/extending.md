@@ -126,7 +126,7 @@ the emitters, so a run never changes the algorithm it was given.
 ## An archive
 
 An archive is the most involved role. It defines
-[`add!`](@ref QualityDiversity.add!), which returns an [`AddResult`](@ref) with the
+[`add!`](@ref QualityDiversity.add!), which returns an [`AddResult`](@ref QualityDiversity.AddResult) with the
 status (`NewCell`, `Improved` or `Rejected`) and the improvement over the previous
 occupant, [`cell_index`](@ref QualityDiversity.cell_index),
 [`sample_elites`](@ref QualityDiversity.sample_elites),

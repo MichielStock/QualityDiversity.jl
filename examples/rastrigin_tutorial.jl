@@ -18,15 +18,15 @@
 #
 #     julia --project=examples examples/rastrigin_tutorial.jl
 
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 
 # ## 1. The problem
 #
-# `Rastrigin(10)` is a benchmark over 10 real parameters. The fitness of a
-# solution is the negated Rastrigin value, so higher is better, with a maximum of
-# 0. Its descriptor is two numbers: the mean of the first five parameters and the
-# mean of the last five, each in [-5.12, 5.12].
+# `Rastrigin(10)`, from `QualityDiversity.Benchmarks`, is a benchmark over 10 real
+# parameters. The fitness of a solution is the negated Rastrigin value, so higher is
+# better, with a maximum of 0. Its descriptor is two numbers: the mean of the first five
+# parameters and the mean of the last five, each in [-5.12, 5.12].
 
 prob = Rastrigin(10)
 

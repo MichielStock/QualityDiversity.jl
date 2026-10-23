@@ -51,7 +51,7 @@ const LIMIT = 5.12
 """
     GPURastrigin(A, dim)
 
-The Rastrigin benchmark over `dim` parameters, as in `Rastrigin`, with
+The Rastrigin benchmark over `dim` parameters, as in `QualityDiversity.Benchmarks.Rastrigin`, with
 `evaluate_batch` running on arrays of type `A` (`CuArray`, `MtlArray`,
 `JLArray`, ...) in `Float32`. Genotypes are `Vector{Float32}` and fitness values
 are `Float32`; descriptors are `Float64` as everywhere in the package.

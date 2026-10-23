@@ -80,15 +80,15 @@ end
     prob = Rastrigin(6)
     for alg in (CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2),
                 CMAMAE(prob; dims=(8, 8), sigma0=1.0, threshold_min=-500.0, learning_rate=0.1, num_emitters=2),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=ObjectiveRanker(), selection=MuSelection()),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=TwoStageRandomDirectionRanker()),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=RandomDirectionRanker()),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=AcceptedRandomDirectionRanker()),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=PyribsCMAES),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=TwoStageObjectiveRanker()),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=SepCMAES),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=OpenAIES),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=LMMAES, batch_size=5))
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=QD.ObjectiveRanker(), selection=QD.MuSelection()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=QD.TwoStageRandomDirectionRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=QD.RandomDirectionRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=QD.AcceptedRandomDirectionRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.PyribsCMAES),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=QD.TwoStageObjectiveRanker()),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.SepCMAES),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.OpenAIES),
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.LMMAES, batch_size=5))
         state = @inferred init(prob, alg; budget=600, rng=Xoshiro(1))
         emitter = state.emitters[1]
         xs = @inferred QD.ask(Xoshiro(1), emitter, state.archive)
@@ -301,7 +301,7 @@ end
     x = QD.random_solution(Xoshiro(1), noisy)
     @inferred QD.evaluate(Xoshiro(1), noisy, x)
     @inferred QD.evaluate(Xoshiro(1), Sampled(noisy; num_samples=3), x)
-    @inferred QD.evaluate(Xoshiro(1), Sampled(noisy; num_samples=3, expectation=Median()), x)
+    @inferred QD.evaluate(Xoshiro(1), Sampled(noisy; num_samples=3, expectation=QD.Median()), x)
     @inferred QD.evaluate_batch(Xoshiro(1), noisy, [x, x])
     @inferred QD.evaluations_per_solution(Sampled(noisy; num_samples=3))
     for prob in (noisy, Sampled(noisy; num_samples=3))
@@ -332,7 +332,7 @@ end
     @test allocated(QD.add!, archive, x, ev) == 0
     @test allocated(QD.add!, archive, x, Evaluation(ev.fitness .- 1, ev.descriptor)) == 0
     # nor does replacing the most crowded solution of a full front, with an isbits genotype
-    crowded = ParetoGridArchive{Int}((1,), ((0, 1),); reference_point=[0.0, 0.0], max_front=3, duplicates=KeepDuplicates(), full_front=ReplaceCrowded())
+    crowded = ParetoGridArchive{Int}((1,), ((0, 1),); reference_point=[0.0, 0.0], max_front=3, duplicates=QD.KeepDuplicates(), full_front=QD.ReplaceCrowded())
     on_line(t) = Evaluation(SVector(t, 1 - t), SVector(0.5))
     for (k, t) in enumerate((0.1, 0.2, 0.9))
         QD.add!(crowded, k, on_line(t))

@@ -115,7 +115,7 @@ slowly than `Float32`: use `genotype=Vector{Float32}` and `fitness=Float32` ther
 
 A subtype has these fields, which the shared methods and kernels use: `lower` and `upper`
 (`SVector{N,Float64}`), `outside` (an [`OutsidePolicy`](@ref)), and the device arrays
-that [`device_storage`](@ref) allocates, with `count`, the number of occupied cells.
+that `device_storage` allocates, with `count`, the number of occupied cells.
 """
 abstract type DeviceCellArchive{T<:AbstractFloat,F<:Real,N} <: AbstractArchive{Vector{T},F,SVector{N,Float64},Nothing} end
 

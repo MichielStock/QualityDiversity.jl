@@ -8,7 +8,7 @@ VERSION < v"1.11" && Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..", "..")
 Pkg.instantiate()
 
 using BenchmarkTools
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 using Statistics: median
 
@@ -33,24 +33,24 @@ const METHODS = (
         () -> CMAME(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0),
     "CMA-ME, optimizing emitters" =>
         () -> CMAME(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
-                    ranker=ObjectiveRanker(), selection=MuSelection(), restart=ConvergenceRestart()),
+                    ranker=QualityDiversity.ObjectiveRanker(), selection=QualityDiversity.MuSelection(), restart=QualityDiversity.ConvergenceRestart()),
     "CMA-ME, random direction emitters" =>
         () -> CMAME(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
-                    ranker=TwoStageRandomDirectionRanker()),
+                    ranker=QualityDiversity.TwoStageRandomDirectionRanker()),
     "CMA-MAE" =>
         () -> CMAMAE(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
                      threshold_min=THRESHOLD_MIN, learning_rate=LEARNING_RATE),
     # Rows that only this package has: the random direction ranking that the CMA-ME paper
-    # describes, and the covariance update of pyribs (see PyribsCMAES).
+    # describes, and the covariance update of pyribs (see QualityDiversity.PyribsCMAES).
     "CMA-ME, random direction emitters, ranking of the paper" =>
         () -> CMAME(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
-                    ranker=AcceptedRandomDirectionRanker()),
+                    ranker=QualityDiversity.AcceptedRandomDirectionRanker()),
     "CMA-MAE, covariance update of pyribs" =>
         () -> CMAMAE(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
-                     threshold_min=THRESHOLD_MIN, learning_rate=LEARNING_RATE, strategy=PyribsCMAES),
+                     threshold_min=THRESHOLD_MIN, learning_rate=LEARNING_RATE, strategy=QualityDiversity.PyribsCMAES),
     "CMA-ME, improvement emitters, covariance update of pyribs" =>
         () -> CMAME(prob; dims=DIMS, sigma0=SIGMA0, num_emitters=EMITTERS, batch_size=BATCH, x0,
-                    strategy=PyribsCMAES),
+                    strategy=QualityDiversity.PyribsCMAES),
 )
 
 const seed = Ref(0)

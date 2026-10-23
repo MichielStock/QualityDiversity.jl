@@ -117,7 +117,7 @@ from. The emitter has the properties `iterations`, the number of batches told, a
 # Example
 
 ```jldoctest
-julia> using QualityDiversity, Random
+julia> using QualityDiversity, QualityDiversity.Benchmarks, Random
 
 julia> prob = Rastrigin(10);
 

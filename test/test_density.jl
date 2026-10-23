@@ -30,9 +30,9 @@ end
 @testset "DensityArchive density" begin
     a = DensityArchive(line_grid(); bandwidth=0.5, rng=Xoshiro(1))
     @test QD.density(a, SVector(0.3)) == 0
-    @test QD.add!(a, [1.0], Evaluation(1.0, SVector(0.0))) == AddResult(QD.NewCell, -0.0)
+    @test QD.add!(a, [1.0], Evaluation(1.0, SVector(0.0))) == QD.AddResult(QD.NewCell, -0.0)
     # the density is that of the buffer before the solution enters it
-    @test QD.add!(a, [2.0], Evaluation(2.0, SVector(1.0))) == AddResult(QD.NewCell, -φ(2.0) / 0.5)
+    @test QD.add!(a, [2.0], Evaluation(2.0, SVector(1.0))) == QD.AddResult(QD.NewCell, -φ(2.0) / 0.5)
     @test QD.density(a, SVector(0.5)) ≈ (φ(1.0) + φ(1.0)) / (2 * 0.5)
     @test QD.add!(a, [0.5], Evaluation(0.5, SVector(0.1))).status == QD.Rejected    # the grid keeps the better one
     @test QD.result_archive(a) === a.inner

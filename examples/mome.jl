@@ -14,7 +14,7 @@
 #
 #     julia --project=examples examples/mome.jl
 
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 
 # ## The problem
@@ -50,8 +50,8 @@ nothing #hide
 
 # ## Reading the results
 #
-# `length` counts the occupied cells and `num_solutions` the solutions in all
-# fronts. The metrics of a multi-objective run differ from those of MAP-Elites:
+# `length` counts the occupied cells and `QualityDiversity.num_solutions` the solutions
+# in all fronts. The metrics of a multi-objective run differ from those of MAP-Elites:
 # `qd_score` is the MOQD score, the sum of the hypervolumes of the fronts of all
 # cells, and `global_hypervolume` is that of the front of all solutions together.
 
@@ -60,9 +60,9 @@ final = result.history[end]
  global_hypervolume=global_hypervolume(archive))
 
 # `QualityDiversity.elites` iterates over every solution of every front, with its
-# evaluation. `max_scores` gives the best value found for each objective:
+# evaluation. `QualityDiversity.max_scores` gives the best value found for each objective:
 
-max_scores(archive)
+QualityDiversity.max_scores(archive)
 
 # ## Plotting
 #

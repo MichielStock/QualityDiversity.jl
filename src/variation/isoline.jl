@@ -22,7 +22,7 @@ are converted to that type. The parents are left unchanged.
 # Example
 
 ```julia
-prob = Rastrigin(10)
+prob = QualityDiversity.Benchmarks.Rastrigin(10)
 alg = MAPElites(prob; dims=(20, 20), variation=IsoLineVariation(0.01, 0.2))
 ```
 """
