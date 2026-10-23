@@ -21,7 +21,9 @@ chosen from `samples` points drawn uniformly from the box `bounds` by k-means
 expected population. The iterations stop after `max_iterations` (100) or when
 one lowers the total squared distance from the samples to their centroids by
 less than 0.1%. The second form draws its random numbers from `rng`; the same
-seed gives the same centroids. `centroids(archive)` returns them, and passing them
+seed gives the same centroids. For a reproducible run, seed the archive as well as
+`solve`, e.g. `rng=Xoshiro(1)`: without it, `rng` is `Random.default_rng()`, which the
+seed of `solve` does not set. `centroids(archive)` returns the centroids, and passing them
 back rebuilds the same archive. The last form takes the bounds from
 [`descriptor_bounds(prob)`](@ref QualityDiversity.descriptor_bounds) unless `bounds`
 is given.
@@ -50,6 +52,13 @@ julia> archive = CVTArchive(50, ((0, 1), (0, 1)); rng=Xoshiro(1), samples=5_000)
 
 julia> length(archive), QualityDiversity.capacity(archive)
 (0, 50)
+
+julia> a = CVTArchive(50, ((0, 1), (0, 1)); samples=5_000);    # no seed
+
+julia> b = CVTArchive(50, ((0, 1), (0, 1)); samples=5_000);
+
+julia> QualityDiversity.centroids(a) == QualityDiversity.centroids(b)    # other cells
+false
 ```
 """
 mutable struct CVTArchive{G,F<:Real,N,O<:OutsidePolicy,P} <: CellArchive{G,F,SVector{N,Float64},P}

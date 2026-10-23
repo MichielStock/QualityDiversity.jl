@@ -246,8 +246,10 @@ Density Descent Search with a kernel density estimate (DDS-KDE; Lee et al., 2024
 descriptors found so far, lowest first, recombine the best half and restart on
 convergence, the settings of the paper. It searches for diversity alone: the fitness only
 decides which solution the grid keeps in a cell. `bandwidth`, `buffer_capacity` and
-`rng`, which drives the buffer, are the arguments of the [`DensityArchive`](@ref); pass a
-seeded `rng` for a reproducible archive. The other arguments are those of
+`rng`, which drives the buffer, are the arguments of the [`DensityArchive`](@ref). For a
+reproducible run, seed `DDS` as well as `solve`, e.g. `rng=Xoshiro(1)`: without it, `rng`
+is `Random.default_rng()`, which the seed of `solve` does not set. The other arguments are
+those of
 [`CMAME`](@ref), without `device`: the density archive runs on the host.
 
 # Example
