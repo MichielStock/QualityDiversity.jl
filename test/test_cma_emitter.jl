@@ -362,8 +362,8 @@ end
 @testset "CMAEmitter with each evolution strategy" begin
     archive = elite_archive()
     for strategy in (QD.CMAES, QD.SepCMAES, QD.LMMAES, QD.OpenAIES, (dim; kwargs...) -> QD.LMMAES(dim; kwargs..., n_vectors=2))
-        # LMMAES needs a batch smaller than the dimension
-        dim = 10
+        # LMMAES needs a batch of at most half the dimension
+        dim = 12
         grid = GridArchive{Vector{Float64}}((4, 4), ((-4, 4), (-4, 4)))
         QD.add!(grid, fill(1.0, dim), Evaluation(-1.0, SVector(0.0, 0.0)))
         e = CMAEmitter(dim; sigma0=0.5, strategy, batch_size=6)

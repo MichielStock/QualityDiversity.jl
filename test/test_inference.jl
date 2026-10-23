@@ -88,7 +88,7 @@ end
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, ranker=QD.TwoStageObjectiveRanker()),
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.SepCMAES),
                 CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.OpenAIES),
-                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.LMMAES, batch_size=5))
+                CMAME(prob; dims=(8, 8), sigma0=1.0, num_emitters=2, strategy=QD.LMMAES, batch_size=3))
         state = @inferred init(prob, alg; budget=600, rng=Xoshiro(1))
         emitter = state.emitters[1]
         xs = @inferred QD.ask(Xoshiro(1), emitter, state.archive)

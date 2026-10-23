@@ -201,8 +201,9 @@ end
         test_emitter(CMAEmitter(4; sigma0=1.0, ranker), filled(), prob)
     end
     for strategy in (QD.PyribsCMAES, QD.SepCMAES, QD.OpenAIES, QD.LMMAES)
-        # LMMAES needs a batch smaller than the dimension
-        test_emitter(CMAEmitter(4; sigma0=1.0, strategy, batch_size=3 + 3 * (strategy === QD.OpenAIES)), filled(), prob)
+        # LMMAES needs a batch of at most half the dimension, OpenAIES an even batch
+        batch_size = strategy === QD.LMMAES ? 2 : strategy === QD.OpenAIES ? 6 : 3
+        test_emitter(CMAEmitter(4; sigma0=1.0, strategy, batch_size), filled(), prob)
     end
     # genotypes other than Vector{Float64}
     for G in (Vector{Float32}, SVector{4,Float64})

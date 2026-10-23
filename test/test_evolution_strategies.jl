@@ -15,7 +15,7 @@ end
 strategies = (QD.CMAES, QD.SepCMAES, QD.LMMAES, QD.OpenAIES)
 
 @testset "construction of $(nameof(S))" for S in strategies
-    dim = 12
+    dim = 26
     es = S(dim; sigma0=0.5)
     @test es isa QD.AbstractEvolutionStrategy && es.dim == dim && size(es.x) == (dim, es.batch_size)
     @test es.batch_size >= 2 && es.sigma0 == 0.5
@@ -23,15 +23,15 @@ strategies = (QD.CMAES, QD.SepCMAES, QD.LMMAES, QD.OpenAIES)
     @test_throws "sigma0 must be positive and finite, got 0" S(dim; sigma0=0)
     @test_throws "dim must be at least 1, got 0" S(0; sigma0=1)
     @test_throws "batch_size must be at least 2 so that there is a parent, got 1" S(dim; sigma0=1, batch_size=1)
-    @test_throws "lower has 2 entries but the dimension is 12" S(dim; sigma0=1, lower=[0, 0])
+    @test_throws "lower has 2 entries but the dimension is 26" S(dim; sigma0=1, lower=[0, 0])
     @test_throws "lower[3] is 5.0 but must be less than upper[3], which is 1.0" S(3; sigma0=1, lower=[0, 0, 5], upper=1)
-    @test_throws "x0 has 2 entries but the dimension is 12" QD.reset!(es, [1.0, 2.0])
+    @test_throws "x0 has 2 entries but the dimension is 26" QD.reset!(es, [1.0, 2.0])
     @test_throws "x0 must be finite" QD.reset!(es, fill(NaN, dim))
     @test_throws UndefKeywordError S(dim)
 end
 
 @testset "sampling with $(nameof(S))" for S in strategies
-    dim = 12
+    dim = 16
     es = S(dim; sigma0=0.3, batch_size=8)
     QD.reset!(es, collect(1.0:dim))
     x = copy(QD.sample!(Xoshiro(1), es))
@@ -39,8 +39,8 @@ end
     @test x != QD.sample!(Xoshiro(2), es)
     @test all(isfinite, x)
     # centered on the start, with spread of the order of sigma0
-    # (LMMAES needs a batch smaller than the dimension)
-    bdim, bsize = S === QD.LMMAES ? (500, 400) : (12, 4_000)
+    # (LMMAES needs a batch of at most half the dimension)
+    bdim, bsize = S === QD.LMMAES ? (1_000, 400) : (12, 4_000)
     big = S(bdim; sigma0=0.3, batch_size=bsize)
     QD.reset!(big, collect(1.0:bdim))
     s = QD.sample!(Xoshiro(3), big)
@@ -74,7 +74,7 @@ end
 end
 
 @testset "update! with $(nameof(S))" for S in strategies
-    dim = 12
+    dim = 16
     es = S(dim; sigma0=0.3, batch_size=8)
     QD.reset!(es, zeros(dim))
     QD.sample!(Xoshiro(1), es)
@@ -100,7 +100,8 @@ end
                                                         (QD.LMMAES, x -> -sum(abs2, x), 300),
                                                         (QD.OpenAIES, x -> -sum(abs2, x), 600))
     dim = 14
-    es = S === QD.OpenAIES ? S(dim; sigma0=0.1, batch_size=30, learning_rate=0.02) : S(dim; sigma0=0.5, batch_size=10)
+    es = S === QD.OpenAIES ? S(dim; sigma0=0.1, batch_size=30, learning_rate=0.02) :
+         S(dim; sigma0=0.5, batch_size=S === QD.LMMAES ? 7 : 10)
     rng = Xoshiro(1)
     QD.reset!(es, fill(2.0, dim))
     start = f(fill(2.0, dim))
@@ -143,7 +144,7 @@ end
 end
 
 @testset "LMMAES follows the reference update" begin
-    n = 8
+    n = 12
     es = QD.LMMAES(n; sigma0=lm_s0, batch_size=6, n_vectors=3)
     @test es.c_sigma ≈ 2 * 6 / n && es.c_d ≈ [1 / n, 1 / (1.5n), 1 / (2.25n)] && es.c_c ≈ [6 / n, 6 / (4n), 6 / (16n)]
     QD.reset!(es, lm_x0)
@@ -170,9 +171,19 @@ end
     z = fresh.z[:, 1]
     @test fresh.y[:, 1] ≈ (1 - fresh.c_d[1]) .* z .+ fresh.c_d[1] .* fill(1 / sqrt(n), n) .* (sum(z) / sqrt(n))
 
-    @test_throws "batch_size (12) must be less than the dimension (10) for LMMAES" QD.LMMAES(10; sigma0=1, batch_size=12)
-    @test_throws "n_vectors must be between 1 and the dimension (20), got 21" QD.LMMAES(20; sigma0=1, n_vectors=21)
-    @test QD.LMMAES(20; sigma0=1).n_vectors == QD.LMMAES(20; sigma0=1).batch_size
+    # a batch of more than half the dimension makes c_sigma exceed 1
+    @test_throws ("LMMAES needs a batch of at most half the dimension, but batch_size is 6 and the dimension 10: " *
+                  "the learning rate of its step size, 2 batch_size / dim = 1.2, would exceed 1, so the step size " *
+                  "would stop adapting. LMMAES is meant for a high dimension (at least 26 with the default batch); " *
+                  "pass batch_size ≤ 5, or use CMAES or SepCMAES. See the help of QualityDiversity.LMMAES.") QD.LMMAES(10; sigma0=1, batch_size=6)
+    @test QD.LMMAES(10; sigma0=1, batch_size=5).c_sigma == 1
+    @test_throws "pass batch_size ≤ 2, or use CMAES" QD.LMMAES(4; sigma0=1, batch_size=3)
+    @test_throws "(at least 26 with the default batch); use CMAES or SepCMAES" QD.LMMAES(3; sigma0=1, batch_size=2)
+    # the default batch fits from 26 on
+    @test_throws "batch_size is 13 and the dimension 25" QD.LMMAES(25; sigma0=1)
+    @test all(dim -> QD.LMMAES(dim; sigma0=1).c_sigma <= 1, 26:2_000)
+    @test_throws "n_vectors must be between 1 and the dimension (26), got 27" QD.LMMAES(26; sigma0=1, n_vectors=27)
+    @test QD.LMMAES(26; sigma0=1).n_vectors == QD.LMMAES(26; sigma0=1).batch_size
 end
 
 @testset "OpenAIES follows the reference update" begin
@@ -215,7 +226,7 @@ end
     flat = [1.0, 1.0 + 1e-13]
     spread = [3.0, 2.0, 1.0]
     for S in (QD.SepCMAES, QD.LMMAES, QD.OpenAIES)
-        es = S(10; sigma0=1.0, batch_size=6)
+        es = S(10; sigma0=1.0, batch_size=4)
         QD.reset!(es, zeros(10))
         @test !QD.should_stop(es, spread) && QD.should_stop(es, flat) && !QD.should_stop(es, [1.0])
     end
@@ -230,7 +241,7 @@ end
     es.mean[2] = NaN
     @test QD.should_stop(es, spread)
 
-    lm = QD.LMMAES(10; sigma0=1.0, batch_size=6)
+    lm = QD.LMMAES(10; sigma0=1.0, batch_size=5)
     QD.reset!(lm, zeros(10))
     lm.sigma = 1e-13
     @test QD.should_stop(lm, spread)

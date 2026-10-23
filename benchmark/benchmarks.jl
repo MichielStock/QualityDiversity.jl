@@ -189,7 +189,7 @@ SUITE["emitter"]["CMAEmitter/tell!"] = let xs = QD.ask(rng, CMAEmitter(20; sigma
     # tell! needs a fresh ask before each call; only tell! is timed
     @benchmarkable QD.tell!(e, $xs, $evs, $results) setup = (e = CMAEmitter(20; sigma0=0.5); QD.ask($rng, e, $cma_archive)) evals = 1
 end
-for (name, kwargs) in (("SepCMAES", (; strategy=QD.SepCMAES)), ("LMMAES", (; strategy=QD.LMMAES)),
+for (name, kwargs) in (("SepCMAES", (; strategy=QD.SepCMAES)), ("LMMAES", (; strategy=QD.LMMAES, batch_size=10)),
                        ("OpenAIES", (; strategy=QD.OpenAIES)),
                        ("RandomDirection", (; ranker=QD.TwoStageRandomDirectionRanker())))
     SUITE["emitter"]["CMAEmitter/$name/ask"] = let e = CMAEmitter(20; sigma0=0.5, kwargs...)
