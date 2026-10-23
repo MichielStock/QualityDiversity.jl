@@ -1,4 +1,4 @@
-using StaticArrays: SVector
+using StaticArrays: SVector, setindex
 
 brute_nearest(points, q) = argmin([sum(abs2, p - q) for p in points])
 
@@ -23,6 +23,17 @@ brute_nearest(points, q) = argmin([sum(abs2, p - q) for p in points])
     end
     @test QD.nearest(QD.CentroidTree([SVector(0.3, 0.3)]), SVector(5.0, -2.0)) == 1
     @test @inferred(QD.nearest(tree, SVector(0.1, 0.1))) isa Int
+
+    # more than 127 dimensions: the split axis is an Int, not an Int8. The points are
+    # spread most along the last dimension, so the root splits along it.
+    rng = Xoshiro(130)
+    wide = [setindex(0.01 * rand(rng, SVector{130,Float64}), Float64(k), 130) for k in 1:5]
+    tree = QD.CentroidTree(wide)
+    @test tree.axis[3] == 130
+    @test all(1:20) do _
+        q = setindex(0.01 * rand(rng, SVector{130,Float64}), 5 * rand(rng), 130)
+        QD.nearest(tree, q) == brute_nearest(wide, q)
+    end
 end
 
 @testset "k-means" begin
@@ -76,6 +87,11 @@ end
     @test CVTArchive(Rastrigin(4); cells=7, samples=700, rng=Xoshiro(1)) isa CVTArchive{Vector{Float64},Float64,2}
     z = CVTArchive(Rastrigin(4); cells=7, samples=700, bounds=((-1, 1), (-1, 1)), rng=Xoshiro(1))
     @test all(c -> all(abs.(c) .<= 1), QD.centroids(z))
+    # a descriptor with more than 127 dimensions, widest along the last one
+    wide = CVTArchive(4, ntuple(i -> i == 130 ? (0, 1000) : (0, 1), 130); rng=Xoshiro(1), samples=40)
+    @test wide isa CVTArchive{Vector{Float64},Float64,130} && QD.capacity(wide) == 4
+    @test wide.tree.axis[2] == 130
+    @test QD.add!(wide, [1.0], Evaluation(1.0, rand(Xoshiro(2), SVector{130,Float64}))).status == QD.NewCell
 
     # rng is a keyword with the default generator as its default, and max_iterations
     # reaches k-means from every form

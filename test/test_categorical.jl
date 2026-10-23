@@ -21,6 +21,12 @@
     @test_throws "categories[1] is [1.0, NaN] but its values must be finite" CategoricalArchive(([1.0, NaN],))
     @test_throws "categories[1] is [1.0, Inf] but its values must be finite" CategoricalArchive(([1.0, Inf],))
     @test_throws "ClampOutside() has no meaning for a CategoricalArchive" CategoricalArchive((1:3,); outside=ClampOutside())
+    # values of mixed types would give a Tuple{Int,Any} descriptor and a Dict{Any,Int}
+    @test_throws "categories[2] mixes values of the types Symbol and Int64; the values of a dimension must have one type" CategoricalArchive((1:3, [:a, 1]))
+    @test_throws "categories[1] mixes values of the types Int64 and Float64" CategoricalArchive((Any[1, 2.5],))
+    # a collection typed wider than its values is narrowed
+    @test CategoricalArchive((Any[1, 2],)) isa CategoricalArchive{Vector{Float64},Float64,Tuple{Int}}
+    @test CategoricalArchive((Any[1, 2],)).lookups[1] isa Dict{Int,Int}
 end
 
 @testset "CategoricalArchive cell_index" begin

@@ -12,7 +12,9 @@ using OffsetArrays: OffsetArray
     @test QD.vary(Xoshiro(1), op, parent) == child
 
     @test QD.vary(Xoshiro(1), GaussianMutation(1), [1, 2, 3]) isa Vector{Float64}
-    @test QD.vary(Xoshiro(1), op, Float32[1, 2]) isa Vector{Float64}
+    # the child has the float type of the parent, whatever the type of σ
+    @test QD.vary(Xoshiro(1), op, Float32[1, 2]) isa Vector{Float32}
+    @test QD.vary(Xoshiro(1), GaussianMutation(0.5f0), [1.0, 2.0]) isa Vector{Float64}
     @test_throws "σ must be positive and finite, got 0" GaussianMutation(0)
     @test_throws "σ must be positive and finite, got -1.0" GaussianMutation(-1.0)
 end
@@ -51,8 +53,11 @@ end
     @test abs(sum(coefficients) / 5000) < 0.03
     @test 0.47 < sqrt(sum(abs2, coefficients) / 5000) < 0.53
 
-    @test QD.vary(Xoshiro(1), op, [1, 2, 3], Float32[4, 5, 6]) isa Vector{Float64}
+    # the child has the float type the parents promote to, whatever the type of the operator
+    @test QD.vary(Xoshiro(1), op, [1, 2, 3], Float32[4, 5, 6]) isa Vector{Float32}
+    @test QD.vary(Xoshiro(1), op, [1.0, 2.0, 3.0], Float32[4, 5, 6]) isa Vector{Float64}
     @test QD.vary(Xoshiro(1), IsoLineVariation(0.1f0, 0.2f0), Float32[1, 2], Float32[3, 4]) isa Vector{Float32}
+    @test QD.vary(Xoshiro(1), IsoLineVariation(0.1f0, 0.2f0), [1.0, 2.0], [3.0, 4.0]) isa Vector{Float64}
     @test_throws "parents have 2 and 3 entries but must have the same number" QD.vary(Xoshiro(1), op, [1.0, 2.0], [1.0, 2.0, 3.0])
     @test_throws "σ_iso must be non-negative and finite, got -0.1" IsoLineVariation(-0.1, 0.2)
     @test_throws "σ_line must be non-negative and finite, got -1" IsoLineVariation(0.1, -1)

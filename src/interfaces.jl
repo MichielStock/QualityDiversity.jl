@@ -75,7 +75,9 @@ times the first evaluation of the batch and runs the rest in parallel only if th
 batch would take longer than about 100 µs on one thread: starting the threads costs
 10 to 30 µs, more than a batch of a cheap function. The results do not depend on
 the number of threads. An error that `evaluate` throws comes out as it is, not wrapped
-in the exception of a task.
+in the exception of a task. The element type of the vector is inferred from `evaluate`,
+so a problem whose fitness or descriptor type varies from solution to solution gets a
+`Union` element type.
 
 To evaluate on a GPU, a problem type defines this method: it copies the batch
 to the device, runs array operations or a kernel, and copies the fitness and
@@ -536,7 +538,9 @@ algorithm shares one ask → evaluate → add → tell loop; they differ in whic
 archive and emitters they combine.
 
 `emitters` is a `Tuple` so that the loop over emitters is unrolled and
-type-stable.
+type-stable. An emitter with state may appear in it once: it keeps the batch it
+asked for until `tell!`, so one instance cannot run twice in a round. Build several
+alike with a comprehension.
 
 The algorithm runs through the CommonSolve.jl interface: `init` creates a
 state, `step!` performs one round, `solve!` runs to the budget, and
@@ -545,6 +549,22 @@ state, `step!` performs one round, `solve!` runs to the budget, and
 struct QDAlgorithm{A<:AbstractArchive,E<:Tuple}
     archive::A
     emitters::E
+    function QDAlgorithm{A,E}(archive, emitters) where {A<:AbstractArchive,E<:Tuple}
+        check_distinct_emitters(emitters)
+        return new{A,E}(archive, emitters)
+    end
+end
+
+QDAlgorithm(archive::A, emitters::E) where {A<:AbstractArchive,E<:Tuple} = QDAlgorithm{A,E}(archive, emitters)
+
+# The same object twice would ask twice before it is told; the pool of a
+# `BanditScheduler` is checked the same way.
+function check_distinct_emitters(emitters::Tuple)
+    for (i, e) in enumerate(emitters), j in 1:i-1
+        ismutable(e) && e === emitters[j] &&
+            throw(ArgumentError("emitters[$j] and emitters[$i] are the same $(nameof(typeof(e))); every emitter with state must be a separate instance, e.g. built with a comprehension"))
+    end
+    return nothing
 end
 
 function descriptor_bounds(archive::AbstractArchive)

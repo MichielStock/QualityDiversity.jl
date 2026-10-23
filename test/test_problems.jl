@@ -21,6 +21,17 @@
     @test eltype(@inferred QD.evaluate_batch(vectors, [[1.0, 2.0]])) == Evaluation{Float64,SVector{2,Float64},Nothing}
     static = QDProblem(x -> (-sum(abs2, x), SVector(x[1], x[2])); init=rng -> randn(rng, 2), bounds=((-3, 3), (-3, 3)))
     @test (@inferred QD.evaluate(static, [1.0, 2.0])) == ev
+
+    # device_evaluate keeps the phenotype and leaves the descriptor as the function returned
+    # it; the length of the descriptor is checked from its type before a kernel runs
+    labelled = QDProblem(x -> (-sum(abs2, x), (x[1], x[2]), :ring); init=rng -> randn(rng, 2), bounds=((-3, 3), (-3, 3)))
+    @test QD.evaluate(labelled, [1.0, 2.0]) == Evaluation(-5.0, SVector(1.0, 2.0), :ring)
+    @test (@inferred QD.device_evaluate(labelled, [1.0, 2.0])) === Evaluation(-5.0, (1.0, 2.0), :ring)
+    @test (@inferred QD.device_evaluate(prob, [1.0, 2.0])) === Evaluation(-5.0, (1.0, 2.0))
+    @test QD.device_evaluate(bad, [0.0]) === Evaluation(0.0, (1.0, 2.0, 3.0))
+    scalar = QDProblem(x -> 1.0; init=rng -> [0.0], bounds=((0, 1),))
+    @test_throws "must return a (fitness, descriptor) or (fitness, descriptor, phenotype) tuple" QD.evaluate(scalar, [0.0])
+    @test_throws "must return a (fitness, descriptor) or (fitness, descriptor, phenotype) tuple" QD.device_evaluate(scalar, [0.0])
 end
 
 @testset "evaluate_batch on threads" begin

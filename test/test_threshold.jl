@@ -258,6 +258,23 @@ end
     @test max_fitness(a) == 30.0
     QD.add!(a, [6.0], ev(1.0, (0.2, 0.5)))              # below the threshold 14.25: rejected
     @test max_fitness(a) == 30.0
+
+    # Replacing an elite adds the new fitness and subtracts the old one as two compensated
+    # steps, so the total with its error term tracks the exact sum far below one rounding
+    # even when their difference is not representable (magnitudes below 1 against 2^53).
+    b = ThresholdArchive(GridArchive((1000,), ((0, 1),)); learning_rate=0.5, threshold_min=-1)
+    rng = Xoshiro(3)
+    exact = BigFloat(0)
+    for c in 1:1000
+        d = SVector((c - 0.5) / 1000)
+        QD.add!(b, [0.0], Evaluation(-rand(rng), d))
+        new = 2.0^53 * (1 + rand(rng))
+        QD.add!(b, [0.0], Evaluation(new, d))
+        exact += new
+    end
+    two_terms = BigFloat(b.inner.fitness_sum) + BigFloat(b.inner.fitness_sum_error)
+    @test abs(two_terms - exact) <= 1e-24 * exact
+    @test qd_score(b) == Float64(exact)
 end
 
 @testset "ThresholdArchive rejects what the wrapped archive discards" begin
