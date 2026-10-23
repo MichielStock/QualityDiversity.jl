@@ -140,9 +140,10 @@ function place!(archive::CellArchive, i, x, descriptor, fitness, phenotype)
     end
     previous = archive.fitness[i]
     _store!(archive, i, x, fitness, descriptor, phenotype)
-    # The difference is taken in Float64, where it is exact for Float32
-    # and smaller fitness types.
-    _add_to_sum!(archive, Float64(fitness) - Float64(previous))
+    # Added and subtracted as two compensated steps: the difference of the two
+    # would round for a Float64 fitness, outside the compensation.
+    _add_to_sum!(archive, Float64(fitness))
+    _add_to_sum!(archive, -Float64(previous))
     archive.fitness_max = max(archive.fitness_max, fitness)
     return nothing
 end

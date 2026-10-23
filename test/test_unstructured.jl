@@ -84,6 +84,25 @@ end
     r = QD.add!(a, [7.0], ev(5.0, (20.0, 0.5)))
     @test r.status == QD.Improved && r.improvement == 6.0
     @test max_fitness(a) == 5.0 && qd_score(a) ≈ 1.5
+
+    # Both replacements add the new fitness and subtract the old one as two compensated
+    # steps, so the total with its error term tracks the exact sum far below one rounding
+    # even when their difference is not representable (magnitudes below 1 against 2^53).
+    b = UnstructuredArchive(2; capacity=500, threshold=0.5)
+    rng = Xoshiro(3)
+    exact = BigFloat(0)
+    for i in 1:500
+        QD.add!(b, [0.0], ev(-rand(rng), (i, 0)))                       # fills the slots
+    end
+    for i in 1:500
+        new = 2.0^53 * (1 + rand(rng))
+        QD.add!(b, [0.0], ev(new, (isodd(i) ? i : 1000 + i, 0)))      # the nearest, or the weakest once full
+        exact += new
+    end
+    @test length(b) == 500
+    two_terms = BigFloat(b.fitness_sum) + BigFloat(b.fitness_sum_error)
+    @test abs(two_terms - exact) <= 1e-24 * exact
+    @test qd_score(b) == Float64(exact)
 end
 
 @testset "UnstructuredArchive cell_index finds the nearest stored descriptor" begin

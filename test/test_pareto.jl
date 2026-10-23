@@ -311,6 +311,24 @@ end
     @test length(a) == 0 && QD.num_solutions(a) == 0 && QD.qd_score(a) == 0 && isempty(collect(QD.elites(a)))
     @test QD.metrics_record(a, 0, 0).max_hypervolume == 0.0
     @test QD.add!(a, [1.0], ev2(1, 3)).status == QD.NewCell
+
+    # A changed cell adds its new hypervolume and subtracts the old one as two compensated
+    # steps, so the total with its error term tracks the exact sum far below one rounding
+    # even when their difference is not representable (volumes below 2 against 2^53).
+    b = ParetoGridArchive{Vector{Float64}}((1000,), ((0, 1),), [0.0, 0.0])
+    rng = Xoshiro(3)
+    exact = BigFloat(0)
+    for c in 1:1000
+        d = SVector((c - 0.5) / 1000)
+        QD.add!(b, [0.0], Evaluation(SVector(1 + rand(rng), 1.0), d))
+        volume = 2.0^53 * (1 + rand(rng))
+        QD.add!(b, [0.0], Evaluation(SVector(volume, 1.0), d))        # dominates the first point
+        exact += volume
+    end
+    @test QD.num_solutions(b) == 1000
+    two_terms = BigFloat(b.volume_sum) + BigFloat(b.volume_sum_error)
+    @test abs(two_terms - exact) <= 1e-24 * exact
+    @test QD.qd_score(b) == Float64(exact)
 end
 
 @testset "BiSphere" begin

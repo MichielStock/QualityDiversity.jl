@@ -9,8 +9,10 @@ search distribution over real vectors, draws batches from it, and moves it towar
 the solutions that the emitter's ranker places first. It maximizes: the ranking
 passed to `update!` lists the best solution first.
 
-A strategy has the fields `dim`, the length of a solution, `batch_size`, and `x`, a
-`dim × batch_size` matrix that holds the last batch, one solution per column. It
+A strategy has the fields `dim`, the length of a solution, `batch_size`, `x`, a
+`dim × batch_size` matrix that holds the last batch, one solution per column, and
+`lower` and `upper`, the bounds of a solution as vectors of length `dim`, which a
+[`CMAEmitter`](@ref) reads to move the elite that a search starts from inside them. It
 defines
 
 - `StrategyType(dim; sigma0, batch_size, lower, upper)`: `sigma0` is the initial step
