@@ -112,7 +112,7 @@ end
 end
 
 @testset "ParetoGridArchive" begin
-    archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)), [0.0, 0.0])
+    archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)); reference_point=[0.0, 0.0])
     QD.add!(archive, [0.0], Evaluation(SVector(1.0, 3.0), SVector(0.2, 0.7)))   # cell (1, 2)
     QD.add!(archive, [0.0], Evaluation(SVector(3.0, 1.0), SVector(0.2, 0.7)))
     _, _, values = convert_heatmap(archive)
@@ -142,7 +142,7 @@ end
 end
 
 @testset "UnstructuredArchive scatter" begin
-    archive = UnstructuredArchive(2; capacity=5, threshold=0.1)
+    archive = UnstructuredArchive(2; capacity=5, novelty_threshold=0.1)
     QD.add!(archive, [0.0], Evaluation(1.5, SVector(0.2, 0.8)))
     QD.add!(archive, [0.0], Evaluation(-2.0, SVector(0.7, 0.3)))
     @test Makie.plottype(archive) === Scatter
@@ -162,14 +162,14 @@ end
     @test scatter(archive) isa Makie.FigureAxisPlot
     @test Makie.plot(archive) isa Makie.FigureAxisPlot
 
-    empty = UnstructuredArchive(2; capacity=5, threshold=0.1)
+    empty = UnstructuredArchive(2; capacity=5, novelty_threshold=0.1)
     @test Makie.convert_arguments(Scatter, empty).args == [Float64[], Float64[]]
     @test scatter!(ax, empty) isa Makie.PlotList
-    f32 = UnstructuredArchive{Vector{Float64},Float32}(2; capacity=5, threshold=0.1)
+    f32 = UnstructuredArchive{Vector{Float64},Float32}(2; capacity=5, novelty_threshold=0.1)
     QD.add!(f32, [0.0], Evaluation(0.25f0, SVector(0.1, 0.1)))
     @test Makie.convert_arguments(Scatter, f32).kwargs[:color] == [0.25]
     @test_throws "a scatter plot needs an archive with 2 descriptor dimensions but this UnstructuredArchive has 3" Makie.convert_arguments(
-        Scatter, UnstructuredArchive(3; capacity=5, threshold=0.1))
+        Scatter, UnstructuredArchive(3; capacity=5, novelty_threshold=0.1))
 end
 
 @testset "other dimensions throw" begin
@@ -190,7 +190,7 @@ end
 end
 
 @testset "DensityArchive heatmap" begin
-    archive = DensityArchive(Xoshiro(1), GridArchive((3, 2), ((0, 3), (10, 12))); bandwidth=0.5)
+    archive = DensityArchive(GridArchive((3, 2), ((0, 3), (10, 12))); bandwidth=0.5, rng=Xoshiro(1))
     QD.add!(archive, [0.0], Evaluation(1.5, SVector(0.5, 10.5)))
     @test Makie.plottype(archive) === Heatmap
     @test isequal(convert_heatmap(archive), convert_heatmap(QD.result_archive(archive)))
@@ -213,10 +213,10 @@ ecdf_points(x) = only(Makie.convert_arguments(ECDFPlot, x).args)
     QD.add!(t, [0.0], Evaluation(2.0, SVector(0.1)))        # passes the threshold of 1.5
     @test only(ev.fitness for (_, ev) in QD.elites(t)) == 2.0
     @test ecdf_points(t) == ecdf_points([3.0])
-    d = DensityArchive(Xoshiro(1), GridArchive((4,), ((0, 1),)); bandwidth=0.5)
+    d = DensityArchive(GridArchive((4,), ((0, 1),)); bandwidth=0.5, rng=Xoshiro(1))
     QD.add!(d, [0.0], Evaluation(2.5, SVector(0.3)))
     @test ecdf_points(d) == ecdf_points([2.5])
-    u = UnstructuredArchive(1; capacity=5, threshold=0.1)
+    u = UnstructuredArchive(1; capacity=5, novelty_threshold=0.1)
     QD.add!(u, [0.0], Evaluation(-1.0, SVector(0.3)))
     @test ecdf_points(u) == ecdf_points([-1.0])
     f32 = GridArchive{Vector{Float64},Float32}((2,), ((0, 1),))

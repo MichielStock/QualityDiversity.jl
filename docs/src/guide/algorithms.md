@@ -5,16 +5,19 @@ CurrentModule = QualityDiversity
 # Choosing an algorithm
 
 Every algorithm is an archive and a tuple of emitters. The constructors below choose
-both with the settings of the paper that introduced the algorithm; the API reference
-gives every keyword.
+both with the rules of the paper that introduced the algorithm, with one exception:
+[`CMAME`](@ref) and [`CMAMAE`](@ref) run five emitters with the batch size of CMA-ES
+rather than the 15 emitters of 36 candidates of the papers, which cost about ten times
+more evaluations per round; pass `num_emitters=15, batch_size=36` for the papers'
+settings. The API reference gives every keyword.
 
 ## Algorithms
 
 | Constructor | Algorithm | Archive | Emitters | Use it when |
 |---|---|---|---|---|
 | [`MAPElites`](@ref) | MAP-Elites (Mouret and Clune, 2015) | [`GridArchive`](@ref), or [`CategoricalArchive`](@ref) for discrete descriptors | one [`VariationEmitter`](@ref) | any genotype; the first thing to try |
-| [`CMAME`](@ref) | CMA-ME (Fontaine et al., 2020) | [`GridArchive`](@ref) | five [`CMAEmitter`](@ref)s | real-vector genotypes, especially many parameters |
-| [`CMAMAE`](@ref) | CMA-MAE (Fontaine and Nikolaidis, 2023) | [`ThresholdArchive`](@ref) around a grid | five [`CMAEmitter`](@ref)s | as CMA-ME, when fitness should count for more |
+| [`CMAME`](@ref) | CMA-ME (Fontaine et al., 2020) | [`GridArchive`](@ref) | five [`CMAEmitter`](@ref)s (15 × 36 in the paper) | real-vector genotypes, especially many parameters |
+| [`CMAMAE`](@ref) | CMA-MAE (Fontaine and Nikolaidis, 2023) | [`ThresholdArchive`](@ref) around a grid | five [`CMAEmitter`](@ref)s (15 × 36 in the paper) | as CMA-ME, when fitness should count for more |
 | [`CMAMEGA`](@ref) | CMA-MEGA (Fontaine and Nikolaidis, 2021) | [`GridArchive`](@ref) | one [`GradientArborescenceEmitter`](@ref) | the fitness and descriptor have gradients |
 | [`CMAMAEGA`](@ref) | CMA-MAEGA (Fontaine and Nikolaidis, 2023) | [`ThresholdArchive`](@ref) around a grid | one [`GradientArborescenceEmitter`](@ref) | as CMA-MEGA, when fitness should count for more |
 | [`OMGMEGA`](@ref) | OMG-MEGA (Fontaine and Nikolaidis, 2021) | [`GradientArchive`](@ref) around a grid | one [`GradientOperatorEmitter`](@ref) | gradients, and a simpler search than CMA-MEGA |
@@ -51,7 +54,7 @@ The constructors pick a grid, but any archive can be given to [`MAPElites`](@ref
 [`CMAME`](@ref) and the others in place of the problem:
 
 ```julia
-archive = CVTArchive(Xoshiro(1), prob; cells=1_000)
+archive = CVTArchive(prob; cells=1_000, rng=Xoshiro(1))
 alg = MAPElites(archive; batch_size=100)
 ```
 
@@ -69,9 +72,12 @@ alg = MAPElites(archive; batch_size=100)
 | [`GradientArchive`](@ref) | those of the archive it wraps | OMG-MEGA |
 | [`ParetoGridArchive`](@ref) | a grid, with a Pareto front in each cell | several objectives |
 
-A descriptor outside the bounds of a grid is an error by default, which catches a
-descriptor function that does not match its bounds. Pass `outside=ClampOutside()` to
-put it in the nearest cell, or `outside=RejectOutside()` to discard it.
+The algorithm constructors put a descriptor outside the bounds of the grid in the
+nearest cell, as pyribs and QDax do, so that a random initial population never stops a
+run. An archive built directly, such as `GridArchive(prob; dims)`, throws instead,
+which catches a descriptor function that does not match its bounds. Both take
+`outside=ThrowOutside()`, `outside=ClampOutside()` or `outside=RejectOutside()`, which
+discards the solution.
 
 ## Variation
 

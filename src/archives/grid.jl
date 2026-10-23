@@ -2,9 +2,8 @@
     GridArchive{G,F}(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
     GridArchive{G}(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
     GridArchive(dims, bounds; outside=ThrowOutside(), phenotype=Nothing)
-    GridArchive(prob::AbstractQDProblem; dims, bounds=descriptor_bounds(prob),
-                genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside(),
-                phenotype=Nothing)
+    GridArchive(prob::AbstractQDProblem; dims, bounds=nothing, genotype=default_genotype(prob),
+                fitness=Float64, outside=ThrowOutside(), phenotype=Nothing)
 
 Archive that divides descriptor space into a regular grid and keeps the
 highest-fitness solution found in each cell.
@@ -33,10 +32,10 @@ afterwards.
 the archive keeps the number of elites, the sum of their fitness and their
 maximum fitness up to date inside `add!`, which already knows what changed.
 A cell is only replaced by a strictly better solution, so the maximum never
-decreases and a running maximum is exact. The sum changes by
-`new fitness - old fitness` for an improved cell and by the fitness for a new
-cell. It is accumulated in `Float64` with compensated (Neumaier) summation, so
-the rounding error stays within about one rounding of the exact sum however
+decreases and a running maximum is exact. The fitness of a new cell is added
+to the sum, and for an improved cell the new fitness is added and the old one
+subtracted, each as a step of a compensated (Neumaier) summation in `Float64`,
+so the rounding error stays within about one rounding of the exact sum however
 many updates there have been; a plain running sum drifts by hundreds of units
 in the last place after millions of updates. The value agrees with a fresh pass
 over the elites, which the generic metrics for any [`AbstractArchive`](@ref)
@@ -92,13 +91,8 @@ end
 
 function GridArchive{G,F}(dims::Tuple, bounds::Tuple; outside::OutsidePolicy=ThrowOutside(),
                           phenotype::Type=Nothing) where {G,F<:Real}
-    N = length(dims)
-    length(bounds) == N ||
-        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
-    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
-    lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
-    upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return GridArchive{G,F,N,typeof(outside),phenotype}(map(Int, dims), lower, upper, outside)
+    lower, upper = grid_box(dims, bounds)
+    return GridArchive{G,F,length(dims),typeof(outside),phenotype}(map(Int, dims), lower, upper, outside)
 end
 
 function GridArchive{G}(dims::Tuple, bounds::Tuple; kwargs...) where {G}
@@ -109,11 +103,10 @@ function GridArchive(dims::Tuple, bounds::Tuple; kwargs...)
     return GridArchive{Vector{Float64}}(dims, bounds; kwargs...)
 end
 
-function GridArchive(prob::AbstractQDProblem; dims::Tuple,
-                     bounds::Tuple=descriptor_bounds(prob),
+function GridArchive(prob::AbstractQDProblem; dims::Tuple, bounds::Union{Tuple,Nothing}=nothing,
                      genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                      outside::OutsidePolicy=ThrowOutside(), phenotype::Type=Nothing)
-    return GridArchive{genotype,fitness}(dims, bounds; outside, phenotype)
+    return GridArchive{genotype,fitness}(dims, problem_bounds(prob, bounds); outside, phenotype)
 end
 
 """

@@ -52,8 +52,11 @@ function forwarddiff_evaluate_gradient(prob, x)
 end
 
 # The fitness followed by the descriptor components of `x`, as one vector: the function
-# whose Jacobian `evaluate_gradient` returns.
+# whose Jacobian `evaluate_gradient` returns. A static vector for a static descriptor, so
+# that the passes of ForwardDiff allocate nothing for it.
 differentiable_values(prob::AbstractQDProblem, x) = (ev = evaluate(prob, x); stack_values(ev.fitness, ev.descriptor))
+
+stack_values(fitness::Real, descriptor::SVector) = pushfirst(descriptor, fitness)
 
 stack_values(fitness::Real, descriptor) = [fitness; collect(descriptor)]
 

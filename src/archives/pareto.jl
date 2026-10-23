@@ -54,8 +54,11 @@ Gradient Assistance and Crowding Exploration").
 
 The crowding distance is that of NSGA-II: for each objective, the gap between the two
 neighbours of a solution in that objective divided by the range of the objective over these
-solutions, summed over the objectives. The solutions with the smallest and the largest value
-of an objective have an infinite distance, so the ends of the front are never removed. An
+solutions, summed over the objectives. The solution with the smallest value of an objective
+and the one with the largest have an infinite distance, so the ends of the front are never
+removed; when several solutions share an extreme value, only one of them is protected in
+that objective, the first stored among those at the smallest value and the last stored among
+those at the largest, and the others get a finite distance like any solution between. An
 objective in which all of them are equal adds nothing. On a tie the new solution is removed,
 and otherwise the one stored first among those tied.
 
@@ -65,11 +68,11 @@ the hypervolume of the cell, which is negative when the removed solution covered
 struct ReplaceCrowded <: FullFrontPolicy end
 
 """
-    ParetoGridArchive{G}(dims, bounds, reference_point; max_front=50, outside=ThrowOutside(),
+    ParetoGridArchive{G}(dims, bounds; reference_point, max_front=50, outside=ThrowOutside(),
                          duplicates=RejectDuplicates(), full_front=RejectNewcomer(),
                          phenotype=Nothing)
     ParetoGridArchive(prob::AbstractQDProblem; dims, reference_point, max_front=50,
-                      bounds=descriptor_bounds(prob), genotype=default_genotype(prob),
+                      bounds=nothing, genotype=default_genotype(prob),
                       outside=ThrowOutside(), duplicates=RejectDuplicates(),
                       full_front=RejectNewcomer(), phenotype=Nothing)
 
@@ -120,7 +123,7 @@ for two objectives; for more it does allocate.
 ```jldoctest
 julia> using QualityDiversity, StaticArrays
 
-julia> archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)), [0.0, 0.0]);
+julia> archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)); reference_point=[0.0, 0.0]);
 
 julia> QualityDiversity.add!(archive, [0.1], Evaluation(SVector(1.0, 3.0), SVector(0.2, 0.2))).status
 NewCell::AddStatus = 2
@@ -184,33 +187,28 @@ mutable struct ParetoGridArchive{G,M,N,O<:OutsidePolicy,P,U<:DuplicatePolicy,R<:
     end
 end
 
-function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple, reference_point::AbstractVector{<:Real};
+function ParetoGridArchive{G}(dims::Tuple, bounds::Tuple; reference_point::AbstractVector{<:Real},
                               max_front::Integer=50, outside::OutsidePolicy=ThrowOutside(),
                               duplicates::DuplicatePolicy=RejectDuplicates(),
                               full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing) where {G}
-    N = length(dims)
-    length(bounds) == N ||
-        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
-    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
+    lower, upper = grid_box(dims, bounds)
     M = length(reference_point)
-    lower = SVector{N,Float64}(map(b -> Float64(b[1]), bounds))
-    upper = SVector{N,Float64}(map(b -> Float64(b[2]), bounds))
-    return ParetoGridArchive{G,M,N,typeof(outside),phenotype,typeof(duplicates),typeof(full_front)}(
+    return ParetoGridArchive{G,M,length(dims),typeof(outside),phenotype,typeof(duplicates),typeof(full_front)}(
         map(Int, dims), lower, upper, SVector{M,Float64}(reference_point), Int(max_front), outside,
         duplicates, full_front)
 end
 
-function ParetoGridArchive(dims::Tuple, bounds::Tuple, reference_point::AbstractVector{<:Real}; kwargs...)
-    return ParetoGridArchive{Vector{Float64}}(dims, bounds, reference_point; kwargs...)
+function ParetoGridArchive(dims::Tuple, bounds::Tuple; kwargs...)
+    return ParetoGridArchive{Vector{Float64}}(dims, bounds; kwargs...)
 end
 
 function ParetoGridArchive(prob::AbstractQDProblem; dims::Tuple, reference_point::AbstractVector{<:Real},
-                           max_front::Integer=50, bounds::Tuple=descriptor_bounds(prob),
+                           max_front::Integer=50, bounds::Union{Tuple,Nothing}=nothing,
                            genotype::Type=default_genotype(prob), outside::OutsidePolicy=ThrowOutside(),
                            duplicates::DuplicatePolicy=RejectDuplicates(),
                            full_front::FullFrontPolicy=RejectNewcomer(), phenotype::Type=Nothing)
-    return ParetoGridArchive{genotype}(dims, bounds, reference_point; max_front, outside, duplicates,
-                                       full_front, phenotype)
+    return ParetoGridArchive{genotype}(dims, problem_bounds(prob, bounds); reference_point, max_front, outside,
+                                       duplicates, full_front, phenotype)
 end
 
 Base.length(archive::ParetoGridArchive) = length(archive.occupied_idx)
@@ -391,19 +389,15 @@ function insert_front!(archive::ParetoGridArchive, i, x, f, descriptor, phenotyp
     archive.counts[i] = kept + 1
     archive.num_solutions += kept + 1 - n
     volume = scratch_volume(archive, kept + 1)
-    change = volume - archive.volumes[i]
+    previous = archive.volumes[i]
     archive.volumes[i] = volume
-    add_to_volume!(archive, change)
-    return change
-end
-
-# Neumaier's compensated summation of the running total.
-function add_to_volume!(archive::ParetoGridArchive, x::Float64)
-    total = archive.volume_sum
-    updated = total + x
-    archive.volume_sum_error += abs(total) >= abs(x) ? (total - updated) + x : (x - updated) + total
-    archive.volume_sum = updated
-    return nothing
+    # Added and subtracted as two compensated steps: their difference would round,
+    # outside the compensation.
+    archive.volume_sum, archive.volume_sum_error =
+        compensated_add(archive.volume_sum, archive.volume_sum_error, volume)
+    archive.volume_sum, archive.volume_sum_error =
+        compensated_add(archive.volume_sum, archive.volume_sum_error, -previous)
+    return volume - previous
 end
 
 """
@@ -516,9 +510,10 @@ end
 """
     global_hypervolume(archive::ParetoGridArchive)
 
-Hypervolume of the Pareto front of all the solutions of the archive, from every cell. It
-compares all solutions with each other, so it takes time quadratic in
-[`num_solutions`](@ref). Zero for an empty archive.
+Hypervolume of the Pareto front of all the solutions of the archive, from every cell,
+computed with [`hypervolume`](@ref): for `n` solutions, [`num_solutions`](@ref), and `M`
+objectives it takes time of the order of `n log n` for two objectives and `n^(M-1) log n`
+for more. Zero for an empty archive.
 """
 function global_hypervolume(archive::ParetoGridArchive)
     points = [ev.fitness for (_, ev) in elites(archive)]

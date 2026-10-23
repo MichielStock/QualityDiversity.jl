@@ -7,6 +7,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://wclaerhout.github.io/QualityDiversity.jl/dev/)
 [![CI](https://github.com/wclaerhout/QualityDiversity.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/wclaerhout/QualityDiversity.jl/actions/workflows/CI.yml)
+[![Coverage](https://codecov.io/gh/wclaerhout/QualityDiversity.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/wclaerhout/QualityDiversity.jl)
 
 Quality-diversity (QD) optimization in Julia: MAP-Elites and the algorithms built from
 the same parts, such as CMA-ME, CMA-MAE, MOME and Dominated Novelty Search.

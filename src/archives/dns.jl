@@ -97,9 +97,9 @@ DNSArchive{G}(ndims::Integer; kwargs...) where {G} = DNSArchive{G,Float64}(ndims
 DNSArchive(ndims::Integer; kwargs...) = DNSArchive{Vector{Float64}}(ndims; kwargs...)
 
 function DNSArchive(prob::AbstractQDProblem; capacity::Integer, k::Integer,
-                    genotype::Type=default_genotype(prob), fitness::Type{<:AbstractFloat}=Float64,
+                    genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                     phenotype::Type=Nothing)
-    return DNSArchive{genotype,fitness}(length(descriptor_bounds(prob)); capacity, k, phenotype)
+    return DNSArchive{genotype,fitness}(length(problem_bounds(prob, nothing)); capacity, k, phenotype)
 end
 
 Base.length(archive::DNSArchive) = archive.n

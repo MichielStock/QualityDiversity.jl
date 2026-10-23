@@ -1,6 +1,6 @@
 """
     DeviceGridArchive{T,F}(device, dims, bounds, dim; outside=ThrowOutside())
-    DeviceGridArchive(prob::AbstractQDProblem; dims, device, bounds=descriptor_bounds(prob),
+    DeviceGridArchive(prob::AbstractQDProblem; dims, device, bounds=nothing,
                       genotype=default_genotype(prob), fitness=Float64, outside=ThrowOutside())
 
 A [`GridArchive`](@ref) held in the arrays of a device, for MAP-Elites on a GPU: the same
@@ -53,10 +53,7 @@ end
 function DeviceGridArchive{T,F}(device::Type, dims::Tuple, bounds::Tuple, dim::Integer;
                                 outside::OutsidePolicy=ThrowOutside()) where {T<:AbstractFloat,F<:Real}
     N = length(dims)
-    N >= 1 || throw(ArgumentError("dims must have at least one entry"))
-    length(bounds) == N ||
-        throw(ArgumentError("dims has $N entries but bounds has $(length(bounds))"))
-    lower, upper = box(bounds)
+    lower, upper = grid_box(dims, bounds)
     for i in 1:N
         dims[i] >= 1 ||
             throw(ArgumentError("dims[$i] is $(dims[i]) but every dimension needs at least one cell"))
@@ -70,11 +67,11 @@ function DeviceGridArchive{T,F}(device::Type, dims::Tuple, bounds::Tuple, dim::I
 end
 
 function DeviceGridArchive(prob::AbstractQDProblem; dims::Tuple, device::Type,
-                           bounds::Tuple=descriptor_bounds(prob),
+                           bounds::Union{Tuple,Nothing}=nothing,
                            genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                            outside::OutsidePolicy=ThrowOutside())
     T = device_eltype(genotype)
-    return DeviceGridArchive{T,fitness}(device, dims, bounds, solution_dim(prob); outside)
+    return DeviceGridArchive{T,fitness}(device, dims, problem_bounds(prob, bounds), solution_dim(prob); outside)
 end
 
 function cell_index(archive::DeviceGridArchive, d::AbstractVector{<:Real})

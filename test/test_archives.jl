@@ -104,7 +104,7 @@ end
 
     # unsigned fitness: a worse solution is rejected with zero improvement, not wrapped around
     for archive in (GridArchive{Vector{Float64},UInt8}((2,), ((0, 1),)),
-                    UnstructuredArchive{Vector{Float64},UInt8}(1; capacity=4, threshold=0.5))
+                    UnstructuredArchive{Vector{Float64},UInt8}(1; capacity=4, novelty_threshold=0.5))
         @test QD.add!(archive, [1.0], Evaluation(UInt8(5), SVector(0.1))) == AddResult(QD.NewCell, UInt8(5))
         @test QD.add!(archive, [2.0], Evaluation(UInt8(3), SVector(0.1))) == AddResult(QD.Rejected, UInt8(0))
         @test QD.add!(archive, [3.0], Evaluation(UInt8(9), SVector(0.1))) == AddResult(QD.Improved, UInt8(4))
@@ -120,7 +120,7 @@ end
 @testset "add_batch! of the cell archives" begin
     ev(f, d) = Evaluation(f, d)
     makers = (() -> GridArchive((6, 6), ((0, 1), (0, 1))),
-              () -> CVTArchive(Xoshiro(1), 20, ((0, 1), (0, 1)); samples=1_000),
+              () -> CVTArchive(20, ((0, 1), (0, 1)); samples=1_000, rng=Xoshiro(1)),
               () -> GridArchive{Vector{Float32},Float32}((6, 6), ((0, 1), (0, 1)); outside=RejectOutside()))
     for make in makers
         a = make()
@@ -315,4 +315,22 @@ end
     @test naive > 100 * running    # a plain running sum is much less accurate
     running32, _ = sum_error(Float32)
     @test running32 <= 4 * eps()
+
+    # An improvement adds the new fitness and subtracts the old one as two compensated
+    # steps, so the total with its error term tracks the exact sum far below one rounding
+    # even when the difference of the two is not representable: here an elite of magnitude
+    # below 1 is replaced by one near 2^53, whose unit in the last place is 2.
+    a = GridArchive((1000,), ((0, 1),))
+    rng = Xoshiro(3)
+    exact = BigFloat(0)
+    for c in 1:1000
+        d = SVector((c - 0.5) / 1000)
+        QD.add!(a, [0.0], Evaluation(-rand(rng), d))
+        new = 2.0^53 * (1 + rand(rng))
+        QD.add!(a, [0.0], Evaluation(new, d))
+        exact += new
+    end
+    two_terms = BigFloat(a.fitness_sum) + BigFloat(a.fitness_sum_error)
+    @test abs(two_terms - exact) <= 1e-24 * exact    # the rounded differences would give about 1e-17
+    @test qd_score(a) == Float64(exact)
 end

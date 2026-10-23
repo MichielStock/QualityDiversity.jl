@@ -25,7 +25,7 @@ struct GradientAscent <: GradientOptimizer
 end
 
 """
-    AdamAscent(learning_rate=0.002; beta1=0.9, beta2=0.999, epsilon=1e-8)
+    AdamAscent(; learning_rate=0.002, beta1=0.9, beta2=0.999, epsilon=1e-8)
 
 Move the solution point with Adam (Kingma and Ba, 2015), as CMA-MEGA (Adam) of Fontaine
 and Nikolaidis (2021) does: Adam keeps decaying averages of the steps (rate `beta1`) and
@@ -50,7 +50,7 @@ struct AdamAscent <: GradientOptimizer
     end
 end
 
-AdamAscent(learning_rate::Real=0.002; beta1::Real=0.9, beta2::Real=0.999, epsilon::Real=1e-8) =
+AdamAscent(; learning_rate::Real=0.002, beta1::Real=0.9, beta2::Real=0.999, epsilon::Real=1e-8) =
     AdamAscent(learning_rate, beta1, beta2, epsilon)
 
 # The solution point and the moment estimates of Adam, which `GradientAscent` leaves at zero.

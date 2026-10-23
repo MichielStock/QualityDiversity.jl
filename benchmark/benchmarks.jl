@@ -70,7 +70,7 @@ SUITE["archive"]["metrics"]["qd_score"] = @benchmarkable qd_score($archive; offs
 SUITE["archive"]["metrics"]["max_fitness"] = @benchmarkable max_fitness($archive)
 SUITE["archive"]["metrics"]["mean_fitness"] = @benchmarkable mean_fitness($archive)
 
-const cvt = let a = CVTArchive(Xoshiro(3), prob; cells=1000, samples=20_000)
+const cvt = let a = CVTArchive(prob; cells=1000, samples=20_000, rng=Xoshiro(3))
     xs = [QD.random_solution(rng, prob) for _ in 1:20_000]
     QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
     a
@@ -97,7 +97,7 @@ SUITE["archive"]["DNSArchive/add_batch!/n=100"] = let xs = [QD.random_solution(r
     evs = QD.evaluate_batch(prob, xs)
     @benchmarkable QD.add_batch!($dns, $xs, $evs)
 end
-const density_archive = let a = DensityArchive(Xoshiro(4), GridArchive(prob; dims=(100, 100), outside=ClampOutside()); bandwidth=0.5)
+const density_archive = let a = DensityArchive(GridArchive(prob; dims=(100, 100), outside=ClampOutside()); bandwidth=0.5, rng=Xoshiro(4))
     xs = [QD.random_solution(rng, prob) for _ in 1:20_000]
     QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
     a
@@ -131,7 +131,7 @@ SUITE["algorithm"]["SlidingBoundariesArchive/step!/batch=100"] = @benchmarkable 
 SUITE["algorithm"]["solve/360k evaluations"] =
     @benchmarkable solve($prob, $alg; budget=360_000, rng=Xoshiro(3)) samples = 5 evals = 1 seconds = 120
 
-const unstructured = let a = UnstructuredArchive(prob; capacity=1000, threshold=0.2)
+const unstructured = let a = UnstructuredArchive(prob; capacity=1000, novelty_threshold=0.2)
     xs = [QD.random_solution(rng, prob) for _ in 1:20_000]
     QD.add_batch!(a, xs, QD.evaluate_batch(prob, xs))
     a
@@ -217,7 +217,7 @@ SUITE["algorithm"]["BanditScheduler/step!"] = let
     end
     @benchmarkable step!($state)
 end
-SUITE["algorithm"]["DDS/step!"] = let alg = DDS(Xoshiro(1), sphere; dims=(100, 100), sigma0=0.5, bandwidth=0.5)
+SUITE["algorithm"]["DDS/step!"] = let alg = DDS(sphere; dims=(100, 100), sigma0=0.5, bandwidth=0.5, rng=Xoshiro(1))
     state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
     for _ in 1:30
         step!(state)    # past the first 10_000 descriptors, so that the buffer is full
@@ -260,14 +260,14 @@ const gradient_archive = let a = GradientArchive(GridArchive(sphere; dims=(100, 
     a
 end
 SUITE["emitter"]["GradientOperatorEmitter/ask/batch=100"] =
-    @benchmarkable QD.ask($rng, $(GradientOperatorEmitter(; sigma=10.0, batch_size=BATCH)), $gradient_archive)
+    @benchmarkable QD.ask($rng, $(GradientOperatorEmitter(; sigma0=10.0, batch_size=BATCH)), $gradient_archive)
 SUITE["archive"]["GradientArchive/add_batch!/n=100"] = let xs = [QD.random_solution(rng, sphere) for _ in 1:BATCH]
     evs, jacobians = QD.evaluate_gradient_batch(sphere, xs)
     @benchmarkable QD.add_batch!(a, $xs, $evs, $jacobians) setup = (a = deepcopy($gradient_archive)) evals = 1
 end
 for (name, alg) in (("CMAMEGA", CMAMEGA(sphere; dims=(100, 100), sigma0=10.0)),
                     ("CMAMAEGA", CMAMAEGA(sphere; dims=(100, 100), sigma0=10.0, threshold_min=0.0)),
-                    ("OMGMEGA", OMGMEGA(sphere; dims=(100, 100), sigma=10.0, batch_size=BATCH)))
+                    ("OMGMEGA", OMGMEGA(sphere; dims=(100, 100), sigma0=10.0, batch_size=BATCH)))
     SUITE["algorithm"]["$name/step!"] = let state = init(sphere, alg; budget=10^9, rng=Xoshiro(1))
         @benchmarkable step!($state)
     end

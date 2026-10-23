@@ -74,7 +74,7 @@ end
 end
 
 @testset "ParetoGridArchive" begin
-    archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)), [0.0, 0.0])
+    archive = ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)); reference_point=[0.0, 0.0])
     QD.add!(archive, [0.0], Evaluation(SVector(1.0, 3.0), SVector(0.2, 0.7)))
     QD.add!(archive, [1.0], Evaluation(SVector(3.0, 1.0), SVector(0.2, 0.7)))
     QD.add!(archive, [2.0], Evaluation(SVector(2.0, 2.0), SVector(0.8, 0.2)))
@@ -89,9 +89,9 @@ end
 
 @testset "empty archives" begin
     for archive in (GridArchive((2, 2), ((0, 1), (0, 1))),
-                    UnstructuredArchive(3; capacity=4, threshold=0.1),
+                    UnstructuredArchive(3; capacity=4, novelty_threshold=0.1),
                     CategoricalArchive((1:2, [:a, :b])),
-                    ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)), [0.0, 0.0]))
+                    ParetoGridArchive{Vector{Float64}}((2, 2), ((0, 1), (0, 1)); reference_point=[0.0, 0.0]))
         df = DataFrame(archive)
         @test nrow(df) == 0
         @test names(df) == ["genotype"; "fitness"; ["descriptor_$i" for i in 1:length(Tables.schema(archive).names)-2]]
@@ -106,7 +106,7 @@ end
     prob = Rastrigin(4)
     for alg in (MAPElites(prob; dims=(4, 4), batch_size=16),
                 MAPElites(SlidingBoundariesArchive(prob; dims=(4, 4), remap_frequency=50); batch_size=16),
-                MAPElites(UnstructuredArchive(prob; capacity=30, threshold=0.2); batch_size=16),
+                MAPElites(UnstructuredArchive(prob; capacity=30, novelty_threshold=0.2); batch_size=16),
                 MAPElites(DNSArchive(prob; capacity=30, k=3); batch_size=16),
                 CMAMAE(prob; dims=(4, 4), sigma0=0.5, threshold_min=-500.0, learning_rate=0.1))
         archive = solve(prob, alg; budget=200, rng=Xoshiro(1)).archive

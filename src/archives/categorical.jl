@@ -91,7 +91,7 @@ end
 function CategoricalArchive{G,F}(categories::Tuple; outside::OutsidePolicy=ThrowOutside(),
                                  phenotype::Type=Nothing) where {G,F<:Real}
     isempty(categories) && throw(ArgumentError("categories must have at least one entry"))
-    values = ntuple(i -> collect(categories[i]), length(categories))
+    values = ntuple(i -> category_values(i, categories[i]), length(categories))
     lookups = ntuple(i -> category_lookup(i, values[i]), length(categories))
     D = Tuple{map(eltype, values)...}
     outside = check_categorical_outside(outside)
@@ -115,6 +115,20 @@ end
 check_categorical_outside(outside::Union{ThrowOutside,RejectOutside}) = outside
 function check_categorical_outside(::ClampOutside)
     throw(ArgumentError("ClampOutside() has no meaning for a CategoricalArchive; use ThrowOutside() or RejectOutside()"))
+end
+
+# The values of dimension `i` as a vector with a concrete element type, so that the
+# descriptor type of the archive is concrete and its lookup a typed `Dict`. A collection
+# of mixed types such as `[:a, 1]` would otherwise give a `Tuple{…,Any}` descriptor and a
+# `Dict{Any,Int}` without a word; a collection typed wider than its values, such as
+# `Any[1, 2]`, is narrowed.
+function category_values(i, collection)
+    values = collect(collection)
+    (isempty(values) || isconcretetype(eltype(values))) && return values
+    types = unique!(DataType[typeof(v) for v in values])
+    length(types) == 1 ||
+        throw(ArgumentError("categories[$i] mixes values of the types $(join(types, ", ", " and ")); the values of a dimension must have one type"))
+    return collect(types[1], values)
 end
 
 # Position of each of `values` in it, after checking that there is at least one

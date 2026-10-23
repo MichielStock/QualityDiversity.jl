@@ -40,7 +40,7 @@ end
 
 @testset "CVT archives" begin
     prob = Rastrigin(4)
-    centroids = QD.centroids(CVTArchive(Xoshiro(1), prob; cells=40, samples=4_000))
+    centroids = QD.centroids(CVTArchive(prob; cells=40, samples=4_000, rng=Xoshiro(1)))
     bounds = QD.descriptor_bounds(prob)
     test_archive(() -> CVTArchive(centroids, bounds), prob; sequential_batch=false)
     test_archive(() -> CVTArchive(centroids[1:1], bounds), prob; sequential_batch=false)
@@ -91,19 +91,19 @@ end
     test_archive(() -> ThresholdArchive(GridArchive(prob; dims=(8, 8)); learning_rate=0.1, threshold_min=-300), prob; lenient...)
     test_archive(() -> ThresholdArchive(GridArchive(prob; dims=(8, 8), fitness=Float32); learning_rate=0.5, threshold_min=-300), prob; lenient...)
     test_archive(() -> ThresholdArchive(GridArchive(prob; dims=(8, 8), outside=RejectOutside()); learning_rate=0.5, threshold_min=-300), prob; lenient...)
-    test_archive(() -> ThresholdArchive(CVTArchive(Xoshiro(1), prob; cells=40, samples=2_000); learning_rate=0.5, threshold_min=-300), prob; lenient...)
+    test_archive(() -> ThresholdArchive(CVTArchive(prob; cells=40, samples=2_000, rng=Xoshiro(1)); learning_rate=0.5, threshold_min=-300), prob; lenient...)
     test_archive(() -> ThresholdArchive(GridArchive(prob; dims=(1, 1)); learning_rate=0.5, threshold_min=-300), prob; lenient...)
     test_archive(() -> ThresholdArchive(GridArchive(prob; dims=(8, 8)); learning_rate=1, threshold_min=-300), prob; lenient...)
 end
 
 @testset "unstructured archives" begin
     prob = Rastrigin(4)
-    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0.5), prob)
-    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0), prob)
-    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=20), prob)       # one region
-    test_archive(() -> UnstructuredArchive(prob; capacity=30, threshold=0.5), prob)       # evicts
-    test_archive(() -> UnstructuredArchive(prob; capacity=1, threshold=0.5), prob)
-    test_archive(() -> UnstructuredArchive(prob; capacity=400, threshold=0.5, genotype=Vector{Float32}, fitness=Float32), prob)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, novelty_threshold=0.5), prob)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, novelty_threshold=0), prob)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, novelty_threshold=20), prob)       # one region
+    test_archive(() -> UnstructuredArchive(prob; capacity=30, novelty_threshold=0.5), prob)       # evicts
+    test_archive(() -> UnstructuredArchive(prob; capacity=1, novelty_threshold=0.5), prob)
+    test_archive(() -> UnstructuredArchive(prob; capacity=400, novelty_threshold=0.5, genotype=Vector{Float32}, fitness=Float32), prob)
 end
 
 @testset "dns archives" begin
@@ -122,10 +122,10 @@ end
     prob = Rastrigin(4)
     # improvement is the negated density, not a gain in fitness
     density = (; sequential_batch=false, gain=false)
-    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive(prob; dims=(8, 8)); bandwidth=0.5), prob; density...)
-    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive(prob; dims=(8, 8)); bandwidth=0.5, buffer_size=20), prob; density...)
-    test_archive(() -> DensityArchive(Xoshiro(1), CVTArchive(Xoshiro(1), prob; cells=40, samples=2_000); bandwidth=2), prob; density...)
-    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive(prob; dims=(8, 8), fitness=Float32); bandwidth=0.5), prob; density...)
+    test_archive(() -> DensityArchive(GridArchive(prob; dims=(8, 8)); bandwidth=0.5, rng=Xoshiro(1)), prob; density...)
+    test_archive(() -> DensityArchive(GridArchive(prob; dims=(8, 8)); bandwidth=0.5, buffer_capacity=20, rng=Xoshiro(1)), prob; density...)
+    test_archive(() -> DensityArchive(CVTArchive(prob; cells=40, samples=2_000, rng=Xoshiro(1)); bandwidth=2, rng=Xoshiro(1)), prob; density...)
+    test_archive(() -> DensityArchive(GridArchive(prob; dims=(8, 8), fitness=Float32); bandwidth=0.5, rng=Xoshiro(1)), prob; density...)
 end
 
 @testset "archive with an isbits genotype" begin
@@ -134,8 +134,7 @@ end
                      bounds=((-1, 1), (-1, 1)))
     test_archive(() -> GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))), prob; sequential_batch=false)
     test_archive(() -> DNSArchive{SVector{3,Float64}}(2; capacity=40, k=3), prob; population=true)
-    test_archive(() -> DensityArchive(Xoshiro(1), GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))); bandwidth=0.2,
-                                      buffer_size=30), prob; sequential_batch=false, gain=false)
+    test_archive(() -> DensityArchive(GridArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1))); bandwidth=0.2, buffer_capacity=30, rng=Xoshiro(1)), prob; sequential_batch=false, gain=false)
     test_archive(() -> SlidingBoundariesArchive{SVector{3,Float64}}((6, 6), ((-1, 1), (-1, 1)); remap_frequency=3), prob;
                  sequential_batch=false)
 end

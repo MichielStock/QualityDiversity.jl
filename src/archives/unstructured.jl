@@ -1,8 +1,8 @@
 """
-    UnstructuredArchive{G,F}(ndims; capacity, threshold, phenotype=Nothing)
-    UnstructuredArchive{G}(ndims; capacity, threshold, phenotype=Nothing)
-    UnstructuredArchive(ndims; capacity, threshold, phenotype=Nothing)
-    UnstructuredArchive(prob::AbstractQDProblem; capacity, threshold,
+    UnstructuredArchive{G,F}(ndims; capacity, novelty_threshold, phenotype=Nothing)
+    UnstructuredArchive{G}(ndims; capacity, novelty_threshold, phenotype=Nothing)
+    UnstructuredArchive(ndims; capacity, novelty_threshold, phenotype=Nothing)
+    UnstructuredArchive(prob::AbstractQDProblem; capacity, novelty_threshold,
                         genotype=default_genotype(prob), fitness=Float64, phenotype=Nothing)
 
 Archive without a fixed partition of descriptor space. It stores up to
@@ -15,21 +15,22 @@ neighbour (local competition).
 by default, and `F<:Real` the fitness type, `Float64` by default. Descriptors
 are `SVector{ndims,Float64}`, and distances are Euclidean in descriptor units,
 so descriptors on very different scales should be normalized by the problem.
-`threshold` is the distance beyond which a descriptor counts as new. `phenotype` is
-the type of the phenotypes the archive stores, `Nothing` for none; see
-[`Evaluation`](@ref).
+`novelty_threshold` is the distance beyond which a descriptor counts as new, as in
+pyribs. `phenotype` is the type of the phenotypes the archive stores, `Nothing` for
+none; see [`Evaluation`](@ref).
 
 [`add!`](@ref QualityDiversity.add!) finds the stored solution with the nearest
 descriptor, at distance `r`:
 
-- Nothing is stored, or `r > threshold`: the solution is novel. It fills a free
+- Nothing is stored, or `r > novelty_threshold`: the solution is novel. It fills a free
   slot (`NewCell`, with `improvement` equal to the fitness). If the archive is
   full, it replaces the stored solution with the lowest fitness, but only if
   its fitness is strictly higher (`NewCell`); otherwise it is `Rejected`.
-- `r <= threshold`: the solution competes with its nearest neighbour and
+- `r <= novelty_threshold`: the solution competes with its nearest neighbour and
   replaces it if its fitness is strictly higher (`Improved`, with `improvement`
   the difference), and is `Rejected` otherwise. The new descriptor replaces the
-  old one, so stored descriptors can end up closer together than `threshold`.
+  old one, so stored descriptors can end up closer together than
+  `novelty_threshold`.
 
 [`cell_index`](@ref QualityDiversity.cell_index) is the index of the stored
 solution with the nearest descriptor, or `0` while the archive is empty.
@@ -39,18 +40,21 @@ or infinite component throws an `ArgumentError`.
 
 The nearest neighbour is found by a pass over the stored descriptors, so `add!`
 and `cell_index` take time linear in the number of stored solutions, and do not
-allocate. A solution is stored without copying, so the caller must not modify
-it afterwards. The archive keeps running totals, as [`GridArchive`](@ref)
-does, so `qd_score`, `max_fitness` and `mean_fitness` take constant time. The
-maximum is exact because a stored solution is only ever replaced by a better
-one.
+allocate. The archive has no [`add_batch!`](@ref QualityDiversity.add_batch!)
+of its own: the default inserts the solutions of a batch one at a time with
+`add!`, so the result of a solution depends on the solutions before it in the
+batch, unlike in a [`GridArchive`](@ref). A solution is stored without copying,
+so the caller must not modify it afterwards. The archive keeps running totals,
+as [`GridArchive`](@ref) does, so `qd_score`, `max_fitness` and `mean_fitness`
+take constant time. The maximum is exact because a stored solution is only ever
+replaced by a better one.
 
 # Example
 
 ```jldoctest
 julia> using QualityDiversity
 
-julia> archive = UnstructuredArchive(2; capacity=100, threshold=0.1);
+julia> archive = UnstructuredArchive(2; capacity=100, novelty_threshold=0.1);
 
 julia> length(archive), QualityDiversity.capacity(archive)
 (0, 100)
@@ -73,7 +77,7 @@ mutable struct UnstructuredArchive{G,F<:Real,N,P} <: AbstractArchive{G,F,SVector
         N >= 1 || throw(ArgumentError("ndims must be at least 1, got $N"))
         capacity >= 1 || throw(ArgumentError("capacity must be at least 1, got $capacity"))
         (isfinite(threshold) && threshold >= 0) ||
-            throw(ArgumentError("threshold must be finite and at least 0, got $threshold"))
+            throw(ArgumentError("novelty_threshold must be finite and at least 0, got $threshold"))
         return new{G,F,N,P}(Float64(threshold),
                             Vector{F}(undef, capacity),
                             Vector{SVector{N,Float64}}(undef, capacity),
@@ -83,9 +87,9 @@ mutable struct UnstructuredArchive{G,F<:Real,N,P} <: AbstractArchive{G,F,SVector
     end
 end
 
-function UnstructuredArchive{G,F}(ndims::Integer; capacity::Integer, threshold::Real,
+function UnstructuredArchive{G,F}(ndims::Integer; capacity::Integer, novelty_threshold::Real,
                                   phenotype::Type=Nothing) where {G,F<:Real}
-    return UnstructuredArchive{G,F,Int(ndims),phenotype}(Int(capacity), threshold)
+    return UnstructuredArchive{G,F,Int(ndims),phenotype}(Int(capacity), novelty_threshold)
 end
 
 function UnstructuredArchive{G}(ndims::Integer; kwargs...) where {G}
@@ -96,11 +100,11 @@ function UnstructuredArchive(ndims::Integer; kwargs...)
     return UnstructuredArchive{Vector{Float64}}(ndims; kwargs...)
 end
 
-function UnstructuredArchive(prob::AbstractQDProblem; capacity::Integer, threshold::Real,
+function UnstructuredArchive(prob::AbstractQDProblem; capacity::Integer, novelty_threshold::Real,
                              genotype::Type=default_genotype(prob), fitness::Type{<:Real}=Float64,
                              phenotype::Type=Nothing)
-    return UnstructuredArchive{genotype,fitness}(length(descriptor_bounds(prob));
-                                                 capacity, threshold, phenotype)
+    return UnstructuredArchive{genotype,fitness}(length(problem_bounds(prob, nothing));
+                                                 capacity, novelty_threshold, phenotype)
 end
 
 Base.length(archive::UnstructuredArchive) = archive.n
@@ -188,7 +192,9 @@ function add!(archive::UnstructuredArchive{G,F,N,P}, x,
         previous = archive.fitness[weakest]
         fitness > previous || return AddResult(Rejected, fitness_gain(fitness, previous))
         _store!(archive, weakest, x, fitness, point, phenotype)
-        _add_to_sum!(archive, Float64(fitness) - Float64(previous))
+        # Two compensated steps, as in `place!` of a `CellArchive`.
+        _add_to_sum!(archive, Float64(fitness))
+        _add_to_sum!(archive, -Float64(previous))
         archive.fitness_max = max(archive.fitness_max, fitness)
         return AddResult(NewCell, fitness)
     end
@@ -196,7 +202,8 @@ function add!(archive::UnstructuredArchive{G,F,N,P}, x,
     improvement = fitness_gain(fitness, previous)
     fitness > previous || return AddResult(Rejected, improvement)
     _store!(archive, nearest, x, fitness, point, phenotype)
-    _add_to_sum!(archive, Float64(fitness) - Float64(previous))
+    _add_to_sum!(archive, Float64(fitness))
+    _add_to_sum!(archive, -Float64(previous))
     archive.fitness_max = max(archive.fitness_max, fitness)
     return AddResult(Improved, improvement)
 end
