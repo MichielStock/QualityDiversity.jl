@@ -83,7 +83,7 @@ judge(plain.archive)
 # ## Averaging several evaluations
 #
 # `Sampled` evaluates every solution `num_samples` times and reports the mean
-# fitness and the mean descriptor (`expectation=Median()` takes the median). Every
+# fitness and the mean descriptor (`expectation=QualityDiversity.Median()` takes the median). Every
 # evaluation counts against the budget, so the run scores ten times fewer
 # solutions.
 

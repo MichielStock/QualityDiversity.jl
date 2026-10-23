@@ -17,7 +17,7 @@ how to read its results.
 
 | Role | Abstract type | Its job | Examples |
 |---|---|---|---|
-| Problem | [`AbstractQDProblem`](@ref) | score and describe a solution, draw a random one | [`QDProblem`](@ref), [`Rastrigin`](@ref) |
+| Problem | [`AbstractQDProblem`](@ref) | score and describe a solution, draw a random one | [`QDProblem`](@ref), [`Rastrigin`](@ref QualityDiversity.Benchmarks.Rastrigin) |
 | Archive | [`AbstractArchive`](@ref) | decide which solutions to keep | [`GridArchive`](@ref), [`CVTArchive`](@ref) |
 | Variation | [`AbstractVariation`](@ref) | make a child from one or two parents | [`GaussianMutation`](@ref) |
 | Emitter | [`AbstractEmitter`](@ref) | propose a batch of candidates each round | [`VariationEmitter`](@ref), [`CMAEmitter`](@ref) |
@@ -111,7 +111,7 @@ round.
 
 ## Results
 
-[`solve`](@ref) returns a [`QDResult`](@ref) with three fields:
+[`solve`](@ref) returns a [`QDResult`](@ref QualityDiversity.QDResult) with three fields:
 
 - `archive`: the archive of the best solutions found;
 - `history`: the metrics after initialization and after every round;

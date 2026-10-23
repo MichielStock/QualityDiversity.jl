@@ -1,4 +1,4 @@
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using StaticArrays: SVector
 using Random: Xoshiro, randperm
 using LinearAlgebra: I

@@ -6,7 +6,7 @@
     labelled = Evaluation(1.5, (0.2, 0.7), :ring)
     @test labelled isa Evaluation{Float64,Tuple{Float64,Float64},Symbol}
     @test labelled.phenotype === :ring
-    r = AddResult(QD.NewCell, 0.5)
+    r = QD.AddResult(QD.NewCell, 0.5)
     @test r.status == QD.NewCell
     @test r.improvement === 0.5
     @test Int(QD.Rejected) < Int(QD.Improved) < Int(QD.NewCell)
@@ -44,6 +44,54 @@ end
     end
 end
 
+# The names that `using QualityDiversity` brings in. Everything else of the interface is
+# public and used with a qualified name, so that the package never clashes with another
+# (`Sphere` is a name of Makie, `CMAES` of Evolutionary.jl) and a keyword value such as
+# `ObjectiveRanker` stays out of the namespace of a script. The benchmark problems are
+# exported from the submodule `Benchmarks`.
+const EXPORTS = [:AbstractArchive, :AbstractEmitter, :AbstractQDProblem, :AbstractStochasticQDProblem, :AbstractVariation,
+                 :BanditScheduler, :CMAEmitter, :CMAMAE, :CMAMAEGA, :CMAME, :CMAMEGA, :CVTArchive, :CategoricalArchive,
+                 :ClampOutside, :DDS, :DNSArchive, :DensityArchive, :DeviceCVTArchive, :DeviceGridArchive, :Evaluation,
+                 :GaussianMutation, :GradientArborescenceEmitter, :GradientArchive, :GradientOperatorEmitter, :GridArchive,
+                 :IsoLineVariation, :MAPElites, :MELS, :MOME, :OMGMEGA, :ParetoGridArchive, :PolynomialMutation,
+                 :QDAlgorithm, :QDProblem, :QualityDiversity, :RejectOutside, :Sampled, :SampledSpread,
+                 :SlidingBoundariesArchive, :SpreadArchive, :StochasticQDProblem, :ThresholdArchive, :ThrowOutside,
+                 :UniformCrossover, :UnstructuredArchive, :VariationEmitter,
+                 :coverage, :cqd_score, :global_hypervolume, :hypervolume, :init, :max_fitness, :mean_fitness, :qd_score,
+                 :solve, :solve!, :step!]
+
+const PUBLIC_ONLY = (:AddStatus, :AddResult, :QDState, :QDResult, :Average, :Median, :OutsidePolicy, :DuplicatePolicy,
+                     :RejectDuplicates, :KeepDuplicates, :FullFrontPolicy, :RejectNewcomer, :ReplaceCrowded,
+                     :DeviceVariationEmitter, :DeviceCMAEmitter, :AdamAscent, :GradientAscent, :AbstractEvolutionStrategy,
+                     :CMAES, :PyribsCMAES, :SepCMAES, :LMMAES, :OpenAIES, :AbstractRanker, :ObjectiveRanker,
+                     :ImprovementRanker, :TwoStageImprovementRanker, :TwoStageObjectiveRanker, :DirectionRanker,
+                     :RandomDirectionRanker, :TwoStageRandomDirectionRanker, :AcceptedRandomDirectionRanker,
+                     :FilterSelection, :MuSelection, :ReselectTerminated, :ReselectAll, :NoImprovementRestart,
+                     :ConvergenceRestart, :PeriodicRestart, :CQDScore, :num_solutions, :max_hypervolume, :max_scores,
+                     :Expectation, :SelectionRule, :RestartRule, :GradientOptimizer, :ReselectRule, :Benchmarks)
+
+@testset "the export list is deliberate" begin
+    @test sort(filter(name -> Base.isexported(QD, name), names(QD))) == sort(EXPORTS)
+    for name in PUBLIC_ONLY
+        @test !Base.isexported(QD, name)
+        VERSION >= v"1.11" && @test Base.ispublic(QD, name)
+        @test isdefined(QD, name)
+    end
+    for name in (:Sphere, :Rastrigin, :BiSphere, :CMAES)
+        @test !Base.isexported(QD, name)
+    end
+    # the benchmark problems come from the submodule
+    @test sort(filter(name -> Base.isexported(QD.Benchmarks, name), names(QD.Benchmarks))) ==
+          [:Benchmarks, :BiSphere, :Rastrigin, :Sphere]
+    @test !isdefined(QD, :Sphere)
+    # the abstract types that are only subtyped, never called, are public; the five roles are exported
+    for name in (:OutsidePolicy, :AbstractRanker, :AbstractEvolutionStrategy, :SelectionRule, :RestartRule,
+                 :GradientOptimizer, :Expectation, :ReselectRule, :DuplicatePolicy, :FullFrontPolicy)
+        @test isabstracttype(getfield(QD, name))
+        @test !Base.isexported(QD, name)
+    end
+end
+
 @testset "the docstrings of the algorithms are on the algorithms" begin
     for (name, phrase) in ((:MOME, "Pierrot"), (:MAPElites, "MAP-Elites"), (:CMAME, "Fontaine"), (:MELS, "Mace"),
                            (:DDS, "Lee"), (:CMAMAE, "Nikolaidis"))
@@ -55,9 +103,14 @@ end
 @testset "every public name is documented" begin
     for name in names(QD)
         name === :QualityDiversity && continue
-        getfield(QD, name) isa AddStatus && continue  # documented on AddStatus
+        name === :Benchmarks && continue  # the module has its own docstring, checked below
+        getfield(QD, name) isa QD.AddStatus && continue  # documented on AddStatus
         name in (:solve, :init, :step!, :solve!) && continue  # documented where defined
         @test hasdoc(name)
+    end
+    @test haskey(Base.Docs.meta(QD.Benchmarks), Base.Docs.Binding(QD.Benchmarks, :Benchmarks))
+    for name in (:Rastrigin, :Sphere, :BiSphere)
+        @test haskey(Base.Docs.meta(QD.Benchmarks), Base.Docs.Binding(QD.Benchmarks, name))
     end
 end
 

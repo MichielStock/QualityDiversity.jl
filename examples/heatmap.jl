@@ -19,7 +19,7 @@
 #
 # It saves the figures next to this file.
 
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using CairoMakie
 using Random: Xoshiro
 

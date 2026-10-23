@@ -64,7 +64,7 @@ end
     prob = noisy_problem()
     x = [1.0, 0.5, 0.0, 0.0]
     sampled = Sampled(prob; num_samples=7)
-    @test sampled isa AbstractStochasticQDProblem && sampled.expectation isa Average
+    @test sampled isa AbstractStochasticQDProblem && sampled.expectation isa QD.Average
     @test QD.evaluations_per_solution(sampled) == 7
     @test QD.evaluations_per_solution(Sampled(sampled; num_samples=3)) == 21
 
@@ -77,13 +77,13 @@ end
     @test ev.descriptor isa SVector{2,Float64}
     @test QD.evaluate(Xoshiro(1), sampled, x) == ev
 
-    med = QD.evaluate(Xoshiro(1), Sampled(prob; num_samples=7, expectation=Median()), x)
+    med = QD.evaluate(Xoshiro(1), Sampled(prob; num_samples=7, expectation=QD.Median()), x)
     @test med.fitness == sort([e.fitness for e in singles])[4]
     @test med.descriptor == SVector(sort([e.descriptor[1] for e in singles])[4], sort([e.descriptor[2] for e in singles])[4])
-    even = QD.evaluate(Xoshiro(1), Sampled(prob; num_samples=4, expectation=Median()), x)
+    even = QD.evaluate(Xoshiro(1), Sampled(prob; num_samples=4, expectation=QD.Median()), x)
     s4 = sort([e.fitness for e in singles[1:4]])
     @test even.fitness ≈ (s4[2] + s4[3]) / 2
-    @test QD.expectation(Average(), [1.0, 2.0, 6.0]) == 3.0 && QD.expectation(Median(), [5.0]) == 5.0
+    @test QD.expectation(QD.Average(), [1.0, 2.0, 6.0]) == 3.0 && QD.expectation(QD.Median(), [5.0]) == 5.0
 
     # the samples of one solution can mix integer and floating-point values
     mixed = StochasticQDProblem((rng, x) -> rand(rng, Bool) ? (1, (0,)) : (2.5, (0.5,));

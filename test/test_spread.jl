@@ -28,8 +28,8 @@ end
     @test ev.descriptor isa QD.DescriptorSamples{2}
     @test collect(ev.descriptor) == [s.descriptor for s in single]
     @test ev.fitness ≈ sum(s.fitness for s in single) / 6
-    @test QD.evaluate(Xoshiro(1), SampledSpread(noisy; num_samples=6, expectation=Median()), x).fitness ==
-          QD.expectation(Median(), [s.fitness for s in single])
+    @test QD.evaluate(Xoshiro(1), SampledSpread(noisy; num_samples=6, expectation=QD.Median()), x).fitness ==
+          QD.expectation(QD.Median(), [s.fitness for s in single])
     @test QD.evaluations_per_solution(prob) == 6
     @test QD.descriptor_bounds(prob) == QD.descriptor_bounds(noisy)
     test_problem(prob)
@@ -66,7 +66,7 @@ end
     # two of three descriptors in the cell of (0.25, 0.25)
     ev = spread_eval(1.0, (0.9, 0.9), (0.1, 0.2), (0.3, 0.4))
     @test QD.cell_index(a, ev.descriptor) == QD.cell_index(a, SVector(0.25, 0.25)) == 1
-    @test QD.add!(a, [1.0], ev) == AddResult(QD.NewCell, 1.0)
+    @test QD.add!(a, [1.0], ev) == QD.AddResult(QD.NewCell, 1.0)
     x, stored = only(QD.elites(a))
     @test x == [1.0] && stored.fitness == 1.0
     @test stored.descriptor ≈ SVector(0.2, 0.3)
@@ -93,19 +93,19 @@ end
     s = QD.spreads(a)[1]
     # higher fitness and larger spread
     r = QD.add!(a, [2.0], spread_eval(2.0, (0.0, 0.0), (0.4, 0.4)))
-    @test r == AddResult(QD.Rejected, 0.0)
+    @test r == QD.AddResult(QD.Rejected, 0.0)
     # lower fitness and smaller spread
     r = QD.add!(a, [3.0], spread_eval(0.5, (0.2, 0.2)))
-    @test r == AddResult(QD.Rejected, -0.5)
+    @test r == QD.AddResult(QD.Rejected, -0.5)
     # equal fitness
     @test QD.add!(a, [4.0], spread_eval(1.0, (0.2, 0.2))).status == QD.Rejected
     # higher fitness, equal spread
     r = QD.add!(a, [5.0], spread_eval(1.5, (0.3, 0.3), (0.1, 0.1)))
-    @test r == AddResult(QD.Improved, 0.5)
+    @test r == QD.AddResult(QD.Improved, 0.5)
     @test QD.spreads(a)[1] ≈ s
     # higher fitness, smaller spread
     r = QD.add!(a, [6.0], spread_eval(3.0, (0.25, 0.25)))
-    @test r == AddResult(QD.Improved, 1.5)
+    @test r == QD.AddResult(QD.Improved, 1.5)
     @test QD.spreads(a)[1] == 0.0
     @test only(QD.elites(a))[1] == [6.0]
     @test length(a) == 1 && max_fitness(a) == 3.0 && qd_score(a) == 3.0 && mean_fitness(a) == 3.0
@@ -119,12 +119,12 @@ end
 
 @testset "descriptors outside the bounds" begin
     rejecting = SpreadArchive(GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside()))
-    @test QD.add!(rejecting, [0.0], spread_eval(1.0, (2.0, 2.0), (3.0, 3.0))) == AddResult(QD.Rejected, -Inf)
+    @test QD.add!(rejecting, [0.0], spread_eval(1.0, (2.0, 2.0), (3.0, 3.0))) == QD.AddResult(QD.Rejected, -Inf)
     # the descriptors inside decide the cell; all of them count for the spread
     @test QD.add!(rejecting, [0.0], spread_eval(1.0, (2.0, 2.0), (0.1, 0.1))).status == QD.NewCell
     @test only(QD.elites(rejecting))[2].descriptor == SVector(0.1, 0.1)
     @test QD.spreads(rejecting)[1] ≈ QD.norm(SVector(1.9, 1.9))
-    @test QD.add!(rejecting, [0.0], spread_eval(5.0, (NaN, 0.5), (0.9, 0.1))) == AddResult(QD.Rejected, 0.0)
+    @test QD.add!(rejecting, [0.0], spread_eval(5.0, (NaN, 0.5), (0.9, 0.1))) == QD.AddResult(QD.Rejected, 0.0)
     @test_throws "descriptor component 1 is 2.0, outside the archive bounds" QD.add!(grid(), [0.0], spread_eval(1.0, (2.0, 0.5)))
     @test_throws "descriptor has 3 dimensions but the archive has 2" QD.add!(grid(), [0.0], Evaluation(1.0, QD.DescriptorSamples([SVector(0.1, 0.1, 0.1)])))
     @test_throws "the evaluation has no descriptors" QD.add!(grid(), [0.0], Evaluation(1.0, QD.DescriptorSamples(SVector{2,Float64}[])))

@@ -1,4 +1,4 @@
-result(status, improvement) = AddResult(status, Float64(improvement))
+result(status, improvement) = QD.AddResult(status, Float64(improvement))
 fit(f) = Evaluation(f, SVector(0.5, 0.5))
 
 @testset "rankers" begin
@@ -7,22 +7,22 @@ fit(f) = Evaluation(f, SVector(0.5, 0.5))
                result(QD.Improved, 1), result(QD.Rejected, -1)]
 
     # by fitness; the tie between the second and the fourth keeps the order of the batch
-    order, values = QD.rank(ObjectiveRanker(), evs, results)
+    order, values = QD.rank(QD.ObjectiveRanker(), evs, results)
     @test order == [2, 4, 3, 5, 1] && values == [5.0, 5.0, 3.0, 2.0, 1.0]
     # by improvement alone
-    order, values = QD.rank(ImprovementRanker(), evs, results)
+    order, values = QD.rank(QD.ImprovementRanker(), evs, results)
     @test order == [2, 3, 4, 5, 1] && values == [5.0, 4.0, 1.0, -1.0, -2.0]
     # by status first: a new cell above improvements above rejections
     two = [result(QD.Rejected, 9), result(QD.NewCell, 1), result(QD.Improved, 4),
            result(QD.Improved, 7), result(QD.Rejected, -1)]
-    order, values = QD.rank(TwoStageImprovementRanker(), evs, two)
+    order, values = QD.rank(QD.TwoStageImprovementRanker(), evs, two)
     @test order == [2, 4, 3, 1, 5] && values == [(2, 1.0), (1, 7.0), (1, 4.0), (0, 9.0), (0, -1.0)]
-    @test QD.rank_key(TwoStageImprovementRanker(), fit(1.0), result(QD.NewCell, 3)) === (2, 3.0)
-    @test QD.rank_key(ObjectiveRanker(), fit(2), result(QD.Rejected, 0)) === 2.0
+    @test QD.rank_key(QD.TwoStageImprovementRanker(), fit(1.0), result(QD.NewCell, 3)) === (2, 3.0)
+    @test QD.rank_key(QD.ObjectiveRanker(), fit(2), result(QD.Rejected, 0)) === 2.0
     # by status first, then by fitness
-    order, values = QD.rank(TwoStageObjectiveRanker(), evs, two)
+    order, values = QD.rank(QD.TwoStageObjectiveRanker(), evs, two)
     @test order == [2, 4, 3, 5, 1] && values == [(2, 5.0), (1, 5.0), (1, 3.0), (0, 2.0), (0, 1.0)]
-    @test QD.rank_key(TwoStageObjectiveRanker(), fit(2.5), result(QD.Improved, 0)) === (1, 2.5)
+    @test QD.rank_key(QD.TwoStageObjectiveRanker(), fit(2.5), result(QD.Improved, 0)) === (1, 2.5)
 
     # a candidate the archive has no cell for ranks after every candidate that has one
     outside = QD.outside_result(Float64)
@@ -31,13 +31,13 @@ fit(f) = Evaluation(f, SVector(0.5, 0.5))
     @test QD.outside_result(Int) === QD.AddResult(QD.Rejected, typemin(Int))
     @test QD.outside_result(UInt8) === QD.AddResult(QD.Rejected, 0x00)
     mixed = [outside, result(QD.Rejected, -3), result(QD.Improved, 1), outside]
-    @test QD.rank(ImprovementRanker(), evs[1:4], mixed)[1] == [3, 2, 1, 4]
-    @test QD.rank(TwoStageImprovementRanker(), evs[1:4], mixed)[1] == [3, 2, 1, 4]
+    @test QD.rank(QD.ImprovementRanker(), evs[1:4], mixed)[1] == [3, 2, 1, 4]
+    @test QD.rank(QD.TwoStageImprovementRanker(), evs[1:4], mixed)[1] == [3, 2, 1, 4]
     rejecting = GridArchive((2, 2), ((0, 1), (0, 1)); outside=RejectOutside())
     QD.add!(rejecting, [0.0], fit(5.0))
     far = Evaluation(1.0, SVector(5.0, 5.0))
-    @test QD.rank_key(ImprovementRanker(), far, QD.add!(rejecting, [0.0], far)) == -Inf
-    @test QD.rank_key(ImprovementRanker(), fit(1.0), QD.add!(rejecting, [0.0], fit(1.0))) == -4.0
+    @test QD.rank_key(QD.ImprovementRanker(), far, QD.add!(rejecting, [0.0], far)) == -Inf
+    @test QD.rank_key(QD.ImprovementRanker(), fit(1.0), QD.add!(rejecting, [0.0], fit(1.0))) == -4.0
     # all keys equal, also infinite ones, make a flat batch
     @test QD.flat_ranking([-Inf, -Inf]) && QD.flat_ranking([(0, -Inf), (0, -Inf)]) && !QD.flat_ranking([(0, 1.0), (0, -Inf)])
 
@@ -48,33 +48,33 @@ fit(f) = Evaluation(f, SVector(0.5, 0.5))
     @test QD.flat_ranking([(1, 2.0), (1, 2.0)]) && !QD.flat_ranking([(2, 2.0), (0, 2.0)])
 
     # a new ranker defines rank_key
-    struct NegativeFitnessRanker <: AbstractRanker end
+    struct NegativeFitnessRanker <: QD.AbstractRanker end
     QD.rank_key(::NegativeFitnessRanker, ev, result) = -Float64(ev.fitness)
     order, _ = QD.rank(NegativeFitnessRanker(), evs, results)
     @test order == [1, 5, 3, 2, 4]
 end
 
 @testset "selection and restart rules" begin
-    @test QD.parent_count(FilterSelection(), 7, 36) == 7
-    @test QD.parent_count(FilterSelection(), 0, 36) == 0
-    @test QD.parent_count(MuSelection(), 7, 36) == 18
-    @test QD.parent_count(MuSelection(), 0, 7) == 3
+    @test QD.parent_count(QD.FilterSelection(), 7, 36) == 7
+    @test QD.parent_count(QD.FilterSelection(), 0, 36) == 0
+    @test QD.parent_count(QD.MuSelection(), 7, 36) == 18
+    @test QD.parent_count(QD.MuSelection(), 0, 7) == 3
 
-    @test QD.restart_due(NoImprovementRestart(), 4, 0)
-    @test !QD.restart_due(NoImprovementRestart(), 4, 1)
-    @test !QD.restart_due(ConvergenceRestart(), 4, 0)
-    @test [QD.restart_due(PeriodicRestart(3), i, 5) for i in 1:7] == [false, false, true, false, false, true, false]
-    @test_throws "iterations must be at least 1, got 0" PeriodicRestart(0)
+    @test QD.restart_due(QD.NoImprovementRestart(), 4, 0)
+    @test !QD.restart_due(QD.NoImprovementRestart(), 4, 1)
+    @test !QD.restart_due(QD.ConvergenceRestart(), 4, 0)
+    @test [QD.restart_due(QD.PeriodicRestart(3), i, 5) for i in 1:7] == [false, false, true, false, false, true, false]
+    @test_throws "iterations must be at least 1, got 0" QD.PeriodicRestart(0)
 end
 
 @testset "CMAEmitter construction" begin
     e = CMAEmitter(10; sigma0=0.5)
-    @test e isa CMAEmitter{TwoStageImprovementRanker,FilterSelection,NoImprovementRestart}
+    @test e isa CMAEmitter{QD.TwoStageImprovementRanker,QD.FilterSelection,QD.NoImprovementRestart}
     @test QD.batch_size(e) == 4 + floor(Int, 3 * log(10)) && e.iterations == 0 && e.restarts == 0
     @test QD.batch_size(CMAEmitter(10; sigma0=1, batch_size=20)) == 20
-    f = CMAEmitter([1.0, 2.0, 3.0]; sigma0=1, ranker=ImprovementRanker(), selection=MuSelection(),
-                   restart=PeriodicRestart(5))
-    @test f isa CMAEmitter{ImprovementRanker,MuSelection,PeriodicRestart} && f.es.dim == 3 && f.x0 == [1.0, 2.0, 3.0]
+    f = CMAEmitter([1.0, 2.0, 3.0]; sigma0=1, ranker=QD.ImprovementRanker(), selection=QD.MuSelection(),
+                   restart=QD.PeriodicRestart(5))
+    @test f isa CMAEmitter{QD.ImprovementRanker,QD.MuSelection,QD.PeriodicRestart} && f.es.dim == 3 && f.x0 == [1.0, 2.0, 3.0]
     @test CMAEmitter(Float32[1, 2]; sigma0=1).x0 isa Vector{Float64}
 
     @test_throws UndefKeywordError CMAEmitter(3)
@@ -166,22 +166,22 @@ end
     @test e.es.mean ≈ xs[1]                                  # one parent: the mean moves to it
 
     # only convergence restarts with the convergence rule, so a rejected batch does not
-    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=ConvergenceRestart(),
-                   selection=MuSelection())
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=QD.ConvergenceRestart(),
+                   selection=QD.MuSelection())
     ask_tell!(e, all_rejected)
     @test e.restarts == 0 && e.es.mean != [9.0, 9.0, 9.0]    # a mu selection moves anyway
 
     # periodic restarts
-    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=PeriodicRestart(2),
-                   selection=MuSelection())
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=QD.PeriodicRestart(2),
+                   selection=QD.MuSelection())
     for i in 1:6
         ask_tell!(e, one_added; rng=Xoshiro(i))
     end
     @test e.restarts == 3 && e.iterations == 6
 
     # CMA-ES convergence restarts: a flat batch (all values equal) stops the search
-    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=ConvergenceRestart(),
-                   ranker=ObjectiveRanker(), selection=MuSelection())
+    e = CMAEmitter(n; sigma0=0.5, x0=[9.0, 9.0, 9.0], batch_size=8, restart=QD.ConvergenceRestart(),
+                   ranker=QD.ObjectiveRanker(), selection=QD.MuSelection())
     xs = QD.ask(Xoshiro(1), e, archive)
     QD.tell!(e, xs, [fit(1.0) for _ in xs], all_rejected(8))
     @test e.restarts == 1
@@ -190,8 +190,8 @@ end
 @testset "CMAEmitter respects bounds" begin
     prob = QDProblem(x -> (-sum(abs2, x .- 0.9), (x[1], x[2])); init=rng -> rand(rng, 4), bounds=((0, 1), (0, 1)))
     archive = GridArchive(prob; dims=(8, 8))
-    emitters = Tuple(CMAEmitter(4; sigma0=0.5, lower=0.0, upper=1.0, ranker=ImprovementRanker(),
-                                selection=MuSelection(), restart=ConvergenceRestart()) for _ in 1:2)
+    emitters = Tuple(CMAEmitter(4; sigma0=0.5, lower=0.0, upper=1.0, ranker=QD.ImprovementRanker(),
+                                selection=QD.MuSelection(), restart=QD.ConvergenceRestart()) for _ in 1:2)
     result = solve(prob, QDAlgorithm(archive, emitters); budget=2_000, rng=Xoshiro(1))
     stored = first.(collect(QD.elites(result.archive)))
     @test all(x -> all(0 .<= x .<= 1), stored)
@@ -213,15 +213,15 @@ end
     @test bounded.es.mean == [1.0, 0.0, 0.5, 1.0]
     @test all(x -> all(0 .<= x .<= 1), xs)
     @test maximum(x -> maximum(abs, x .- [1.0, 0.0, 0.5, 1.0]), xs) < 0.5
-    device = DeviceCMAEmitter(4; num_emitters=2, sigma0=0.1, lower=0.0, upper=1.0)
+    device = QD.DeviceCMAEmitter(4; num_emitters=2, sigma0=0.1, lower=0.0, upper=1.0)
     @test QD.start_means(Xoshiro(1), device, outside) == [[1.0, 0.0, 0.5, 1.0], [1.0, 0.0, 0.5, 1.0]]
 end
 
 @testset "CMAEmitter with an objective ranker maximizes" begin
     prob = Sphere(10)
     archive = GridArchive(prob; dims=(1, 1))
-    emitter = CMAEmitter(10; sigma0=1.0, ranker=ObjectiveRanker(), selection=MuSelection(),
-                         restart=ConvergenceRestart(), batch_size=12)
+    emitter = CMAEmitter(10; sigma0=1.0, ranker=QD.ObjectiveRanker(), selection=QD.MuSelection(),
+                         restart=QD.ConvergenceRestart(), batch_size=12)
     result = solve(prob, QDAlgorithm(archive, (emitter,)); budget=4_000, rng=Xoshiro(1))
     @test max_fitness(result.archive) > 99.99
 end
@@ -230,12 +230,12 @@ end
     prob = Sphere(10)
     alg = CMAME(prob; dims=(8, 8), sigma0=0.5)
     @test alg isa QDAlgorithm && alg.archive isa GridArchive && length(alg.emitters) == 5
-    @test all(e -> e isa CMAEmitter{TwoStageImprovementRanker,FilterSelection,NoImprovementRestart}, alg.emitters)
+    @test all(e -> e isa CMAEmitter{QD.TwoStageImprovementRanker,QD.FilterSelection,QD.NoImprovementRestart}, alg.emitters)
     @test all(e -> e.es.dim == 10 && e.es.sigma0 == 0.5, alg.emitters)
     @test alg.emitters[1] !== alg.emitters[2]
     @test length(CMAME(prob; dims=(8, 8), sigma0=0.5, num_emitters=2, batch_size=11).emitters) == 2
     @test QD.batch_size(CMAME(prob; dims=(8, 8), sigma0=0.5, batch_size=11).emitters[1]) == 11
-    @test CMAME(prob; dims=(8, 8), sigma0=0.5, selection=MuSelection()).emitters[1] isa CMAEmitter{<:Any,MuSelection}
+    @test CMAME(prob; dims=(8, 8), sigma0=0.5, selection=QD.MuSelection()).emitters[1] isa CMAEmitter{<:Any,QD.MuSelection}
     @test CMAME(prob; dims=(8, 8), sigma0=0.5, genotype=Vector{Float32}, fitness=Float32).archive isa
           GridArchive{Vector{Float32},Float32}
     @test_throws UndefKeywordError CMAME(prob; dims=(8, 8))
@@ -244,7 +244,7 @@ end
 
     mae = CMAMAE(prob; dims=(8, 8), sigma0=0.5, threshold_min=0.0, learning_rate=0.1)
     @test mae.archive isa ThresholdArchive && mae.archive.learning_rate == 0.1 && mae.archive.threshold_min == 0.0
-    @test all(e -> e isa CMAEmitter{ImprovementRanker,MuSelection,ConvergenceRestart}, mae.emitters)
+    @test all(e -> e isa CMAEmitter{QD.ImprovementRanker,QD.MuSelection,QD.ConvergenceRestart}, mae.emitters)
     @test CMAMAE(prob; dims=(8, 8), sigma0=0.5, threshold_min=0).archive.learning_rate == 0.01
     @test_throws UndefKeywordError CMAMAE(prob; dims=(8, 8), sigma0=0.5)
 
@@ -294,13 +294,13 @@ end
 
 @testset "direction rankers" begin
     archive = GridArchive((4, 4), ((0, 2), (-10, 10)))
-    ranker = RandomDirectionRanker()
+    ranker = QD.RandomDirectionRanker()
     @test isempty(ranker.direction)
     @test_throws "the direction of the ranker is not set" QD.rank_key(ranker, fit(1.0), result(QD.NewCell, 1))
     QD.reset_ranker!(Xoshiro(1), ranker, archive)
     @test length(ranker.direction) == 2
     # reproducible from the generator, and a new draw after each reset
-    other = RandomDirectionRanker()
+    other = QD.RandomDirectionRanker()
     QD.reset_ranker!(Xoshiro(1), other, archive)
     @test other.direction == ranker.direction
     QD.reset_ranker!(Xoshiro(2), other, archive)
@@ -317,34 +317,34 @@ end
     order, keys = QD.rank(ranker, evs, results)
     @test order == [2, 1, 3] && keys == [10.0, 3.0, -4.0]
     # in two stages the status comes first
-    two = TwoStageRandomDirectionRanker([1.0, 2.0])
+    two = QD.TwoStageRandomDirectionRanker([1.0, 2.0])
     order, keys = QD.rank(two, evs, results)
     @test order == [2, 3, 1] && keys == [(2, 10.0), (1, -4.0), (0, 3.0)]
     # the ranking of the CMA-ME paper: accepted above rejected, a new cell is not above an improvement
-    accepted = AcceptedRandomDirectionRanker([1.0, 2.0])
+    accepted = QD.AcceptedRandomDirectionRanker([1.0, 2.0])
     order, keys = QD.rank(accepted, evs, results)
     @test order == [2, 3, 1] && keys == [(1, 10.0), (1, -4.0), (0, 3.0)]
     # an improvement with a larger projection than a new cell ranks first here, and second in two stages
     mixed = [result(QD.NewCell, 0), result(QD.Improved, 0), result(QD.Rejected, 0)]
     @test QD.rank(accepted, evs, mixed)[1] == [2, 1, 3]
     @test QD.rank(two, evs, mixed)[1] == [1, 2, 3]
-    @test_throws "the descriptor has 2 dimensions but the direction has 3" QD.rank_key(RandomDirectionRanker([1.0, 2.0, 3.0]), evs[1], results[1])
+    @test_throws "the descriptor has 2 dimensions but the direction has 3" QD.rank_key(QD.RandomDirectionRanker([1.0, 2.0, 3.0]), evs[1], results[1])
 
     # the archive wrappers report their bounds, and others fail with a message
     @test QD.descriptor_bounds(archive) == ((0.0, 2.0), (-10.0, 10.0))
     @test QD.descriptor_bounds(ThresholdArchive(archive; learning_rate=0.1, threshold_min=0.0)) == ((0.0, 2.0), (-10.0, 10.0))
     @test_throws "UnstructuredArchive does not report the bounds of its descriptor space" QD.reset_ranker!(Xoshiro(1), ranker, UnstructuredArchive{Vector{Float64}}(2; capacity=10, novelty_threshold=0.1))
     # rankers without state ignore the reset
-    @test QD.reset_ranker!(Xoshiro(1), ObjectiveRanker(), archive) === nothing
+    @test QD.reset_ranker!(Xoshiro(1), QD.ObjectiveRanker(), archive) === nothing
 end
 
 @testset "CMAEmitter keeps its own ranker and redraws the direction" begin
     archive = elite_archive()
-    ranker = TwoStageRandomDirectionRanker()
+    ranker = QD.TwoStageRandomDirectionRanker()
     a = CMAEmitter(3; sigma0=0.5, ranker)
     b = CMAEmitter(3; sigma0=0.5, ranker)
     @test a.ranker !== ranker && a.ranker !== b.ranker && isempty(ranker.direction)
-    @test a isa CMAEmitter{TwoStageRandomDirectionRanker}
+    @test a isa CMAEmitter{QD.TwoStageRandomDirectionRanker}
     xs = QD.ask(Xoshiro(1), a, archive)
     @test length(a.ranker.direction) == 2 && isempty(b.ranker.direction)
     first_direction = copy(a.ranker.direction)
@@ -355,26 +355,26 @@ end
     QD.ask(Xoshiro(2), a, archive)
     @test a.ranker.direction != first_direction              # a restart draws a new direction
     # the algorithm constructors give every emitter its own ranker
-    alg = CMAME(Sphere(4); dims=(4, 4), sigma0=1.0, num_emitters=3, ranker=RandomDirectionRanker())
+    alg = CMAME(Sphere(4); dims=(4, 4), sigma0=1.0, num_emitters=3, ranker=QD.RandomDirectionRanker())
     @test length(unique(objectid(e.ranker) for e in alg.emitters)) == 3
 end
 
 @testset "CMAEmitter with each evolution strategy" begin
     archive = elite_archive()
-    for strategy in (CMAES, SepCMAES, LMMAES, OpenAIES, (dim; kwargs...) -> LMMAES(dim; kwargs..., n_vectors=2))
+    for strategy in (QD.CMAES, QD.SepCMAES, QD.LMMAES, QD.OpenAIES, (dim; kwargs...) -> QD.LMMAES(dim; kwargs..., n_vectors=2))
         # LMMAES needs a batch smaller than the dimension
         dim = 10
         grid = GridArchive{Vector{Float64}}((4, 4), ((-4, 4), (-4, 4)))
         QD.add!(grid, fill(1.0, dim), Evaluation(-1.0, SVector(0.0, 0.0)))
         e = CMAEmitter(dim; sigma0=0.5, strategy, batch_size=6)
-        @test e.es isa AbstractEvolutionStrategy && QD.batch_size(e) == 6
+        @test e.es isa QD.AbstractEvolutionStrategy && QD.batch_size(e) == 6
         xs = QD.ask(Xoshiro(1), e, grid)
         @test length(xs) == 6 && all(x -> length(x) == dim, xs)
         evs = [Evaluation(-sum(abs2, x), SVector(x[1], x[2])) for x in xs]
         results = QD.add_batch!(grid, xs, evs)
         @test QD.tell!(e, xs, evs, results) === nothing
     end
-    @test CMAEmitter(10; sigma0=1, strategy=OpenAIES).es.batch_size == 2 * cld(4 + floor(Int, 3 * log(10)), 2)
+    @test CMAEmitter(10; sigma0=1, strategy=QD.OpenAIES).es.batch_size == 2 * cld(4 + floor(Int, 3 * log(10)), 2)
     @test_throws "strategy must construct an AbstractEvolutionStrategy, got a Int64" CMAEmitter(3; sigma0=1, strategy=(dim; kwargs...) -> 1)
-    @test CMAME(Sphere(10); dims=(4, 4), sigma0=1.0, strategy=SepCMAES).emitters[1] isa CMAEmitter{<:Any,<:Any,<:Any,SepCMAES}
+    @test CMAME(Sphere(10); dims=(4, 4), sigma0=1.0, strategy=QD.SepCMAES).emitters[1] isa CMAEmitter{<:Any,<:Any,<:Any,QD.SepCMAES}
 end

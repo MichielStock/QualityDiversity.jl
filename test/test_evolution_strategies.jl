@@ -17,7 +17,7 @@ strategies = (QD.CMAES, QD.SepCMAES, QD.LMMAES, QD.OpenAIES)
 @testset "construction of $(nameof(S))" for S in strategies
     dim = 12
     es = S(dim; sigma0=0.5)
-    @test es isa AbstractEvolutionStrategy && es.dim == dim && size(es.x) == (dim, es.batch_size)
+    @test es isa QD.AbstractEvolutionStrategy && es.dim == dim && size(es.x) == (dim, es.batch_size)
     @test es.batch_size >= 2 && es.sigma0 == 0.5
     @test S(dim; sigma0=1, batch_size=8).batch_size == 8
     @test_throws "sigma0 must be positive and finite, got 0" S(dim; sigma0=0)
@@ -281,7 +281,7 @@ end
 @testset "PyribsCMAES weakens the rank-one term" begin
     n = length(cma_x0)
     textbook = QD.CMAES(n; sigma0=cma_s0, batch_size=8)
-    pyribs = PyribsCMAES(n; sigma0=cma_s0, batch_size=8)
+    pyribs = QD.PyribsCMAES(n; sigma0=cma_s0, batch_size=8)
     @test textbook.rank_one isa QD.TextbookRankOne && pyribs.rank_one isa QD.PyribsRankOne
     @test pyribs isa QD.CMAES && pyribs.batch_size == 8 && pyribs.sigma0 == cma_s0
     for es in (textbook, pyribs)
@@ -298,7 +298,7 @@ end
     @test QD.rank_one_rate(QD.TextbookRankOne(), 0.1) == 0.1 && QD.rank_one_rate(QD.PyribsRankOne(), 0.1) ≈ 0.01
     # the variant fills an archive through an emitter
     prob = Sphere(6)
-    alg = CMAME(prob; dims=(6, 6), sigma0=0.5, num_emitters=2, strategy=PyribsCMAES)
+    alg = CMAME(prob; dims=(6, 6), sigma0=0.5, num_emitters=2, strategy=QD.PyribsCMAES)
     @test alg.emitters[1].es isa QD.CMAES{QD.PyribsRankOne}
     @test coverage(solve(prob, alg; budget=1_000, rng=Xoshiro(1)).archive) > 0.1
 end

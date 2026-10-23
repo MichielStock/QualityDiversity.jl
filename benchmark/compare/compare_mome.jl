@@ -8,7 +8,7 @@ VERSION < v"1.11" && Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..", "..")
 Pkg.instantiate()
 
 using BenchmarkTools
-using QualityDiversity
+using QualityDiversity, QualityDiversity.Benchmarks
 using Random: Xoshiro
 using Statistics: median
 
@@ -41,7 +41,7 @@ function benchmark_mome()
         result = solve(prob, alg; budget=BUDGET, rng=Xoshiro(seed[]))
         a = result.archive
         push!(finals, (coverage=coverage(a), moqd_score=qd_score(a), global_hypervolume=global_hypervolume(a),
-                       max_hypervolume=max_hypervolume(a), solutions=num_solutions(a)))
+                       max_hypervolume=QualityDiversity.max_hypervolume(a), solutions=QualityDiversity.num_solutions(a)))
     end setup = (alg = make_algorithm(); seed[] += 1) evals = 1 samples = REPEATS seconds = 900
     return trial, copy(finals)
 end

@@ -15,7 +15,7 @@ end
 # versions only `IteratorSize`). `istable`, `rowaccess`, `rows`, `schema` and `Schema` are
 # the documented interface of Tables, which declares nothing public.
 # `CellArchive`, `cell_index`, `result_archive`, `elites`, `evaluate`, `boundaries`,
-# `DeviceCellArchive`, `AddResultBatch` and the statuses `Rejected`, `Improved` and
+# `DeviceCellArchive`, `AddResultBatch`, `CQDScore` and the statuses `Rejected`, `Improved` and
 # `NewCell` are declared public with `@compat public`, which ExplicitImports only sees from
 # Julia 1.11 on; the extensions use them. The KernelAbstractions extension implements the device
 # kernels behind internal functions of the package (`device_add_batch!` to
@@ -28,7 +28,7 @@ const NON_PUBLIC_ON_PURPOSE = (:init, :solve, :solve!, :step!, :default_rng, :pr
                                :require_one_based_indexing, :IteratorSize, :HasLength, :HasShape, :plottype, :SpecApi,
                                :istable, :rowaccess, :rows, :schema, :Schema,
                                :CellArchive, :cell_index, :result_archive, :elites, :evaluate, :boundaries,
-                               :DeviceCellArchive, :AddResultBatch, :Rejected, :Improved, :NewCell,
+                               :DeviceCellArchive, :AddResultBatch, :CQDScore, :Rejected, :Improved, :NewCell,
                                :device_add_batch!, :device_evaluate, :device_evaluate!, :device_vary!,
                                :refresh_occupied!, :solution_length, :fitness_gain, :outside_improvement, Symbol("@atomic"),
                                :forwarddiff_evaluate_gradient, :differentiable_values, :jacobian)
